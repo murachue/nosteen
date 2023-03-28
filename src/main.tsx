@@ -1,31 +1,38 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createHashRouter, RouterProvider } from 'react-router-dom';
-import ListView from './components/listview';
-import ErrorPage from './errorpage';
 import './index.css';
-import Root from './root';
-import Index from './routes';
+import ErrorPage from './routes/errorpage';
+import Global from './routes/global';
+import MainLayout from './routes/mainlayout';
+import TabsView from './routes/tabsview';
 import App from './routes/test';
+
+let state = {
+    preferences: {},
+    events: [],
+    tabs: [],
+};
 
 const router = createHashRouter([
     {
-        path: '/list',
-        element: <ListView />,
-    },
-    {
-        path: '/',
-        element: <Root />,
+        element: <Global />,
         errorElement: <ErrorPage />,
         children: [
             {
-                index: true,
-                element: <Index />,
+                element: <MainLayout />,
+                children: [
+                    {
+                        path: '/:name?',
+                        loader: ({ params }) => params,
+                        element: <TabsView />,
+                    },
+                    {
+                        path: 'test',
+                        element: <App />,
+                    }
+                ],
             },
-            {
-                path: 'test',
-                element: <App />,
-            }
         ],
     },
 ]);
