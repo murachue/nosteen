@@ -7,12 +7,12 @@ const ListView: FC<{ widths?: number[]; }> = (props) => {
             <div style={{ width: "5em" }}>world</div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", background: "#664", width: "100%" }}>
-            {[...Array(17).fill(0).map(() => <>
-                <div style={{ display: "flex", background: "#464", width: "100%" }}>
+            {[...Array(17).fill(0).map((_, i) => <>
+                <div key={i * 2} style={{ display: "flex", background: "#464", width: "100%" }}>
                     <div style={{ width: "5em" }}>hello</div>
                     <div style={{ width: "5em" }}>world</div>
                 </div>
-                <div style={{ display: "flex", background: "#449", width: "100%" }}>
+                <div key={i * 2 + 1} style={{ display: "flex", background: "#449", width: "100%" }}>
                     <div style={{ width: "5em" }}>hello</div>
                     <div style={{ width: "5em" }}>world</div>
                 </div>

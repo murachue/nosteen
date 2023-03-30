@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Link, useLoaderData } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import ListView from "../components/listview";
 import TabBar from "../components/tabbar";
 
-const Index = () => {
-    const data = useLoaderData();
+export default () => {
+    const data = useParams();
     const name =
         typeof data === "object" &&
             data !== null &&
@@ -25,5 +25,3 @@ const Index = () => {
         </div>
     </div>;
 };
-
-export default Index;
