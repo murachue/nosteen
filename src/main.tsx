@@ -28,7 +28,7 @@ const App = () => {
                 mux.addRelay(relay);
             }
         });
-    });
+    }, []);
 
     return <HashRouter>
         <Routes>
