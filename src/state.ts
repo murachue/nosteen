@@ -69,5 +69,4 @@ export default {
             ],
         },
     ]),
-    activetab: atom(0),
 };

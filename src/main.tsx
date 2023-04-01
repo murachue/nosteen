@@ -36,8 +36,8 @@ const App = () => {
                 <Route element={<MainLayout />}>
                     <Route path="/:name?" element={<TabsView />} />
                     <Route path="test" element={<TestApp />} />
-                    <Route path="/preferences" element={<Preferences />} />
                 </Route>
+                <Route path="/preferences" element={<Preferences />} />
             </Route>
         </Routes>
     </HashRouter>;

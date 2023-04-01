@@ -9,18 +9,19 @@ import state from "../state";
 export default () => {
     const navigate = useNavigate();
     const data = useParams();
-    const name = data.name || "(null)";
+    const name = data.name || "";
     const [tabs] = useAtom(state.tabs);
-    // const [seltab, setSeltab] = useAtom(state.activetab);
+
+    if (!tabs.find(t => t.name === name)) {
+        navigate(`/${tabs[0].name}`, { replace: true });
+    }
+
     const [c, sc] = useState(0);
+
     return <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
         <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column" }}>
             <div style={{ flex: "1 0 0px", height: "0" }}><ListView /></div>
             <div><TabBar>
-                {/* <Tab onClick={() => 0}>moo</Tab>
-                <Tab active onClick={() => 0}>maao</Tab>
-                <Tab onClick={() => 0}><span style={{ color: "red" }}>mi</span></Tab>
-                <Tab onClick={() => 0}>foox</Tab> */}
                 {tabs.map((t, i) => <Tab active={t.name === name} onClick={() => navigate(`/${t.name}`)}>{t.name}</Tab>)}
             </TabBar></div>
         </div>
