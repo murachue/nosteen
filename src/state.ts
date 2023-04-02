@@ -1,11 +1,11 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Mux, Relay } from "nostr-mux";
-import { InnerEvent } from "./types";
+import { AnEvent } from "./types";
 
-type Events = {
-    byCreatedAt: InnerEvent[];
-    byEventId: Map<string, InnerEvent>;
+type EventList = {
+    byCreatedAt: AnEvent[];
+    byEventId: Map<string, AnEvent>;
 };
 
 const emptyEvents = { byCreatedAt: [], byEventId: new Map() };
@@ -31,6 +31,8 @@ export default {
             themreplyto: atomWithStorage("preferences.colors.themreplyto", "#400"),
             uitext: atomWithStorage("preferences.colors.uitext", "#000"),
             uibg: atomWithStorage("preferences.colors.uibg", "#ccc"),
+            selectedtext: atomWithStorage("preferences.colors.selectedtext", "selecteditemtext"),
+            selectedbg: atomWithStorage("preferences.colors.selectedbg", "selecteditem"),
         },
         fonts: {
             text: atomWithStorage("preferences.fonts.text", "1em sans-serif"),
@@ -43,7 +45,7 @@ export default {
     myprofile: atom(Event),
     mycontacts: atom(Event),
     //
-    allevents: atom<Events>(emptyEvents),
+    allevents: atom(emptyEvents),
     tabs: atom<{
         name: string;
         filter: "recent" |
@@ -59,7 +61,7 @@ export default {
             until: number;
             limit: number;
         }>[];
-        events: Events; // contains partial copy of allevents
+        events: EventList; // contains partial copy of allevents
         selected: number; // or event_id?
     }[]>([
         { ...emptyTab, name: "Recent", filter: "recent" },

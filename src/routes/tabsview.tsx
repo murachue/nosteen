@@ -65,12 +65,12 @@ export default () => {
                     </div>
                 </div>
                 <div style={{ flex: "1", display: "flex", flexDirection: "column" }}>
-                    <div style={{ color: coloruitext, font: fontui, margin: "0 2px" }}>name here</div>
+                    <div style={{ color: coloruitext, font: fontui, fontWeight: "bold", margin: "0 2px" }}>name here</div>
                     <div style={{ flex: "1", overflowY: "auto", margin: "2px", background: colorbase, color: colornormal, font: fonttext }}>
                         text here...<br />here...
                     </div>
                 </div>
-                <div style={{ width: "100px", border: "1px solid white" }}>img</div>
+                {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
             </div>
             <div style={{ display: "flex", alignItems: "center", background: coloruibg }}>
                 <input type="text" style={{ flex: "1", background: colorbase, borderColor: colornormal, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} />

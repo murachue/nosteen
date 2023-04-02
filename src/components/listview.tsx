@@ -16,14 +16,14 @@ export const TBody: FC<PropsWithChildren<{}>> = ({ children }) => {
 
     // truncate setColwidths to avoid setting width in TBody ("illegal function call"-ish)
     return <ColWidths.Provider value={[colwidths]}>
-        <div style={{ display: "flex", flexWrap: "wrap", background: "#664", width: "100%" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", width: "100%" }}>
             {children}
         </div>
     </ColWidths.Provider>;
 };
 
-export const TR: FC<PropsWithChildren<{}>> = ({ children }) =>
-    <div style={{ display: "flex", background: "#464", width: "100%" }}>
+export const TR: FC<PropsWithChildren<{ selected?: boolean; }>> = ({ selected, children }) =>
+    <div style={{ display: "flex", width: "100%" }}>
         {Children.map(children, (c, i) => <ColIndex.Provider value={i}>{c}</ColIndex.Provider>)}
     </div>;
 
@@ -42,7 +42,7 @@ export const TD: FC<PropsWithChildren<{ width?: string; }>> = ({ width: setwidth
     return <div style={{ width }}>{children}</div>;
 };
 
-const ListView: FC<PropsWithChildren<{ selected: number; }>> = ({ selected, children }) => {
+const ListView: FC<PropsWithChildren<{}>> = ({ children }) => {
     const colwidths = useState<string[]>([]);
 
     return <ColWidths.Provider value={colwidths}>

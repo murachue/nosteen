@@ -1,3 +1,5 @@
+import { Relay } from "nostr-mux";
+
 export type Event = {
     id: string;
     pubkey: string;
@@ -8,8 +10,13 @@ export type Event = {
     sig: string;
 };
 
-export type InnerEvent = {
+export type ReceivedEvent = {
     event: Event;
-    deleteevent: Event | null;
-    repostevent: Event | null;
+    receivedfrom: Set<Relay>;
+};
+
+export type AnEvent = {
+    event: ReceivedEvent;
+    deleteevent: ReceivedEvent | null;
+    repostevent: ReceivedEvent | null;
 };

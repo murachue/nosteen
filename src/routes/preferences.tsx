@@ -24,6 +24,8 @@ export default () => {
     const [prefColorRepost, setPrefColorRepost] = useAtom(state.preferences.colors.repost);
     const [prefColorReacted, setPrefColorReacted] = useAtom(state.preferences.colors.reacted);
     const [prefColorBase, setPrefColorBase] = useAtom(state.preferences.colors.base);
+    const [prefColorSelectedText, setPrefColorSelectedText] = useAtom(state.preferences.colors.selectedtext);
+    const [prefColorSelectedBg, setPrefColorSelectedBg] = useAtom(state.preferences.colors.selectedbg);
     const [prefColorMypost, setPrefColorMypost] = useAtom(state.preferences.colors.mypost);
     const [prefColorReplytome, setPrefColorReplytome] = useAtom(state.preferences.colors.replytome);
     const [prefColorThempost, setPrefColorThempost] = useAtom(state.preferences.colors.thempost);
@@ -38,6 +40,8 @@ export default () => {
     const [colorRepost, setColorRepost] = useState(prefColorRepost);
     const [colorReacted, setColorReacted] = useState(prefColorReacted);
     const [colorBase, setColorBase] = useState(prefColorBase);
+    const [colorSelectedText, setColorSelectedText] = useState(prefColorSelectedText);
+    const [colorSelectedBg, setColorSelectedBg] = useState(prefColorSelectedBg);
     const [colorMypost, setColorMypost] = useState(prefColorMypost);
     const [colorReplytome, setColorReplytome] = useState(prefColorReplytome);
     const [colorThempost, setColorThempost] = useState(prefColorThempost);
@@ -151,6 +155,8 @@ export default () => {
                 <li>their reply target: <input type="text" value={colorThemreplyto} style={{ background: colorThemreplyto, color: colorNormal }} onChange={e => setColorThemreplyto(e.target.value)} /></li>
                 <li>UI text: <input type="text" value={colorUiText} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiText(e.target.value)} /></li>
                 <li>UI bg: <input type="text" value={colorUiBg} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiBg(e.target.value)} /></li>
+                <li>selected text: <input type="text" value={colorSelectedText} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedText(e.target.value)} /></li>
+                <li>selected bg: <input type="text" value={colorSelectedBg} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedBg(e.target.value)} /></li>
             </ul>
             <button onClick={() => {
                 setPrefColorNormal(colorNormal);
@@ -163,6 +169,8 @@ export default () => {
                 setPrefColorThemreplyto(colorThemreplyto);
                 setPrefColorUiText(colorUiText);
                 setPrefColorUiBg(colorUiBg);
+                setPrefColorSelectedText(colorSelectedText);
+                setPrefColorSelectedBg(colorSelectedBg);
             }}>Save</button>
             <button onClick={() => {
                 setColorNormal(prefColorNormal);
@@ -175,6 +183,8 @@ export default () => {
                 setColorThemreplyto(prefColorThemreplyto);
                 setColorUiText(prefColorUiText);
                 setColorUiBg(prefColorUiBg);
+                setColorSelectedText(prefColorSelectedText);
+                setColorSelectedBg(prefColorSelectedBg);
             }}>Reset</button>
         </p>
         <h2>Fonts:</h2>

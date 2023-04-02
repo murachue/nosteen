@@ -14,6 +14,7 @@ import Root from './routes/root';
 import TabsView from './routes/tabsview';
 import TestApp from './routes/test';
 import state from './state';
+import { AnEvent } from './types';
 
 enableMapSet();
 
@@ -21,6 +22,7 @@ const App = () => {
     const [prefrelays] = useAtom(state.preferences.relays);
     const [relays, setRelays] = useImmerAtom(state.relays);
     const [mux] = useAtom(state.relaymux);
+    const [allevents, setAllevents] = useImmerAtom(state.allevents);
     useEffect(() => {
         setRelays(relays => {
             for (const relopt of prefrelays) {
@@ -28,6 +30,28 @@ const App = () => {
                 relays.set(relopt.url, relay);
                 mux.addRelay(relay);
             }
+            mux.subscribe({
+                filters: [{ authors: ["eeef"] }],
+                onEvent: es => {
+                    setAllevents(draft => {
+                        for (const e of es) {
+                            let ae: AnEvent = draft.byEventId.get(e.received.event.id);
+                            if (!ae) {
+                                ae = {
+                                    event: {
+                                        event: e.received.event,
+                                        receivedfrom: new Set(),
+                                    },
+                                    deleteevent: null,
+                                    repostevent: null,
+                                };
+                                draft.byEventId.set(e.received.event.id, ae);
+                            }
+                            ae.event.receivedfrom.add(e.relay);
+                        }
+                    });
+                },
+            });
         });
     }, []);
 
