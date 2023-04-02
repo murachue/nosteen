@@ -2,7 +2,7 @@ import { useAtom } from "jotai";
 import { useState } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, useParams } from "react-router-dom";
-import ListView from "../components/listview";
+import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import TabBar from "../components/tabbar";
 import state from "../state";
@@ -32,10 +32,31 @@ export default () => {
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column" }}>
-                <div style={{ flex: "1 0 0px", height: "0" }}><ListView /></div>
-                <div><TabBar>
-                    {tabs.map((t, i) => <Tab active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
-                </TabBar></div>
+                <div style={{ flex: "1 0 0px", height: "0" }}>
+                    <ListView>
+                        <div style={{ background: coloruibg }}>
+                            <TH>
+                                <TD width="5em"><div style={{ padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>hello</div></TD>
+                                <TD width="7em"><div style={{ padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>world</div></TD>
+                            </TH>
+                        </div>
+                        <TBody>
+                            <TR>
+                                <TD>hello</TD>
+                                <TD>world</TD>
+                            </TR>
+                            <TR>
+                                <TD>hello</TD>
+                                <TD>world</TD>
+                            </TR>
+                        </TBody>
+                    </ListView>
+                </div>
+                <div>
+                    <TabBar>
+                        {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
+                    </TabBar>
+                </div>
             </div>
             <div style={{ display: "flex", flexDirection: "row", background: coloruibg, height: "100px" }}>
                 <div>

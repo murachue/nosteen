@@ -1,3 +1,4 @@
+import { enableMapSet } from 'immer';
 import { useImmerAtom } from 'jotai-immer';
 import { useAtom } from 'jotai/react';
 import { Relay } from 'nostr-mux/dist/core/relay';
@@ -9,10 +10,10 @@ import ErrorPage from './routes/errorpage';
 import Global from './routes/global';
 import MainLayout from './routes/mainlayout';
 import Preferences from './routes/preferences';
+import Root from './routes/root';
 import TabsView from './routes/tabsview';
 import TestApp from './routes/test';
 import state from './state';
-import { enableMapSet } from 'immer';
 
 enableMapSet();
 
@@ -33,6 +34,7 @@ const App = () => {
     return <HashRouter>
         <Routes>
             <Route element={<Global />} errorElement={<ErrorPage />}>
+                <Route path="/" element={<Root />} />
                 <Route element={<MainLayout />}>
                     <Route path="/tab/:name?" element={<TabsView />} />
                     <Route path="test" element={<TestApp />} />

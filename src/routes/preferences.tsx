@@ -5,7 +5,7 @@ import { FC, useCallback, useState } from "react";
 import invariant from "tiny-invariant";
 import state from "../state";
 import { Relay } from "nostr-mux";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 // const ColorBox: FC<{ color: string; }> = ({ color }) => <div style={{
 //     display: "inline-block",
@@ -50,6 +50,7 @@ export default () => {
     const [read, setRead] = useState(true);
     const [write, setWrite] = useState(true);
     const [ispublic, setPublic] = useState(true);
+    const navigate = useNavigate();
 
     const saverelays = useCallback(() => {
         const newmap = new Map(relays.map(r => [r.url, r]));
@@ -86,8 +87,8 @@ export default () => {
         setRelays(relays => relays.filter(r => !r.removed));
     }, [relays]);
 
-    return <div>
-        <h1><div style={{ display: "inline-block" }}><Link to="/">&lt;&lt;</Link>&nbsp;</div>Preferences</h1>
+    return <div style={{ height: "100%", overflowY: "auto" }}>
+        <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>Preferences</h1>
         <h2>Relays:</h2>
         <p>
             <ul>
@@ -127,6 +128,15 @@ export default () => {
             <button onClick={() => { saverelays(); }}>Save</button>
             <button onClick={() => { saverelays(); /* TODO publish */ }}>Save & Publish</button>
             <button onClick={() => { setRelays(prefrelays.map(r => ({ ...r, removed: false }))); }}>Reset</button>
+        </p>
+        <h2>Account:</h2>
+        <p>
+            <ul>
+                <li>pubkey: ...</li>
+                <li>privkey: ...</li>
+            </ul>
+            <button>Login with extension</button>
+            <button>Generate</button>
         </p>
         <h2>Colors:</h2>
         <p>
@@ -182,5 +192,5 @@ export default () => {
                 setFontUi(prefFontUi);
             }}>Reset</button>
         </p>
-    </div >;
+    </div>;
 };
