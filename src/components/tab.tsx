@@ -8,7 +8,7 @@ const Tab: FC<PropsWithChildren<{
 }>> = ({ active, onClick, children }) => {
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
-    const [fontText] = useAtom(state.preferences.fonts.text);
+    const [fontUi] = useAtom(state.preferences.fonts.ui);
     return <div
         style={{
             margin: active ? "0 -2px" : undefined,
@@ -33,7 +33,7 @@ const Tab: FC<PropsWithChildren<{
             background: coloruibg,
             color: coloruitext,
             padding: `${active ? "2px" : "0"} calc(0.5em + ${active ? "2px" : "0px"}) ${active ? "2px" : "0"}`,
-            font: fontText,
+            font: fontUi,
         }}>{children}</div>
     </div>;
 };

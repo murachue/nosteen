@@ -33,7 +33,8 @@ export default {
             uibg: atomWithStorage("preferences.colors.uibg", "#ccc"),
         },
         fonts: {
-            text: atomWithStorage("preferences.fonts.text", "1em ui-sans-serif")
+            text: atomWithStorage("preferences.fonts.text", "1em sans-serif"),
+            ui: atomWithStorage("preferences.fonts.ui", "1em ui-sans-serif"),
         },
     },
     relays: atom(new Map<string, Relay>()),

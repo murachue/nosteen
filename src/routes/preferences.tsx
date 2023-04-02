@@ -31,6 +31,7 @@ export default () => {
     const [prefColorUiText, setPrefColorUiText] = useAtom(state.preferences.colors.uitext);
     const [prefColorUiBg, setPrefColorUiBg] = useAtom(state.preferences.colors.uibg);
     const [prefFontText, setPrefFontText] = useAtom(state.preferences.fonts.text);
+    const [prefFontUi, setPrefFontUi] = useAtom(state.preferences.fonts.ui);
     const prefrelayurls = new Set(prefrelays.map(r => r.url));
     const [relays, setRelays] = useState(prefrelays.map(r => ({ ...r, removed: false })));
     const [colorNormal, setColorNormal] = useState(prefColorNormal);
@@ -44,6 +45,7 @@ export default () => {
     const [colorUiText, setColorUiText] = useState(prefColorUiText);
     const [colorUiBg, setColorUiBg] = useState(prefColorUiBg);
     const [fontText, setFontText] = useState(prefFontText);
+    const [fontUi, setFontUi] = useState(prefFontUi);
     const [url, setUrl] = useState("");
     const [read, setRead] = useState(true);
     const [write, setWrite] = useState(true);
@@ -169,12 +171,15 @@ export default () => {
         <p>
             <ul>
                 <li>text: <input type="text" value={fontText} style={{ font: fontText }} onChange={e => setFontText(e.target.value)} /></li>
+                <li>ui: <input type="text" value={fontUi} style={{ font: fontUi }} onChange={e => setFontUi(e.target.value)} /></li>
             </ul>
             <button onClick={() => {
                 setPrefFontText(fontText);
+                setPrefFontUi(fontUi);
             }}>Save</button>
             <button onClick={() => {
                 setFontText(prefFontText);
+                setFontUi(prefFontUi);
             }}>Reset</button>
         </p>
     </div >;
