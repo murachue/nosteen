@@ -34,7 +34,7 @@ const App = () => {
         <Routes>
             <Route element={<Global />} errorElement={<ErrorPage />}>
                 <Route element={<MainLayout />}>
-                    <Route path="/:name?" element={<TabsView />} />
+                    <Route path="/tab/:name?" element={<TabsView />} />
                     <Route path="test" element={<TestApp />} />
                 </Route>
                 <Route path="/preferences" element={<Preferences />} />

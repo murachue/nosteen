@@ -29,6 +29,11 @@ export default {
             replytome: atomWithStorage("preferences.colors.replytome", "#420"),
             thempost: atomWithStorage("preferences.colors.thempost", "#040"),
             themreplyto: atomWithStorage("preferences.colors.themreplyto", "#400"),
+            uitext: atomWithStorage("preferences.colors.uitext", "#000"),
+            uibg: atomWithStorage("preferences.colors.uibg", "#ccc"),
+        },
+        fonts: {
+            text: atomWithStorage("preferences.fonts.text", "1em ui-sans-serif")
         },
     },
     relays: atom(new Map<string, Relay>()),
