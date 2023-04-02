@@ -6,6 +6,7 @@ import ListView from "../components/listview";
 import Tab from "../components/tab";
 import TabBar from "../components/tabbar";
 import state from "../state";
+import Identicon from "identicon.js";
 
 export default () => {
     const navigate = useNavigate();
@@ -38,22 +39,24 @@ export default () => {
             </div>
             <div style={{ display: "flex", flexDirection: "row", background: coloruibg, height: "100px" }}>
                 <div>
-                    <div style={{ width: "60px", height: "60px", border: "1px solid white" }} />
+                    <div style={{ width: "48px", height: "48px", border: "1px solid", borderColor: coloruitext, margin: "2px" }}>
+                        <img style={{ maxWidth: "100%" }} src={`data:image/png;base64,${new Identicon("effeab1e1234567", { background: [0, 0, 0, 0] }).toString()}`} />
+                    </div>
                 </div>
                 <div style={{ flex: "1", display: "flex", flexDirection: "column" }}>
-                    <div style={{ color: coloruitext, font: fontui }}>name here</div>
-                    <div style={{ flex: "1", overflowY: "auto", background: colorbase, color: colornormal, font: fonttext }}>
+                    <div style={{ color: coloruitext, font: fontui, margin: "0 2px" }}>name here</div>
+                    <div style={{ flex: "1", overflowY: "auto", margin: "2px", background: colorbase, color: colornormal, font: fonttext }}>
                         text here...<br />here...
                     </div>
                 </div>
                 <div style={{ width: "100px", border: "1px solid white" }}>img</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", background: coloruibg }}>
                 <input type="text" style={{ flex: "1", background: colorbase, borderColor: colornormal, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} />
-                <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", font: fontui }}>{postdraft.length}</div>
+                <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
-            <div style={{ background: coloruibg, color: coloruitext, font: fontui, display: "flex" }}>
+            <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
                 <div style={{ flex: "1" }}>status here</div>
                 <div style={{ padding: "0 0.5em" }}>0</div>
             </div>

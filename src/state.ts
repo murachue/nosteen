@@ -1,11 +1,11 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Mux, Relay } from "nostr-mux";
-import { DeletableEvent } from "./types";
+import { InnerEvent } from "./types";
 
 type Events = {
-    byCreatedAt: DeletableEvent[];
-    byEventId: Map<string, DeletableEvent>;
+    byCreatedAt: InnerEvent[];
+    byEventId: Map<string, InnerEvent>;
 };
 
 const emptyEvents = { byCreatedAt: [], byEventId: new Map() };

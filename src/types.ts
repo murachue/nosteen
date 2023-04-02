@@ -8,7 +8,8 @@ export type Event = {
     sig: string;
 };
 
-export type DeletableEvent = {
+export type InnerEvent = {
     event: Event;
     deleteevent: Event | null;
+    repostevent: Event | null;
 };
