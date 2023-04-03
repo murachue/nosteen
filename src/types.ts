@@ -15,8 +15,9 @@ export type ReceivedEvent = {
     receivedfrom: Set<Relay>;
 };
 
-export type AnEvent = {
-    event: ReceivedEvent;
+export type Post = {
+    id: string;
+    event: ReceivedEvent | null; // null on just got only delete event
     deleteevent: ReceivedEvent | null;
     repostevent: ReceivedEvent | null;
 };

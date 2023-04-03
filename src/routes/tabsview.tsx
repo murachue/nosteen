@@ -61,11 +61,12 @@ export default () => {
             <div style={{ display: "flex", flexDirection: "row", background: coloruibg, height: "100px" }}>
                 <div>
                     <div style={{ width: "48px", height: "48px", border: "1px solid", borderColor: coloruitext, margin: "2px" }}>
+                        {/* npubhex identicon makes icon samely for vanity... */}
                         <img style={{ maxWidth: "100%" }} src={`data:image/png;base64,${new Identicon("effeab1e1234567", { background: [0, 0, 0, 0] }).toString()}`} />
                     </div>
                 </div>
                 <div style={{ flex: "1", display: "flex", flexDirection: "column" }}>
-                    <div style={{ color: coloruitext, font: fontui, fontWeight: "bold", margin: "0 2px" }}>name here</div>
+                    <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px" }}>name here</div>
                     <div style={{ flex: "1", overflowY: "auto", margin: "2px", background: colorbase, color: colornormal, font: fonttext }}>
                         text here...<br />here...
                     </div>

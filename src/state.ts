@@ -1,14 +1,14 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Mux, Relay } from "nostr-mux";
-import { AnEvent } from "./types";
+import { Post } from "./types";
 
 type EventList = {
-    byCreatedAt: AnEvent[];
-    byEventId: Map<string, AnEvent>;
+    byCreatedAt: Post[];
+    byEventId: Map<string, Post>;
 };
 
-const emptyEvents = { byCreatedAt: [], byEventId: new Map() };
+const emptyEvents: EventList = { byCreatedAt: [], byEventId: new Map() };
 const emptyTab = { events: emptyEvents, selected: 0 } as const;
 
 export default {
@@ -45,7 +45,7 @@ export default {
     myprofile: atom(Event),
     mycontacts: atom(Event),
     //
-    allevents: atom(emptyEvents),
+    allevents: atom<EventList | Promise<EventList>>(emptyEvents),
     tabs: atom<{
         name: string;
         filter: "recent" |
