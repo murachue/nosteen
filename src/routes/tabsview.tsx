@@ -19,6 +19,7 @@ export default () => {
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
+    const [allevents] = useAtom(state.allevents);
 
     if (!tabs.find(t => t.name === name)) {
         navigate(`/tab/${tabs[0].name}`, { replace: true });
@@ -34,21 +35,21 @@ export default () => {
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column" }}>
                 <div style={{ flex: "1 0 0px", height: "0" }}>
                     <ListView>
-                        <div style={{ background: coloruibg }}>
+                        <div style={{ background: coloruibg, position: "sticky" }}>
                             <TH>
-                                <TD width="5em"><div style={{ padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>hello</div></TD>
-                                <TD width="7em"><div style={{ padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>world</div></TD>
+                                <TD width="1.2em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>unr</div></TD>
+                                <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>icon</div></TD>
+                                <TD width="8em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>username</div></TD>
+                                <TD width="25em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>text</div></TD>
                             </TH>
                         </div>
                         <TBody>
-                            <TR>
-                                <TD>hello</TD>
-                                <TD>world</TD>
-                            </TR>
-                            <TR>
-                                <TD>hello</TD>
-                                <TD>world</TD>
-                            </TR>
+                            {allevents.byCreatedAt.map(p => <TR>
+                                <TD><div style={{ overflow: "hidden", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>★</div></TD>
+                                <TD><div style={{ overflow: "hidden", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>{<img style={{ maxWidth: "16px" }} src={`data:image/png;base64,${new Identicon(p.event!.event.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}</div></TD>
+                                <TD><div style={{ overflow: "hidden", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>{p.event!.event.pubkey}</div></TD>
+                                <TD><div style={{ overflow: "hidden", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>{p.event!.event.content}</div></TD>
+                            </TR>)}
                         </TBody>
                     </ListView>
                 </div>

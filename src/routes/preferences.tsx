@@ -35,7 +35,7 @@ export default () => {
     const [prefFontText, setPrefFontText] = useAtom(state.preferences.fonts.text);
     const [prefFontUi, setPrefFontUi] = useAtom(state.preferences.fonts.ui);
     const prefrelayurls = new Set(prefrelays.map(r => r.url));
-    const [relays, setRelays] = useState(prefrelays.map(r => ({ ...r, removed: false })));
+    const [relays, setRelays] = useState(prefrelays.map(r => ({ ...r, added: false, removed: false })));
     const [colorNormal, setColorNormal] = useState(prefColorNormal);
     const [colorRepost, setColorRepost] = useState(prefColorRepost);
     const [colorReacted, setColorReacted] = useState(prefColorReacted);
@@ -88,7 +88,7 @@ export default () => {
         }
 
         setPrefrelays(relays.filter(r => !r.removed).map(({ url, read, write, public: ispublic }) => ({ url, read, write, public: ispublic })));
-        setRelays(relays => relays.filter(r => !r.removed));
+        setRelays(relays => relays.filter(r => !r.removed).map(r => ({ ...r, added: false })));
     }, [relays]);
 
     return <div style={{ height: "100%", overflowY: "auto" }}>
@@ -96,7 +96,7 @@ export default () => {
         <h2>Relays:</h2>
         <ul>
             {relays.map((rly, i) => <li key={rly.url}>
-                <span style={{ textDecoration: rly.removed ? "line-through" : undefined }}>{rly.url}</span>
+                <span style={{ textDecoration: rly.removed ? "line-through" : undefined, fontStyle: rly.added ? "italic" : undefined }}>{rly.url}</span>
                 <span style={{ marginLeft: "1em" }}>
                     <label><input type="checkbox" checked={rly.read} onChange={e => setRelays(produce(draft => { draft[i].read = e.target.checked; }))} />read</label>
                     <label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label>
@@ -120,7 +120,7 @@ export default () => {
                 <label><input type="checkbox" checked={write} onChange={e => setWrite(e.target.checked)} />write</label>
                 <label><input type="checkbox" checked={ispublic} onChange={e => setPublic(e.target.checked)} />publish?</label>
                 <button disabled={!/^wss?:\/\/.+/.exec(url)} onClick={e => {
-                    setRelays(produce(draft => { draft.push({ url, read, write, public: ispublic, removed: false }); }));
+                    setRelays(produce(draft => { draft.push({ url, read, write, public: ispublic, added: true, removed: false }); }));
                     setUrl("");
                     setRead(true);
                     setWrite(true);
@@ -131,7 +131,7 @@ export default () => {
         <p>
             <button onClick={() => { saverelays(); }}>Save</button>
             <button onClick={() => { saverelays(); /* TODO publish */ }}>Save & Publish</button>
-            <button onClick={() => { setRelays(prefrelays.map(r => ({ ...r, removed: false }))); }}>Reset</button>
+            <button onClick={() => { setRelays(prefrelays.map(r => ({ ...r, added: false, removed: false }))); }}>Reset</button>
         </p>
         <h2>Account:</h2>
         <ul>

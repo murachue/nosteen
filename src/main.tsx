@@ -4,7 +4,7 @@ import { useImmerAtom } from 'jotai-immer';
 import { useAtom } from 'jotai/react';
 import { Event, verifyEvent } from 'nostr-mux';
 import { Relay } from 'nostr-mux/dist/core/relay';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
@@ -43,10 +43,10 @@ const App = () => {
     const [allevents, setAllevents] = useAtom(state.allevents);
     const allevref = useRef(allevents);
     // called twice??
-    useEffect(() => {
+    useEffect(useMemo(() => {
         const sid = mux.subscribe({
             enableBuffer: { flushInterval: 50 },
-            filters: [{ /* authors: ["eeef"] */ }],
+            filters: [{ /* authors: ["eeef"] */ limit: 10 }],
             onEvent: async receives => {
                 // XXX: produce() don't support async??
                 //      [Immer] produce can only be called on things that are draftable: plain objects, arrays, Map, Set or classes that are marked with '[immerable]: true'. Got '[object Promise]'
@@ -147,7 +147,7 @@ const App = () => {
                                 // TODO: invalid sig!?
                             } else {
                                 ops.push(...dels);
-                                ops.push({ type: "event", event, relay });
+                                // ops.push({ type: "event", event, relay });
                             }
                         }
                     } else {
@@ -204,8 +204,27 @@ const App = () => {
                                     event: op.event,
                                     receivedfrom: new Set(),
                                 };
-                                if (post.event) {
-                                    post.event.receivedfrom.add(op.relay);
+                                post.event.event = op.event;
+
+                                post.event.receivedfrom.add(op.relay);
+
+                                if (post.event.event.kind === 1) {
+                                    const i = (function <T>(arr: T[], comp: (x: T) => boolean) {
+                                        let left = 0;
+                                        let right = arr.length - 1;
+                                        let mid = Math.floor((left + right) / 2);
+
+                                        while (left <= right) {
+                                            if (comp(arr[mid])) {
+                                                right = mid - 1;
+                                            } else {
+                                                left = mid + 1;
+                                            }
+                                            mid = Math.floor((left + right) / 2);
+                                        }
+                                        return mid;
+                                    })(draft.byCreatedAt, x => op.event.created_at < x.event!.event.created_at);
+                                    draft.byCreatedAt.splice(i, 0, post);
                                 }
 
                                 break;
@@ -218,7 +237,7 @@ const App = () => {
         return () => {
             mux.unSubscribe(sid);
         };
-    }, []);
+    }, []), []);
     useEffect(() => {
         setRelays(draft => {
             const pre = new Map(draft); // taking a (shallow) copy is important
