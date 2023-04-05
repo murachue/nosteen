@@ -45,7 +45,7 @@ export default {
     myprofile: atom(Event),
     mycontacts: atom(Event),
     //
-    allevents: atom<EventList | Promise<EventList>>(emptyEvents),
+    allevents: atom/* <EventList | Promise<EventList>> */(emptyEvents),
     tabs: atom<{
         name: string;
         filter: "recent" |

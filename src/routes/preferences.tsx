@@ -94,70 +94,70 @@ export default () => {
     return <div style={{ height: "100%", overflowY: "auto" }}>
         <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>Preferences</h1>
         <h2>Relays:</h2>
+        <ul>
+            {relays.map((rly, i) => <li key={rly.url}>
+                <span style={{ textDecoration: rly.removed ? "line-through" : undefined }}>{rly.url}</span>
+                <span style={{ marginLeft: "1em" }}>
+                    <label><input type="checkbox" checked={rly.read} onChange={e => setRelays(produce(draft => { draft[i].read = e.target.checked; }))} />read</label>
+                    <label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label>
+                    <label><input type="checkbox" checked={rly.public} onChange={e => setRelays(produce(draft => { draft[i].public = e.target.checked; }))} />publish?</label>
+                    <button disabled={rly.removed} onClick={e => {
+                        if (prefrelayurls.has(rly.url)) {
+                            setRelays(produce(draft => {
+                                const r = draft.find(r => r.url === rly.url);
+                                invariant(r, "inconsistent relays");
+                                r.removed = true;
+                            }));
+                        } else {
+                            setRelays(relays => relays.filter(r => r.url !== rly.url));
+                        }
+                    }}>Remove</button>
+                </span>
+            </li>)}
+            <li>
+                <input type="text" placeholder="wss://..." /* pattern="^wss?://.+" */ value={url} onChange={e => setUrl(e.target.value)} />
+                <label><input type="checkbox" checked={read} onChange={e => setRead(e.target.checked)} />read</label>
+                <label><input type="checkbox" checked={write} onChange={e => setWrite(e.target.checked)} />write</label>
+                <label><input type="checkbox" checked={ispublic} onChange={e => setPublic(e.target.checked)} />publish?</label>
+                <button disabled={!/^wss?:\/\/.+/.exec(url)} onClick={e => {
+                    setRelays(produce(draft => { draft.push({ url, read, write, public: ispublic, removed: false }); }));
+                    setUrl("");
+                    setRead(true);
+                    setWrite(true);
+                    setPublic(true);
+                }}>Add</button>
+            </li>
+        </ul>
         <p>
-            <ul>
-                {relays.map((rly, i) => <li key={rly.url}>
-                    <span style={{ textDecoration: rly.removed ? "line-through" : undefined }}>{rly.url}</span>
-                    <span style={{ marginLeft: "1em" }}>
-                        <label><input type="checkbox" checked={rly.read} onChange={e => setRelays(produce(draft => { draft[i].read = e.target.checked; }))} />read</label>
-                        <label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label>
-                        <label><input type="checkbox" checked={rly.public} onChange={e => setRelays(produce(draft => { draft[i].public = e.target.checked; }))} />publish?</label>
-                        <button disabled={rly.removed} onClick={e => {
-                            if (prefrelayurls.has(rly.url)) {
-                                setRelays(produce(draft => {
-                                    const r = draft.find(r => r.url === rly.url);
-                                    invariant(r, "inconsistent relays");
-                                    r.removed = true;
-                                }));
-                            } else {
-                                setRelays(relays => relays.filter(r => r.url !== rly.url));
-                            }
-                        }}>Remove</button>
-                    </span>
-                </li>)}
-                <li>
-                    <input type="text" placeholder="wss://..." /* pattern="^wss?://.+" */ value={url} onChange={e => setUrl(e.target.value)} />
-                    <label><input type="checkbox" checked={read} onChange={e => setRead(e.target.checked)} />read</label>
-                    <label><input type="checkbox" checked={write} onChange={e => setWrite(e.target.checked)} />write</label>
-                    <label><input type="checkbox" checked={ispublic} onChange={e => setPublic(e.target.checked)} />publish?</label>
-                    <button disabled={!/^wss?:\/\/.+/.exec(url)} onClick={e => {
-                        setRelays(produce(draft => { draft.push({ url, read, write, public: ispublic, removed: false }); }));
-                        setUrl("");
-                        setRead(true);
-                        setWrite(true);
-                        setPublic(true);
-                    }}>Add</button>
-                </li>
-            </ul>
             <button onClick={() => { saverelays(); }}>Save</button>
             <button onClick={() => { saverelays(); /* TODO publish */ }}>Save & Publish</button>
             <button onClick={() => { setRelays(prefrelays.map(r => ({ ...r, removed: false }))); }}>Reset</button>
         </p>
         <h2>Account:</h2>
+        <ul>
+            <li>pubkey: ...</li>
+            <li>privkey: ...</li>
+        </ul>
         <p>
-            <ul>
-                <li>pubkey: ...</li>
-                <li>privkey: ...</li>
-            </ul>
             <button>Login with extension</button>
             <button>Generate</button>
         </p>
         <h2>Colors:</h2>
+        <ul>
+            <li>normal: <input type="text" value={colorNormal} style={{ background: colorBase, color: colorNormal }} onChange={e => setColorNormal(e.target.value)} /></li>
+            <li>repost: <input type="text" value={colorRepost} style={{ background: colorBase, color: colorRepost }} onChange={e => setColorRepost(e.target.value)} /></li>
+            <li>reacted: <input type="text" value={colorReacted} style={{ background: colorBase, color: colorReacted }} onChange={e => setColorReacted(e.target.value)} /></li>
+            <li>base: <input type="text" value={colorBase} style={{ background: colorBase, color: colorNormal }} onChange={e => setColorBase(e.target.value)} /></li>
+            <li>mypost: <input type="text" value={colorMypost} style={{ background: colorMypost, color: colorNormal }} onChange={e => setColorMypost(e.target.value)} /></li>
+            <li>reply to me: <input type="text" value={colorReplytome} style={{ background: colorReplytome, color: colorNormal }} onChange={e => setColorReplytome(e.target.value)} /></li>
+            <li>their post: <input type="text" value={colorThempost} style={{ background: colorThempost, color: colorNormal }} onChange={e => setColorThempost(e.target.value)} /></li>
+            <li>their reply target: <input type="text" value={colorThemreplyto} style={{ background: colorThemreplyto, color: colorNormal }} onChange={e => setColorThemreplyto(e.target.value)} /></li>
+            <li>UI text: <input type="text" value={colorUiText} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiText(e.target.value)} /></li>
+            <li>UI bg: <input type="text" value={colorUiBg} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiBg(e.target.value)} /></li>
+            <li>selected text: <input type="text" value={colorSelectedText} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedText(e.target.value)} /></li>
+            <li>selected bg: <input type="text" value={colorSelectedBg} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedBg(e.target.value)} /></li>
+        </ul>
         <p>
-            <ul>
-                <li>normal: <input type="text" value={colorNormal} style={{ background: colorBase, color: colorNormal }} onChange={e => setColorNormal(e.target.value)} /></li>
-                <li>repost: <input type="text" value={colorRepost} style={{ background: colorBase, color: colorRepost }} onChange={e => setColorRepost(e.target.value)} /></li>
-                <li>reacted: <input type="text" value={colorReacted} style={{ background: colorBase, color: colorReacted }} onChange={e => setColorReacted(e.target.value)} /></li>
-                <li>base: <input type="text" value={colorBase} style={{ background: colorBase, color: colorNormal }} onChange={e => setColorBase(e.target.value)} /></li>
-                <li>mypost: <input type="text" value={colorMypost} style={{ background: colorMypost, color: colorNormal }} onChange={e => setColorMypost(e.target.value)} /></li>
-                <li>reply to me: <input type="text" value={colorReplytome} style={{ background: colorReplytome, color: colorNormal }} onChange={e => setColorReplytome(e.target.value)} /></li>
-                <li>their post: <input type="text" value={colorThempost} style={{ background: colorThempost, color: colorNormal }} onChange={e => setColorThempost(e.target.value)} /></li>
-                <li>their reply target: <input type="text" value={colorThemreplyto} style={{ background: colorThemreplyto, color: colorNormal }} onChange={e => setColorThemreplyto(e.target.value)} /></li>
-                <li>UI text: <input type="text" value={colorUiText} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiText(e.target.value)} /></li>
-                <li>UI bg: <input type="text" value={colorUiBg} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiBg(e.target.value)} /></li>
-                <li>selected text: <input type="text" value={colorSelectedText} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedText(e.target.value)} /></li>
-                <li>selected bg: <input type="text" value={colorSelectedBg} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedBg(e.target.value)} /></li>
-            </ul>
             <button onClick={() => {
                 setPrefColorNormal(colorNormal);
                 setPrefColorRepost(colorRepost);
@@ -188,11 +188,11 @@ export default () => {
             }}>Reset</button>
         </p>
         <h2>Fonts:</h2>
+        <ul>
+            <li>text: <input type="text" value={fontText} style={{ font: fontText }} onChange={e => setFontText(e.target.value)} /></li>
+            <li>ui: <input type="text" value={fontUi} style={{ font: fontUi }} onChange={e => setFontUi(e.target.value)} /></li>
+        </ul>
         <p>
-            <ul>
-                <li>text: <input type="text" value={fontText} style={{ font: fontText }} onChange={e => setFontText(e.target.value)} /></li>
-                <li>ui: <input type="text" value={fontUi} style={{ font: fontUi }} onChange={e => setFontUi(e.target.value)} /></li>
-            </ul>
             <button onClick={() => {
                 setPrefFontText(fontText);
                 setPrefFontUi(fontUi);
