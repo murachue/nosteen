@@ -6,9 +6,9 @@ const ColWidths = createContext<[] | [string[]] | [string[], Dispatch<SetStateAc
 const ColIndex = createContext<number | null>(null);
 
 export const TH: FC<PropsWithChildren<{}>> = ({ children }) =>
-    <div style={{ display: "flex", position: "sticky", width: "100%", top: 0 }}>
-        {Children.map(children, (c, i) => <ColIndex.Provider value={i}>{c}</ColIndex.Provider>)}
-    </div >;
+    <>{Children.map(children, (c, i) =>
+        <ColIndex.Provider value={i}>{c}</ColIndex.Provider>
+    )}</>;
 
 export const TBody: FC<PropsWithChildren<{}>> = ({ children }) => {
     const [colwidths] = useContext(ColWidths);
@@ -16,16 +16,14 @@ export const TBody: FC<PropsWithChildren<{}>> = ({ children }) => {
 
     // truncate setColwidths to avoid setting width in TBody ("illegal function call"-ish)
     return <ColWidths.Provider value={[colwidths]}>
-        <div style={{ display: "flex", flexWrap: "wrap", width: "100%" }}>
-            {children}
-        </div>
+        {children}
     </ColWidths.Provider>;
 };
 
-export const TR: FC<PropsWithChildren<{ selected?: boolean; }>> = ({ selected, children }) =>
-    <div style={{ display: "flex", width: "100%" }}>
-        {Children.map(children, (c, i) => <ColIndex.Provider value={i}>{c}</ColIndex.Provider>)}
-    </div>;
+export const TR: FC<PropsWithChildren<{}>> = ({ children }) =>
+    <>{Children.map(children, (c, i) =>
+        <ColIndex.Provider value={i}>{c}</ColIndex.Provider>
+    )}</>;
 
 export const TD: FC<PropsWithChildren<{ width?: string; }>> = ({ width: setwidth, children }) => {
     const [colwidths, setColwidths] = useContext(ColWidths);
@@ -34,7 +32,7 @@ export const TD: FC<PropsWithChildren<{ width?: string; }>> = ({ width: setwidth
     invariant(colindex !== null, "TD is not allowed outside TH/TR");
     useEffect(() => {
         if (setwidth && setwidth !== colwidths[colindex]) {
-            invariant(setColwidths, "");
+            invariant(setColwidths, "setting width is only allowed in TH");
             setColwidths(produce(draft => { draft[colindex] = setwidth; }));
         }
     }, [setwidth, colwidths, colindex]);
@@ -46,9 +44,7 @@ const ListView: FC<PropsWithChildren<{}>> = ({ children }) => {
     const colwidths = useState<string[]>([]);
 
     return <ColWidths.Provider value={colwidths}>
-        <div tabIndex={0} style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}>
-            {children}
-        </div>
+        {children}
     </ColWidths.Provider>;
 };
 

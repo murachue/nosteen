@@ -3,8 +3,8 @@ import { WritableDraft } from 'immer/dist/internal';
 import { useImmerAtom } from 'jotai-immer';
 import { useAtom } from 'jotai/react';
 import { Event, verifyEvent } from 'nostr-mux';
-import { Relay } from 'nostr-mux/dist/core/relay';
-import React, { useEffect, useMemo, useRef } from 'react';
+import { Filter, Relay } from 'nostr-mux/dist/core/relay';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
@@ -41,12 +41,14 @@ const App = () => {
     const [relays, setRelays] = useImmerAtom(state.relays);
     const [mux] = useAtom(state.relaymux);
     const [allevents, setAllevents] = useAtom(state.allevents);
+    const [tabs] = useAtom(state.tabs);
+    const [subs, setSubs] = useState(new Map<string, { name: string; filters: [Filter, ...Filter[]]; sid: string; }>());
     const allevref = useRef(allevents);
     // called twice??
-    useEffect(useMemo(() => {
+    useEffect(() => {
         const sid = mux.subscribe({
             enableBuffer: { flushInterval: 50 },
-            filters: [{ /* authors: ["eeef"] */ limit: 10 }],
+            filters: [{ /* authors: ["eeef"], */ kinds: [1], limit: 100 }],
             onEvent: async receives => {
                 // XXX: produce() don't support async??
                 //      [Immer] produce can only be called on things that are draftable: plain objects, arrays, Map, Set or classes that are marked with '[immerable]: true'. Got '[object Promise]'
@@ -211,10 +213,10 @@ const App = () => {
                                 if (post.event.event.kind === 1) {
                                     const i = (function <T>(arr: T[], comp: (x: T) => boolean) {
                                         let left = 0;
-                                        let right = arr.length - 1;
+                                        let right = arr.length;
                                         let mid = Math.floor((left + right) / 2);
 
-                                        while (left <= right) {
+                                        while (left < right) {
                                             if (comp(arr[mid])) {
                                                 right = mid - 1;
                                             } else {
@@ -237,7 +239,7 @@ const App = () => {
         return () => {
             mux.unSubscribe(sid);
         };
-    }, []), []);
+    }, []);
     useEffect(() => {
         setRelays(draft => {
             const pre = new Map(draft); // taking a (shallow) copy is important
@@ -261,6 +263,9 @@ const App = () => {
             }
         });
     }, [prefrelays]);
+    useEffect(() => {
+        ;
+    }, [tabs]);
 
     return <HashRouter>
         <Routes>
