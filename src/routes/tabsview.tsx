@@ -1,5 +1,5 @@
 import { useAtom } from "jotai";
-import { useState } from "react";
+import { FC, useState } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
@@ -7,12 +7,66 @@ import Tab from "../components/tab";
 import TabBar from "../components/tabbar";
 import state from "../state";
 import Identicon from "identicon.js";
+import { PostList } from "../types";
+
+const TheList: FC<{ posts: PostList; }> = ({ posts }) => {
+    const [colornormal] = useAtom(state.preferences.colors.normal);
+    const [coloruitext] = useAtom(state.preferences.colors.uitext);
+    const [coloruibg] = useAtom(state.preferences.colors.uibg);
+    const [fonttext] = useAtom(state.preferences.fonts.text);
+    const [fontui] = useAtom(state.preferences.fonts.ui);
+
+    return <div style={{ flex: "1 0 0px", height: "0" }}>
+        <ListView>
+            <div tabIndex={0} style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}>
+                <div style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg }}>
+                    <TH>
+                        <TD width="1.2em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>unr</div></TD>
+                        <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>icon</div></TD>
+                        <TD width="8em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>username</div></TD>
+                        <TD width="35em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>text</div></TD>
+                    </TH>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+                    <TBody>
+                        {posts.byCreatedAt.map(p =>
+                            <div key={p.event!.event.id} style={{ display: "flex", width: "100%", alignItems: "center" }}>
+                                <TR>
+                                    <TD>
+                                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext, textAlign: "right" }}>
+                                            ★
+                                        </div>
+                                    </TD>
+                                    <TD>
+                                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>
+                                            {<img style={{ maxWidth: "16px" }} src={`data:image/png;base64,${new Identicon(p.event!.event.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}
+                                        </div>
+                                    </TD>
+                                    <TD>
+                                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>
+                                            {p.event!.event.pubkey}
+                                        </div>
+                                    </TD>
+                                    <TD>
+                                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>
+                                            {p.event!.event.id} {p.event!.event.content}
+                                        </div>
+                                    </TD>
+                                </TR>
+                            </div>)}
+                    </TBody>
+                </div>
+            </div>
+        </ListView>
+    </div>;
+};
 
 export default () => {
     const navigate = useNavigate();
     const data = useParams();
     const name = data.name || "";
     const [tabs] = useAtom(state.tabs);
+    const [activetab, setActivetab] = useAtom(state.activetab);
     const [colorbase] = useAtom(state.preferences.colors.base);
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
@@ -33,49 +87,7 @@ export default () => {
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column" }}>
-                <div style={{ flex: "1 0 0px", height: "0" }}>
-                    <ListView>
-                        <div tabIndex={0} style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}>
-                            <div style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg }}>
-                                <TH>
-                                    <TD width="1.2em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>unr</div></TD>
-                                    <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>icon</div></TD>
-                                    <TD width="8em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>username</div></TD>
-                                    <TD width="35em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>text</div></TD>
-                                </TH>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
-                                <TBody>
-                                    {allevents.byCreatedAt.map(p =>
-                                        <div key={p.event!.event.id} style={{ display: "flex", width: "100%", alignItems: "center" }}>
-                                            <TR>
-                                                <TD>
-                                                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext, textAlign: "right" }}>
-                                                        ★
-                                                    </div>
-                                                </TD>
-                                                <TD>
-                                                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>
-                                                        {<img style={{ maxWidth: "16px" }} src={`data:image/png;base64,${new Identicon(p.event!.event.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}
-                                                    </div>
-                                                </TD>
-                                                <TD>
-                                                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>
-                                                        {p.event!.event.pubkey}
-                                                    </div>
-                                                </TD>
-                                                <TD>
-                                                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>
-                                                        {p.event!.event.id} {p.event!.event.content}
-                                                    </div>
-                                                </TD>
-                                            </TR>
-                                        </div>)}
-                                </TBody>
-                            </div>
-                        </div>
-                    </ListView>
-                </div>
+                <TheList posts={allevents} />
                 <div>
                     <TabBar>
                         {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}

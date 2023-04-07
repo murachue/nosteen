@@ -21,3 +21,8 @@ export type Post = {
     deleteevent: ReceivedEvent | null;
     repostevent: ReceivedEvent | null;
 };
+
+export type PostList = {
+    byCreatedAt: Post[];
+    byEventId: Map<string, Post>;
+};

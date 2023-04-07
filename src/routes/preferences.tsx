@@ -1,23 +1,17 @@
 import { produce } from "immer";
 import { useAtom } from "jotai";
 import { useImmerAtom } from "jotai-immer";
-import { FC, useCallback, useState } from "react";
+import { Relay } from "nostr-mux";
+import { decodeBech32ID, encodeBech32ID } from "nostr-mux/dist/core/utils";
+import { generatePrivateKey, getPublicKey } from "nostr-tools";
+import { useCallback, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
 import state from "../state";
-import { Relay } from "nostr-mux";
-import { Link, useNavigate } from "react-router-dom";
-
-// const ColorBox: FC<{ color: string; }> = ({ color }) => <div style={{
-//     display: "inline-block",
-//     width: "1em",
-//     height: "1em",
-//     border: "1px solid white",
-//     backgroundColor: color,
-//     verticalAlign: "middle",
-// }} />;
 
 export default () => {
     const [prefrelays, setPrefrelays] = useAtom(state.preferences.relays);
+    const [prefaccount, setPrefaccount] = useAtom(state.preferences.account);
     const [relayinsts, setRelayinsts] = useImmerAtom(state.relays);
     const [relaymux, _setRelaymux] = useAtom(state.relaymux);
     const [prefColorNormal, setPrefColorNormal] = useAtom(state.preferences.colors.normal);
@@ -54,6 +48,9 @@ export default () => {
     const [read, setRead] = useState(true);
     const [write, setWrite] = useState(true);
     const [ispublic, setPublic] = useState(true);
+    const [npub, setNpub] = useState(prefaccount?.pubkey || "");
+    const [nsec, setNsec] = useState(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "");
+    const [nsecmask, setNsecmask] = useState(true);
     const navigate = useNavigate();
 
     const saverelays = useCallback(() => {
@@ -90,6 +87,17 @@ export default () => {
         setPrefrelays(relays.filter(r => !r.removed).map(({ url, read, write, public: ispublic }) => ({ url, read, write, public: ispublic })));
         setRelays(relays => relays.filter(r => !r.removed).map(r => ({ ...r, added: false })));
     }, [relays]);
+
+    const normhex = (s: string, tag: string) => {
+        if (!s.startsWith(tag)) {
+            // fastpath
+            return s;
+        }
+        const id = decodeBech32ID(s);
+        return id && id.prefix === tag ? id.hexID : s;
+    };
+    const npubok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(npub, "npub")); // it really should <secp250k1.p but ignore for simplicity.
+    const nsecok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(nsec, "nsec")); // it really should <secp250k1.n but ignore for simplicity.
 
     return <div style={{ height: "100%", overflowY: "auto" }}>
         <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>Preferences</h1>
@@ -128,19 +136,62 @@ export default () => {
                 }}>Add</button>
             </li>
         </ul>
-        <p>
+        <p style={{ display: "flex", gap: "0.5em" }}>
             <button onClick={() => { saverelays(); }}>Save</button>
             <button onClick={() => { saverelays(); /* TODO publish */ }}>Save & Publish</button>
             <button onClick={() => { setRelays(prefrelays.map(r => ({ ...r, added: false, removed: false }))); }}>Reset</button>
         </p>
         <h2>Account:</h2>
         <ul>
-            <li>pubkey: ...</li>
-            <li>privkey: ...</li>
+            <li>pubkey:
+                <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: npubok ? "#0f08" : "#f008" }}>
+                    <input type="text" placeholder="npub1... or hex (auto-filled when correct privkey is set)" size={64} disabled={nsecok} value={npub} onChange={e => {
+                        const s = e.target.value;
+                        if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
+                            setNpub(encodeBech32ID("npub", s) || "");
+                        } else {
+                            // TODO: nprofile support
+                            setNpub(s);
+                        }
+                    }} />
+                </div>
+            </li>
+            <li>privkey:
+                <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: nsecok ? "#0f08" : "#f008" }}>
+                    <input type={nsecmask ? "password" : "text"} placeholder="nsec1... or hex (NIP-07 extension is very recommended)" size={64} value={nsec} onChange={e => {
+                        const s = e.target.value;
+                        if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
+                            setNsec(encodeBech32ID("nsec", s) || "");
+                        } else {
+                            setNsec(s);
+                        }
+                        const hs = normhex(s, "nsec");
+                        if (/^[0-9A-Fa-f]{64}$/.exec(hs)) {
+                            setNpub(encodeBech32ID("npub", getPublicKey(hs)) || "");
+                        }
+                    }} onFocus={e => setNsecmask(false)} onBlur={e => setNsecmask(true)} />
+                </div>
+            </li>
         </ul>
-        <p>
-            <button>Login with extension</button>
-            <button>Generate</button>
+        <p style={{ display: "flex", gap: "0.5em" }}>
+            <button disabled={!((npub === "" && nsec === "") || (npubok && nsec === "") || (npubok && nsecok))} onClick={e => {
+                // TODO: NIP-07
+                setPrefaccount(
+                    (npub === "" && nsec === "") ? null
+                        : (npubok && nsec === "") ? { pubkey: npub }
+                            : { pubkey: npub, privkey: nsec }
+                );
+            }}>Set</button>
+            <button onClick={e => alert("ENOTIMPL")}>Login with extension</button>
+            <button onClick={e => {
+                const sk = generatePrivateKey();
+                setNsec(encodeBech32ID("nsec", sk) || "");
+                setNpub(encodeBech32ID("npub", getPublicKey(sk)) || "");
+            }}>Generate</button>
+            <button onClick={e => {
+                setNpub(prefaccount?.pubkey || "");
+                setNsec(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "");
+            }}>Reset</button>
         </p>
         <h2>Colors:</h2>
         <ul>
@@ -157,7 +208,7 @@ export default () => {
             <li>selected text: <input type="text" value={colorSelectedText} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedText(e.target.value)} /></li>
             <li>selected bg: <input type="text" value={colorSelectedBg} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedBg(e.target.value)} /></li>
         </ul>
-        <p>
+        <p style={{ display: "flex", gap: "0.5em" }}>
             <button onClick={() => {
                 setPrefColorNormal(colorNormal);
                 setPrefColorRepost(colorRepost);
@@ -192,7 +243,7 @@ export default () => {
             <li>text: <input type="text" value={fontText} style={{ font: fontText }} onChange={e => setFontText(e.target.value)} /></li>
             <li>ui: <input type="text" value={fontUi} style={{ font: fontUi }} onChange={e => setFontUi(e.target.value)} /></li>
         </ul>
-        <p>
+        <p style={{ display: "flex", gap: "0.5em" }}>
             <button onClick={() => {
                 setPrefFontText(fontText);
                 setPrefFontUi(fontUi);

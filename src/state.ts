@@ -1,19 +1,49 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Mux, Relay } from "nostr-mux";
-import { Post } from "./types";
+import { PostList } from "./types";
 
-type EventList = {
-    byCreatedAt: Post[];
-    byEventId: Map<string, Post>;
-};
+const emptyEvents: PostList = { byCreatedAt: [], byEventId: new Map() };
+const emptyTab = { selected: 0 } as const;
 
-const emptyEvents: EventList = { byCreatedAt: [], byEventId: new Map() };
-const emptyTab = { events: emptyEvents, selected: 0 } as const;
-
+const tabinit: {
+    name: string;
+    filter: "recent" |
+    "reply" |
+    "dm" |
+    "favs" | Partial<{
+        ids: string[];
+        authors: string[];
+        kinds: number[];
+        "#e": string[];
+        "#p": string[];
+        since: number;
+        until: number;
+        limit: number;
+    }>[];
+    selected: number; // or event_id?
+}[] = [
+        { ...emptyTab, name: "Recent", filter: "recent" },
+        { ...emptyTab, name: "Reply", filter: "reply" },
+        { ...emptyTab, name: "DM", filter: "dm" },
+        { ...emptyTab, name: "Favs", filter: "favs" },
+        {
+            ...emptyTab,
+            name: "me",
+            filter: [
+                { authors: ["eeef"], kinds: [1], limit: 20 },
+                { "#p": ["eeef"], kinds: [1], limit: 20 },
+            ],
+        },
+    ];
 export default {
     preferences: {
-        pubkey: atomWithStorage<string | null>("preferences.pubkey", null),
+        account: atomWithStorage<
+            null
+            | { pubkey: string; }
+            | { pubkey: string, privkey: string; }
+            | { pubkey: string, nip07: true; }
+        >("preferences.pubkey", null),
         relays: atomWithStorage<{
             url: string;
             read: boolean;
@@ -46,35 +76,7 @@ export default {
     mycontacts: atom(Event),
     //
     allevents: atom/* <EventList | Promise<EventList>> */(emptyEvents),
-    tabs: atom<{
-        name: string;
-        filter: "recent" |
-        "reply" |
-        "dm" |
-        "favs" | Partial<{
-            ids: string[];
-            authors: string[];
-            kinds: number[];
-            "#e": string[];
-            "#p": string[];
-            since: number;
-            until: number;
-            limit: number;
-        }>[];
-        events: EventList; // contains partial copy of allevents
-        selected: number; // or event_id?
-    }[]>([
-        { ...emptyTab, name: "Recent", filter: "recent" },
-        { ...emptyTab, name: "Reply", filter: "reply" },
-        { ...emptyTab, name: "DM", filter: "dm" },
-        { ...emptyTab, name: "Favs", filter: "favs" },
-        {
-            ...emptyTab,
-            name: "me",
-            filter: [
-                { authors: ["eeef"], kinds: [1], limit: 20 },
-                { "#p": ["eeef"], kinds: [1], limit: 20 },
-            ],
-        },
-    ]),
+    tabs: atom(tabinit),
+    activetab: atom(""),
+    tabevents: atom<Map<string, PostList>>(new Map(tabinit.map(t => [t.name, emptyEvents]))), // contains partial copy of allevents
 };
