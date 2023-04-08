@@ -44,7 +44,6 @@ const App = () => {
 
     const [subs, setSubs] = useState(new Map<string, Sub>());
     const allevref = useRef(allevents);
-    // called twice??
     useEffect(() => {
         type SetSub = {
             op: "set";
@@ -89,7 +88,7 @@ const App = () => {
                         ];
                     }
                 } else if (tab.filter === "reply") {
-                    if (sub?.filters[0]?.authors?.[0] === prefaccount?.pubkey) {
+                    if (sub?.filters[0]?.["#p"]?.[0] === prefaccount?.pubkey) {
                         return sub?.filters || null; // return as is, or null on unlogin
                     } else if (!prefaccount) {
                         return null;
@@ -141,7 +140,7 @@ const App = () => {
                 } else {
                     return tab.filter.length === 0
                         ? null
-                        : ((tab.filter.map(f => ({ ...f, limit: 100 })) satisfies Filter[]) as [Filter, ...Filter[]]);
+                        : ((tab.filter satisfies Filter[]) as [Filter, ...Filter[]]);
                 }
             })();
             if (!sub || sub.filters !== tabfilt) {
@@ -305,11 +304,11 @@ const App = () => {
             }));
         }
 
-        return () => {
-            ops
-                .filter((op): op is SetSub => op.op === "set")
-                .forEach(op => mux.unSubscribe(op.sub.sid));
-        };
+        // return () => {
+        //     ops
+        //         .filter((op): op is SetSub => op.op === "set")
+        //         .forEach(op => mux.unSubscribe(op.sub.sid));
+        // };
     }, [tabs, prefaccount, mycontacts]);
     useEffect(() => {
         setRelays(draft => {
@@ -320,7 +319,7 @@ const App = () => {
             for (const [url, relopt] of cur.entries()) {
                 if (pre.has(url)) continue;
 
-                const relay = new Relay(relopt.url, { read: relopt.read, write: relopt.write });
+                const relay = new Relay(relopt.url, { read: relopt.read, write: relopt.write, watchDogInterval: 3600000 });
                 draft.set(relopt.url, relay);
                 mux.addRelay(relay);
             }

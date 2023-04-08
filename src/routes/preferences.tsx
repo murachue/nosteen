@@ -10,10 +10,9 @@ import invariant from "tiny-invariant";
 import state from "../state";
 
 export default () => {
+    // TODO: open this pref page directly cause lost-load pref values
     const [prefrelays, setPrefrelays] = useAtom(state.preferences.relays);
     const [prefaccount, setPrefaccount] = useAtom(state.preferences.account);
-    const [relayinsts, setRelayinsts] = useImmerAtom(state.relays);
-    const [relaymux, _setRelaymux] = useAtom(state.relaymux);
     const [prefColorNormal, setPrefColorNormal] = useAtom(state.preferences.colors.normal);
     const [prefColorRepost, setPrefColorRepost] = useAtom(state.preferences.colors.repost);
     const [prefColorReacted, setPrefColorReacted] = useAtom(state.preferences.colors.reacted);
@@ -28,6 +27,24 @@ export default () => {
     const [prefColorUiBg, setPrefColorUiBg] = useAtom(state.preferences.colors.uibg);
     const [prefFontText, setPrefFontText] = useAtom(state.preferences.fonts.text);
     const [prefFontUi, setPrefFontUi] = useAtom(state.preferences.fonts.ui);
+
+    const normhex = (s: string, tag: string) => {
+        if (!s.startsWith(tag)) {
+            // fastpath
+            return s;
+        }
+        const id = decodeBech32ID(s);
+        return id && id.prefix === tag ? id.hexID : s;
+    };
+    const normb32 = (s: string, tag: "npub" | "nsec") => {
+        if (!/^[0-9A-Fa-f]{64}$/.exec(s)) {
+            return s;
+        }
+        return encodeBech32ID(tag, s);
+    };
+
+    const [relayinsts, setRelayinsts] = useImmerAtom(state.relays);
+    const [relaymux] = useAtom(state.relaymux);
     const prefrelayurls = new Set(prefrelays.map(r => r.url));
     const [relays, setRelays] = useState(prefrelays.map(r => ({ ...r, added: false, removed: false })));
     const [colorNormal, setColorNormal] = useState(prefColorNormal);
@@ -48,9 +65,10 @@ export default () => {
     const [read, setRead] = useState(true);
     const [write, setWrite] = useState(true);
     const [ispublic, setPublic] = useState(true);
-    const [npub, setNpub] = useState(prefaccount?.pubkey || "");
-    const [nsec, setNsec] = useState(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "");
+    const [npub, setNpub] = useState(normb32(prefaccount?.pubkey || "", "npub") || "");
+    const [nsec, setNsec] = useState(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec") || "");
     const [nsecmask, setNsecmask] = useState(true);
+
     const navigate = useNavigate();
 
     const saverelays = useCallback(() => {
@@ -88,14 +106,6 @@ export default () => {
         setRelays(relays => relays.filter(r => !r.removed).map(r => ({ ...r, added: false })));
     }, [relays]);
 
-    const normhex = (s: string, tag: string) => {
-        if (!s.startsWith(tag)) {
-            // fastpath
-            return s;
-        }
-        const id = decodeBech32ID(s);
-        return id && id.prefix === tag ? id.hexID : s;
-    };
     const npubok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(npub, "npub")); // it really should <secp250k1.p but ignore for simplicity.
     const nsecok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(nsec, "nsec")); // it really should <secp250k1.n but ignore for simplicity.
 
@@ -178,19 +188,22 @@ export default () => {
                 // TODO: NIP-07
                 setPrefaccount(
                     (npub === "" && nsec === "") ? null
-                        : (npubok && nsec === "") ? { pubkey: npub }
-                            : { pubkey: npub, privkey: nsec }
+                        : (npubok && nsec === "") ? { pubkey: normhex(npub, "npub") }
+                            : { pubkey: normhex(npub, "npub"), privkey: normhex(nsec, "nsec") }
                 );
             }}>Set</button>
-            <button onClick={e => alert("ENOTIMPL")}>Login with extension</button>
+            <button onClick={e => {
+                // TODO: NIP-07
+                alert("ENOTIMPL");
+            }}>Login with extension</button>
             <button onClick={e => {
                 const sk = generatePrivateKey();
                 setNsec(encodeBech32ID("nsec", sk) || "");
                 setNpub(encodeBech32ID("npub", getPublicKey(sk)) || "");
             }}>Generate</button>
             <button onClick={e => {
-                setNpub(prefaccount?.pubkey || "");
-                setNsec(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "");
+                setNpub(normb32(prefaccount?.pubkey || "", "npub") || "");
+                setNsec(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec") || "");
             }}>Reset</button>
         </p>
         <h2>Colors:</h2>
