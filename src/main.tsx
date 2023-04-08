@@ -2,7 +2,7 @@ import produce, { enableMapSet } from 'immer';
 import { useImmerAtom } from 'jotai-immer';
 import { useAtom } from 'jotai/react';
 import { Event, Filter, Relay, SubscriptionOptions, verifyEvent } from 'nostr-mux';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import invariant from 'tiny-invariant';
@@ -15,6 +15,7 @@ import Root from './routes/root';
 import TabsView from './routes/tabsview';
 import TestApp from './routes/test';
 import state from './state';
+import { DeletableEvent, ReceivedEvent } from './types';
 
 enableMapSet();
 
@@ -181,7 +182,7 @@ const App = () => {
                             const allevents = postsRef.current.allevents;
                             type OpEv = { type: "event"; event: Event; relay: Relay; };
                             type OpDel = { type: "delete"; event: Event; relay: Relay; id: string; };
-                            const okevs = new Set<string>(); // don't taint allevents till updating setPosts
+                            const okevs = new Map<string, ReceivedEvent>(); // don't taint allevents till updating setPosts
                             const ops: (OpEv | OpDel)[] = [];
                             for (const { received: { event }, relay } of receives) {
                                 if (okevs.has(event.id) || allevents.has(event.id)) {
@@ -211,7 +212,12 @@ const App = () => {
                                         } else {
                                             ops.push(...dels);
                                             ops.push({ type: "event", event, relay });
-                                            okevs.add(event.id);
+                                            const okev = okevs.get(event.id) || {
+                                                event,
+                                                receivedfrom: new Set(),
+                                            };
+                                            okevs.set(event.id, okev);
+                                            okev.receivedfrom.add(relay);
                                         }
                                     }
                                 } else {
@@ -222,7 +228,13 @@ const App = () => {
                                             // TODO: invalid sig!?
                                         } else {
                                             ops.push({ type: "event", event, relay });
-                                            okevs.add(event.id);
+                                            const okev = okevs.get(event.id) || {
+                                                event,
+                                                receivedfrom: new Set(),
+                                            };
+                                            okevs.set(event.id, okev);
+                                            okev.receivedfrom.add(relay);
+                                            // TODO: kind6.content
                                         }
                                     }
                                 }
@@ -230,43 +242,157 @@ const App = () => {
 
                             // then synchronous update
                             setPosts(produce(draft => {
-                                const all = draft.allposts;
+                                const events = draft.allevents;
+                                const posts = draft.allposts;
                                 const tap = draft.bytab.get(tab.name);
                                 invariant(tap, `no posts.bytab for ${tab.name}`);
+                                const getPostId = (e: Event): string | null => {
+                                    const k = e.kind;
+                                    if (k === Kinds.repost) {
+                                        const idByTag = ((e: Event) => {
+                                            let etag: string | undefined = undefined;
+                                            for (const tag of e.tags) {
+                                                if (tag[0] !== "e") {
+                                                    continue;
+                                                }
+                                                if (etag) {
+                                                    // which e is reposted??
+                                                    return undefined;
+                                                }
+                                                etag = tag[1];
+                                            }
+                                            return etag;
+                                        })(e);
+                                        if (idByTag) {
+                                            return idByTag;
+                                        }
+                                        // also try content (Damus/Amethyst style https://github.com/nostr-protocol/nips/pull/397#issuecomment-1488867364 )
+                                        const r = ((content: string): unknown => {
+                                            if (content === "") {
+                                                return undefined;
+                                            }
+                                            try {
+                                                return JSON.parse(content);
+                                            } catch (e) {
+                                                return undefined;
+                                            }
+                                        })(e.content);
+                                        if (typeof r === "object" && r !== null && "id" in r && typeof r.id === "string") {
+                                            // FIXME: trusting content!! but verifying needs async... how?
+                                            //        invading verify to content on above async-verify?
+                                            return r.id;
+                                        }
+                                        return null;
+                                    }
+                                    if (k === Kinds.reaction) {
+                                        const tid = ((e: Event) => {
+                                            let etag: string | undefined = undefined;
+                                            for (const tag of e.tags) {
+                                                if (tag[0] !== "e") {
+                                                    continue;
+                                                }
+                                                // overwrite to take last
+                                                etag = tag[1];
+                                            }
+                                            return etag; // can be undefined but violating NIP-25
+                                        })(e);
+                                        if (!tid) {
+                                            return null;
+                                        }
+                                        return tid;
+                                    }
+                                    if (k === Kinds.delete) {
+                                        // delete is another layer; no originate event.
+                                        return null;
+                                    }
+                                    // post, dm, repost or unknown... itself is a post.
+                                    return e.id;
+                                };
+                                // TODO: merge okevs into events first, then update posts/tap
+                                //       that will needs first flag for each post to be quick
                                 for (const op of ops) {
                                     switch (op.type) {
                                         case 'delete': {
                                             const evid = op.id;
-                                            const post = all.get(evid) ?? {
+
+                                            const dev = events.get(evid) || {
                                                 id: evid,
                                                 event: null,
                                                 deleteevent: null,
-                                                reposttargetevent: null,
-                                                myreactionevent: null,
-                                                hasread: false,
                                             };
-                                            all.set(evid, post);
+                                            events.set(evid, dev);
 
-                                            // FIXME: we are trusting this delete
-                                            post.deleteevent = post.deleteevent ?? {
+                                            const known = dev.deleteevent;
+
+                                            if (!known && dev.event && dev.event.event.pubkey !== op.event.pubkey) {
+                                                // reject liar on first receive. ignore this delete event.
+                                                // TODO: should log before null?
+                                                // we don't modified object yet, objref is still consistent.
+                                                // (if dev is just created, it's not listed (event=null), that is consistent)
+                                                break;
+                                            }
+
+                                            dev.deleteevent = dev.deleteevent || {
                                                 event: op.event,
                                                 receivedfrom: new Set(),
                                             };
+                                            dev.deleteevent.receivedfrom.add(op.relay);
 
-                                            post.deleteevent.receivedfrom.add(op.relay);
+                                            if (known) {
+                                                // followings are already done. end.
+                                                break;
+                                            }
 
-                                            if (post.event) {
-                                                // update bytab to make component update
-                                                const cat = post.event.event.created_at;
-                                                for (
-                                                    let i = bsearchi(tap, p => cat <= p.event!.event.created_at);
-                                                    tap[i] && tap[i].event!.event.created_at === cat;
-                                                    i++
-                                                ) {
-                                                    if (tap[i].event!.event.id === evid) {
-                                                        tap[i] = post;
-                                                        break;
-                                                    }
+                                            if (!dev.event) {
+                                                // nothing to do when target is unknown.
+                                                // defer to later target receiving.
+                                                break;
+                                            }
+
+                                            // update its target post (deleted or nullified)
+                                            const oeid = getPostId(dev.event.event);
+                                            if (!oeid) {
+                                                // TODO: how any?
+                                                break;
+                                            }
+                                            const post = posts.get(oeid) || {
+                                                id: oeid,
+                                                event: null,
+                                                reposttarget: null,
+                                                myreaction: null,
+                                                hasread: false,
+                                            };
+                                            posts.set(oeid, post);
+
+                                            if (dev.event.event.kind === Kinds.repost) {
+                                                // TODO: see also okevs but cannot reuse purely (needs merging receivedfrom)
+                                                const target = events.get(oeid);
+                                                if (target) {
+                                                    post.reposttarget = target;
+                                                } else {
+                                                    // TODO: fetch request with remembering ev.id (repost N:1 target)
+                                                }
+                                            } else if (dev.event.event.kind === Kinds.reaction) {
+                                                post.myreaction = dev;
+                                            } else {
+                                                post.event = dev;
+                                            }
+
+                                            // update bytab to keep objref consistent and make component update
+                                            if (!post.event?.event) {
+                                                // not listed yet. no need to update objref
+                                                break;
+                                            }
+                                            const cat = post.event.event.event.created_at;
+                                            for (
+                                                let i = bsearchi(tap, p => cat <= p.event!.event!.event.created_at);
+                                                tap[i] && tap[i].event!.event!.event.created_at === cat;
+                                                i++
+                                            ) {
+                                                if (tap[i].event!.event!.event.id === evid) {
+                                                    // update
+                                                    tap[i] = post;
+                                                    break;
                                                 }
                                             }
 
@@ -275,45 +401,75 @@ const App = () => {
                                         case 'event': {
                                             const ev = op.event;
 
-                                            draft.allevents.set(ev.id, ev);
-
-                                            const evid = op.event.id;
-                                            const post = all.get(evid) ?? {
-                                                id: evid,
+                                            const dev = events.get(ev.id) || {
+                                                id: ev.id,
                                                 event: null,
                                                 deleteevent: null,
-                                                reposttargetevent: null,
-                                                myreactionevent: null,
+                                            };
+                                            events.set(ev.id, dev);
+
+                                            const known = dev.event;
+                                            dev.event = dev.event || {
+                                                event: ev,
+                                                receivedfrom: new Set(),
+                                            };
+                                            dev.event.receivedfrom.add(op.relay);
+
+                                            if (known) {
+                                                // followings are already done. end.
+                                                break;
+                                            }
+
+                                            if (dev.deleteevent && dev.event.event.pubkey !== dev.deleteevent.event.pubkey) {
+                                                // liar!! nullify delete
+                                                // TODO: should log before null?
+                                                dev.deleteevent = null;
+                                                // fallthrough continue.
+                                            }
+
+                                            const evid = ev.id;
+
+                                            const oeid = getPostId(ev);
+                                            if (!oeid) {
+                                                // TODO: how any?
+                                                break;
+                                            }
+
+                                            const post = posts.get(evid) || {
+                                                id: oeid,
+                                                event: null,
+                                                reposttarget: null,
+                                                myreaction: null,
                                                 hasread: false,
                                             };
-                                            all.set(evid, post);
+                                            posts.set(evid, post);
 
-                                            if (ev.kind === Kinds.reaction)
-                                                post.event = post.event ?? {
-                                                    event: op.event,
-                                                    receivedfrom: new Set(),
-                                                };
-
-                                            post.event.receivedfrom.add(op.relay);
-
-                                            if (ev.kind === Kinds.delete) {
-                                                // nothing to do, even adding or modifying (already done on op:"delete")
+                                            if (ev.kind === Kinds.repost) {
+                                                const target = events.get(oeid);
+                                                if (target) {
+                                                    post.reposttarget = target;
+                                                } else {
+                                                    // TODO: fetch request with remembering ev.id (repost N:1 target)
+                                                }
                                             } else if (ev.kind === Kinds.reaction) {
-                                                // required to
+                                                post.myreaction = dev;
                                             } else {
-                                                const i = bsearchi(draft.byCreatedAt, x => op.event.created_at < x.event!.event.created_at);
-                                                draft.byCreatedAt.splice(i, 0, post);
+                                                post.event = dev;
                                             }
+
+                                            // update bytab to keep objref consistent and make component update
+                                            if (!post.event?.event) {
+                                                // don't list if main event is not ready. no need to update objref
+                                                break;
+                                            }
+                                            const cat = post.event.event.event.created_at;
+                                            const i = bsearchi(tap, p => cat < p.event!.event!.event.created_at);
+                                            tap.splice(i, 0, post);
 
                                             break;
                                         }
                                     }
                                 }
-                            }));
-                            setTabevents(produce(draft => {
-                                const t = draft.get(tab.name);
-                                t?.byEventId;
-                                t?.byCreatedAt;
                             }));
                         },
                     });
@@ -374,6 +530,11 @@ const App = () => {
             }
         });
     }, [prefrelays]);
+
+    const [relayinfo, setRelayinfo] = useAtom(state.relayinfo);
+    // FIXME: should mux healthy events but nostr-mux don't provide it (yet)...
+    setRelayinfo(useMemo(() => ({ all: mux.allRelays.length, healthy: mux.healthyRelays.length }),
+        [mux.allRelays.length, mux.healthyRelays.length]));
 
     return <HashRouter>
         <Routes>

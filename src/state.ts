@@ -68,6 +68,7 @@ export default {
     },
     relays: atom(new Map<string, Relay>()),
     relaymux: atom(new Mux()),
+    relayinfo: atom({ all: 0, healthy: 0 }),
     // uh?
     myprofile: atom(Event),
     mycontacts: atom(Event),

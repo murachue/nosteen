@@ -24,7 +24,7 @@ export type DeletableEvent = {
 export type Post = {
     id: string;
     event: DeletableEvent | null; // null on just got only delete event
-    reposttargetevent: DeletableEvent | null; // shared by other Posts
-    myreactionevent: DeletableEvent | null; // kind7 may be posted more than 2...? pick first-received one. and it may be dislikes...
+    reposttarget: DeletableEvent | null; // reposted event; shared by other Posts
+    myreaction: DeletableEvent | null; // kind7 may be posted more than 2...? pick first-received one. and it may be dislikes...
     hasread: boolean;
 };

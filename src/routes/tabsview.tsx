@@ -1,3 +1,4 @@
+import Identicon from "identicon.js";
 import { useAtom } from "jotai";
 import { FC, useState } from "react";
 import { Helmet } from "react-helmet";
@@ -6,10 +7,9 @@ import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import TabBar from "../components/tabbar";
 import state from "../state";
-import Identicon from "identicon.js";
-import { PostList } from "../types";
+import { Post } from "../types";
 
-const TheList: FC<{ posts: PostList; }> = ({ posts }) => {
+const TheList: FC<{ posts: Post[]; }> = ({ posts }) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
@@ -29,8 +29,9 @@ const TheList: FC<{ posts: PostList; }> = ({ posts }) => {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
                     <TBody>
-                        {posts.byCreatedAt.map(p =>
-                            <div key={p.event!.event.id} style={{ display: "flex", width: "100%", alignItems: "center" }}>
+                        {posts.map(p => {
+                            const ev = p.event!.event!.event;
+                            return <div key={ev.id} style={{ display: "flex", width: "100%", alignItems: "center" }}>
                                 <TR>
                                     <TD>
                                         <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext, textAlign: "right" }}>
@@ -39,21 +40,22 @@ const TheList: FC<{ posts: PostList; }> = ({ posts }) => {
                                     </TD>
                                     <TD>
                                         <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>
-                                            {<img style={{ maxWidth: "16px" }} src={`data:image/png;base64,${new Identicon(p.event!.event.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}
+                                            {<img style={{ maxWidth: "16px" }} src={`data:image/png;base64,${new Identicon(ev.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}
                                         </div>
                                     </TD>
                                     <TD>
                                         <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>
-                                            {p.event!.event.pubkey}
+                                            {ev.pubkey}
                                         </div>
                                     </TD>
                                     <TD>
                                         <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colornormal, font: fonttext }}>
-                                            {p.event!.event.id} {p.event!.event.content}
+                                            {/* ev.id */}{ev.content}
                                         </div>
                                     </TD>
                                 </TR>
-                            </div>)}
+                            </div>;
+                        })}
                     </TBody>
                 </div>
             </div>
@@ -73,7 +75,8 @@ export default () => {
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
-    const [allevents] = useAtom(state.allposts);
+    const [posts] = useAtom(state.posts);
+    const [relayinfo] = useAtom(state.relayinfo);
 
     if (!tabs.find(t => t.name === name)) {
         navigate(`/tab/${tabs[0].name}`, { replace: true });
@@ -81,13 +84,14 @@ export default () => {
 
     const [postdraft, setPostdraft] = useState("");
 
+    const tap = posts.bytab.get(name);
     return <>
         <Helmet>
             <title>{name} - nosteen</title>
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column" }}>
-                <TheList posts={allevents} />
+                {!tap ? <p>?invariant failure: posts for tab not found</p> : <TheList posts={tap} />}
                 <div>
                     <TabBar>
                         {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
@@ -116,7 +120,7 @@ export default () => {
             </div>
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
                 <div style={{ flex: "1" }}>status here</div>
-                <div style={{ padding: "0 0.5em" }}>0</div>
+                <div style={{ padding: "0 0.5em" }}>{relayinfo.healthy}/{relayinfo.all}</div>
             </div>
         </div>
     </>;
