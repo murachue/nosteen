@@ -1,10 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Mux, Relay } from "nostr-mux";
-import { PostList } from "./types";
-
-const emptyEvents: PostList = { byCreatedAt: [], byEventId: new Map() };
-const emptyTab = { selected: 0 } as const;
+import { DeletableEvent, Post, ReceivedEvent } from "./types";
 
 const tabinit: {
     name: string;
@@ -23,17 +20,17 @@ const tabinit: {
     }>[];
     selected: number; // or event_id?
 }[] = [
-        { ...emptyTab, name: "Recent", filter: "recent" },
-        { ...emptyTab, name: "Reply", filter: "reply" },
-        { ...emptyTab, name: "DM", filter: "dm" },
-        { ...emptyTab, name: "Favs", filter: "favs" },
+        { name: "Recent", filter: "recent", selected: 0 },
+        { name: "Reply", filter: "reply", selected: 0 },
+        { name: "DM", filter: "dm", selected: 0 },
+        { name: "Favs", filter: "favs", selected: 0 },
         {
-            ...emptyTab,
             name: "me",
             filter: [
                 { authors: ["eeef"], kinds: [1], limit: 20 },
                 { "#p": ["eeef"], kinds: [1], limit: 20 },
             ],
+            selected: 0,
         },
     ];
 export default {
@@ -75,8 +72,11 @@ export default {
     myprofile: atom(Event),
     mycontacts: atom(Event),
     //
-    allevents: atom/* <EventList | Promise<EventList>> */(emptyEvents),
+    posts: atom({
+        allevents: new Map<string, DeletableEvent>(),  // to make least verifying
+        allposts: new Map<string, Post>(),  // Post events contain same Event instances of allevents
+        bytab: new Map<string, Post[]>(tabinit.map(t => [t.name, []])),  // contains same Post instance of allposts
+    }),
     tabs: atom(tabinit),
     activetab: atom(""),
-    tabevents: atom<Map<string, PostList>>(new Map(tabinit.map(t => [t.name, emptyEvents]))), // contains partial copy of allevents
 };

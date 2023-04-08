@@ -73,7 +73,7 @@ export default () => {
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
-    const [allevents] = useAtom(state.allevents);
+    const [allevents] = useAtom(state.allposts);
 
     if (!tabs.find(t => t.name === name)) {
         navigate(`/tab/${tabs[0].name}`, { replace: true });

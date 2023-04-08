@@ -1,11 +1,11 @@
 import produce, { enableMapSet } from 'immer';
-import { WritableDraft } from 'immer/dist/internal';
 import { useImmerAtom } from 'jotai-immer';
 import { useAtom } from 'jotai/react';
 import { Event, Filter, Relay, SubscriptionOptions, verifyEvent } from 'nostr-mux';
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
+import invariant from 'tiny-invariant';
 import './index.css';
 import ErrorPage from './routes/errorpage';
 import Global from './routes/global';
@@ -15,7 +15,6 @@ import Root from './routes/root';
 import TabsView from './routes/tabsview';
 import TestApp from './routes/test';
 import state from './state';
-import { Post } from './types';
 
 enableMapSet();
 
@@ -27,14 +26,31 @@ const Kinds = {
     reaction: 7,
 };
 
+const bsearchi = function <T>(arr: T[], comp: (x: T) => boolean): number {
+    let left = 0;
+    let right = arr.length;
+    let mid: number;
+
+    while (left < right) {
+        mid = Math.floor((left + right) / 2);
+        if (comp(arr[mid])) {
+            right = mid;
+        } else {
+            left = mid + 1;
+        }
+    }
+
+    // arr.length must be 0 or greater, left<right never be true on first, sets mid.
+    return mid!;
+};
+
 const App = () => {
     const [prefrelays] = useAtom(state.preferences.relays);
     const [prefaccount] = useAtom(state.preferences.account);
     const [relays, setRelays] = useImmerAtom(state.relays);
     const [mux] = useAtom(state.relaymux);
-    const [allevents, setAllevents] = useAtom(state.allevents);
+    const [posts, setPosts] = useAtom(state.posts);
     const [tabs] = useAtom(state.tabs);
-    const [tabevents, setTabevents] = useAtom(state.tabevents);
     const [mycontacts, setMycontacts] = useState<Event | null>(null);
     type Sub = {
         name: string;
@@ -43,7 +59,8 @@ const App = () => {
     };
 
     const [subs, setSubs] = useState(new Map<string, Sub>());
-    const allevref = useRef(allevents);
+    const postsRef = useRef(posts);
+    // TODO: unsub on unload, but useEffect.return is overkill
     useEffect(() => {
         type SetSub = {
             op: "set";
@@ -151,20 +168,29 @@ const App = () => {
                 }
                 // added or modified
                 if (tabfilt) {
+                    // TODO: we should intro global async verify/add queue?
                     const sid = mux.subscribe({
                         filters: tabfilt,
                         enableBuffer: { flushInterval: 50 },
                         onEvent: async receives => {
                             // XXX: produce() don't support async??
                             //      [Immer] produce can only be called on things that are draftable: plain objects, arrays, Map, Set or classes that are marked with '[immerable]: true'. Got '[object Promise]'
-                            //      try best.
-
-                            const byeid = allevref.current.byEventId;
+                            //      try best. (ref'ing old events may cause extra verify which is sad but not fatal.)
+                            // TODO: repost/reaction target fetching
+                            // TODO: we may can use batch schnorr verify (if library supports) but bothered if some fail.
+                            const allevents = postsRef.current.allevents;
                             type OpEv = { type: "event"; event: Event; relay: Relay; };
                             type OpDel = { type: "delete"; event: Event; relay: Relay; id: string; };
-
+                            const okevs = new Set<string>(); // don't taint allevents till updating setPosts
                             const ops: (OpEv | OpDel)[] = [];
                             for (const { received: { event }, relay } of receives) {
+                                if (okevs.has(event.id) || allevents.has(event.id)) {
+                                    // we already know valid that event...
+                                    // XXX: we are trusting that relay also sends valid event!! (instead of drop/ignore on first see)
+                                    ops.push({ type: "event", event, relay });
+                                    continue;
+                                }
+
                                 if (event.kind === 5) {
                                     // delete
                                     const dels: OpDel[] = [];
@@ -174,7 +200,7 @@ const App = () => {
                                             continue;
                                         }
                                         const evid = tag[1];
-                                        if (!byeid.has(evid)) {
+                                        if (!allevents.has(evid)) {
                                             dels.push({ type: "delete", event, relay, id: evid });
                                         }
                                     }
@@ -184,83 +210,98 @@ const App = () => {
                                             // TODO: invalid sig!?
                                         } else {
                                             ops.push(...dels);
-                                            // ops.push({ type: "event", event, relay });
+                                            ops.push({ type: "event", event, relay });
+                                            okevs.add(event.id);
                                         }
                                     }
                                 } else {
                                     // others
-                                    if (!byeid.has(event.id)) {
+                                    if (!allevents.has(event.id)) {
                                         const r = await verifyEvent(event);
                                         if (typeof r === "string") {
                                             // TODO: invalid sig!?
                                         } else {
                                             ops.push({ type: "event", event, relay });
+                                            okevs.add(event.id);
                                         }
                                     }
                                 }
                             }
-                            setAllevents(produce(draft => {
-                                // XXX: it infers Map<s,P>|Map<s,WD<P>> that could not be mixed value...
-                                const byevid: Map<string, Post | WritableDraft<Post>> = draft.byEventId;
+
+                            // then synchronous update
+                            setPosts(produce(draft => {
+                                const all = draft.allposts;
+                                const tap = draft.bytab.get(tab.name);
+                                invariant(tap, `no posts.bytab for ${tab.name}`);
                                 for (const op of ops) {
                                     switch (op.type) {
                                         case 'delete': {
                                             const evid = op.id;
-                                            const post = byevid.get(evid) ?? {
+                                            const post = all.get(evid) ?? {
                                                 id: evid,
                                                 event: null,
                                                 deleteevent: null,
-                                                repostevent: null,
+                                                reposttargetevent: null,
+                                                myreactionevent: null,
+                                                hasread: false,
                                             };
-                                            byevid.set(evid, post);
+                                            all.set(evid, post);
 
-                                            const de = post.deleteevent = post.deleteevent ?? {
+                                            // FIXME: we are trusting this delete
+                                            post.deleteevent = post.deleteevent ?? {
                                                 event: op.event,
                                                 receivedfrom: new Set(),
                                             };
-                                            de.event = op.event;
 
-                                            de.receivedfrom.add(op.relay);
+                                            post.deleteevent.receivedfrom.add(op.relay);
+
+                                            if (post.event) {
+                                                // update bytab to make component update
+                                                const cat = post.event.event.created_at;
+                                                for (
+                                                    let i = bsearchi(tap, p => cat <= p.event!.event.created_at);
+                                                    tap[i] && tap[i].event!.event.created_at === cat;
+                                                    i++
+                                                ) {
+                                                    if (tap[i].event!.event.id === evid) {
+                                                        tap[i] = post;
+                                                        break;
+                                                    }
+                                                }
+                                            }
 
                                             break;
                                         }
                                         case 'event': {
-                                            const post = byevid.get(op.event.id) ?? {
-                                                id: op.event.id,
-                                                event: {
+                                            const ev = op.event;
+
+                                            draft.allevents.set(ev.id, ev);
+
+                                            const evid = op.event.id;
+                                            const post = all.get(evid) ?? {
+                                                id: evid,
+                                                event: null,
+                                                deleteevent: null,
+                                                reposttargetevent: null,
+                                                myreactionevent: null,
+                                                hasread: false,
+                                            };
+                                            all.set(evid, post);
+
+                                            if (ev.kind === Kinds.reaction)
+                                                post.event = post.event ?? {
                                                     event: op.event,
                                                     receivedfrom: new Set(),
-                                                },
-                                                deleteevent: null,
-                                                repostevent: null,
-                                            };
-                                            byevid.set(op.event.id, post);
-
-                                            // coalesce event? (some relay drop many tags) -> dropped by invalid sig
-                                            post.event = post.event ?? {
-                                                event: op.event,
-                                                receivedfrom: new Set(),
-                                            };
-                                            post.event.event = op.event;
+                                                };
 
                                             post.event.receivedfrom.add(op.relay);
 
-                                            if (post.event.event.kind === 1) {
-                                                const i = (function <T>(arr: T[], comp: (x: T) => boolean) {
-                                                    let left = 0;
-                                                    let right = arr.length;
-                                                    let mid = Math.floor((left + right) / 2);
-
-                                                    while (left < right) {
-                                                        if (comp(arr[mid])) {
-                                                            right = mid - 1;
-                                                        } else {
-                                                            left = mid + 1;
-                                                        }
-                                                        mid = Math.floor((left + right) / 2);
-                                                    }
-                                                    return mid;
-                                                })(draft.byCreatedAt, x => op.event.created_at < x.event!.event.created_at);
+                                            if (ev.kind === Kinds.delete) {
+                                                // nothing to do, even adding or modifying (already done on op:"delete")
+                                            } else if (ev.kind === Kinds.reaction) {
+                                                // required to
+                                            } else {
+                                                const i = bsearchi(draft.byCreatedAt, x => op.event.created_at < x.event!.event.created_at);
                                                 draft.byCreatedAt.splice(i, 0, post);
                                             }
 
