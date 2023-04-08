@@ -20,7 +20,9 @@ import { DeletableEvent, ReceivedEvent } from './types';
 enableMapSet();
 
 const Kinds = {
+    profile: 0,
     post: 1,
+    contacts: 3,
     dm: 4,
     delete: 5,
     repost: 6,
@@ -76,7 +78,9 @@ const App = () => {
             const sub = subs.get(tab.name);
             const tabfilt = ((): SubscriptionOptions["filters"] | null => {
                 if (tab.filter === "recent") {
-                    if (sub?.filters[0]?.authors?.[0] === prefaccount?.pubkey) {
+                    const followingpks = mycontacts?.tags.filter(t => t[0] === "p").map(t => t[1]) || [];
+                    const followingeq = JSON.stringify(((sub?.filters[1]?.authors || []))) === JSON.stringify(followingpks);
+                    if (sub?.filters[0]?.authors?.[0] === prefaccount?.pubkey && followingeq) {
                         return sub?.filters || null; // return as is, or null on unlogin
                     } else if (!prefaccount) {
                         return null;
@@ -484,6 +488,209 @@ const App = () => {
                 }
             }
         }
+
+        {
+            const k = "__mycontacts";
+            const sub = subs.get(k);
+            const tabfilt = ((): SubscriptionOptions["filters"] | null => {
+                if (sub?.filters[0]?.authors?.[0] === prefaccount?.pubkey) {
+                    return sub?.filters || null; // return as is, or null on unlogin
+                } else if (!prefaccount) {
+                    return null;
+                } else {
+                    return [
+                        // my contacts
+                        {
+                            authors: [prefaccount.pubkey],
+                            kinds: [Kinds.contacts],
+                        },
+                    ];
+                }
+            })();
+            if (!sub || sub.filters !== tabfilt) {
+                // removed or modified
+                if (sub) {
+                    mux.unSubscribe(sub.sid);
+                    ops.push({ op: "delete", name: sub.name });
+                }
+                // added or modified
+                if (tabfilt) {
+                    // TODO: we should intro global async verify/add queue?
+                    const sid = mux.subscribe({
+                        filters: tabfilt,
+                        enableBuffer: { flushInterval: 100 },
+                        onEvent: async receives => {
+                            // TODO: copypasta. can be more shorter. but for unify?
+
+                            // XXX: produce() don't support async??
+                            //      [Immer] produce can only be called on things that are draftable: plain objects, arrays, Map, Set or classes that are marked with '[immerable]: true'. Got '[object Promise]'
+                            //      try best. (ref'ing old events may cause extra verify which is sad but not fatal.)
+                            // TODO: repost/reaction target fetching
+                            // TODO: we may can use batch schnorr verify (if library supports) but bothered if some fail.
+                            const allevents = postsRef.current.allevents;
+                            type OpEv = { type: "event"; event: Event; relay: Relay; };
+                            type OpDel = { type: "delete"; event: Event; relay: Relay; id: string; };
+                            const okevs = new Map<string, ReceivedEvent>(); // don't taint allevents till updating setPosts
+                            const ops: (OpEv | OpDel)[] = [];
+                            for (const { received: { event }, relay } of receives) {
+                                if (okevs.has(event.id) || allevents.has(event.id)) {
+                                    // we already know valid that event...
+                                    // XXX: we are trusting that relay also sends valid event!! (instead of drop/ignore on first see)
+                                    ops.push({ type: "event", event, relay });
+                                    continue;
+                                }
+
+                                if (event.kind === 5) {
+                                    // delete
+                                    const dels: OpDel[] = [];
+                                    for (const tag of event.tags) {
+                                        if (tag[0] !== "e") {
+                                            // !? ignore
+                                            continue;
+                                        }
+                                        const evid = tag[1];
+                                        if (!allevents.has(evid)) {
+                                            dels.push({ type: "delete", event, relay, id: evid });
+                                        }
+                                    }
+                                    if (0 < dels.length) {
+                                        const r = await verifyEvent(event);
+                                        if (typeof r === "string") {
+                                            // TODO: invalid sig!?
+                                        } else {
+                                            ops.push(...dels);
+                                            ops.push({ type: "event", event, relay });
+                                            const okev = okevs.get(event.id) || {
+                                                event,
+                                                receivedfrom: new Set(),
+                                            };
+                                            okevs.set(event.id, okev);
+                                            okev.receivedfrom.add(relay);
+                                        }
+                                    }
+                                } else {
+                                    // others
+                                    if (!allevents.has(event.id)) {
+                                        const r = await verifyEvent(event);
+                                        if (typeof r === "string") {
+                                            // TODO: invalid sig!?
+                                        } else {
+                                            ops.push({ type: "event", event, relay });
+                                            const okev = okevs.get(event.id) || {
+                                                event,
+                                                receivedfrom: new Set(),
+                                            };
+                                            okevs.set(event.id, okev);
+                                            okev.receivedfrom.add(relay);
+                                            // TODO: kind6.content
+                                        }
+                                    }
+                                }
+                            }
+
+                            // then synchronous update
+                            setPosts(produce(draft => {
+                                const events = draft.allevents;
+
+                                for (const op of ops) {
+                                    switch (op.type) {
+                                        case 'delete': {
+                                            const evid = op.id;
+
+                                            const dev = events.get(evid) || {
+                                                id: evid,
+                                                event: null,
+                                                deleteevent: null,
+                                            };
+                                            events.set(evid, dev);
+
+                                            const known = dev.deleteevent;
+
+                                            if (!known && dev.event && dev.event.event.pubkey !== op.event.pubkey) {
+                                                // reject liar on first receive. ignore this delete event.
+                                                // TODO: should log before null?
+                                                // we don't modified object yet, objref is still consistent.
+                                                // (if dev is just created, it's not listed (event=null), that is consistent)
+                                                break;
+                                            }
+
+                                            dev.deleteevent = dev.deleteevent || {
+                                                event: op.event,
+                                                receivedfrom: new Set(),
+                                            };
+                                            dev.deleteevent.receivedfrom.add(op.relay);
+
+                                            if (known) {
+                                                // followings are already done. end.
+                                                break;
+                                            }
+
+                                            if (!dev.event) {
+                                                // nothing to do when target is unknown.
+                                                // defer to later target receiving.
+                                                break;
+                                            }
+
+                                            // FIXME: so hacky
+                                            // if (dev.event.event.kind === 3 && dev.event.event.pubkey === prefaccount?.pubkey) {
+                                            //     setMycontacts(dev.event.event);
+                                            //     break;
+                                            // }
+                                        }
+                                        case 'event': {
+                                            const ev = op.event;
+
+                                            const dev = events.get(ev.id) || {
+                                                id: ev.id,
+                                                event: null,
+                                                deleteevent: null,
+                                            };
+                                            events.set(ev.id, dev);
+
+                                            const known = dev.event;
+                                            dev.event = dev.event || {
+                                                event: ev,
+                                                receivedfrom: new Set(),
+                                            };
+                                            dev.event.receivedfrom.add(op.relay);
+
+                                            if (known) {
+                                                // followings are already done. end.
+                                                break;
+                                            }
+
+                                            if (dev.deleteevent && dev.event.event.pubkey !== dev.deleteevent.event.pubkey) {
+                                                // liar!! nullify delete
+                                                // TODO: should log before null?
+                                                dev.deleteevent = null;
+                                                // fallthrough continue.
+                                            }
+
+                                            // FIXME: so hacky
+                                            if (dev.event.event.kind === 3 && dev.event.event.pubkey === prefaccount?.pubkey) {
+                                                setMycontacts(dev.event.event);
+                                                break;
+                                            }
+
+                                            break;
+                                        }
+                                    }
+                                }
+                            }));
+                        },
+                    });
+                    ops.push({
+                        op: "set",
+                        sub: {
+                            name: k,
+                            filters: tabfilt,
+                            sid,
+                        },
+                    });
+                }
+            }
+        }
+
         if (0 < ops.length) {
             setSubs(produce(draft => {
                 for (const op of ops) {
