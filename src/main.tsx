@@ -32,10 +32,9 @@ const Kinds = {
 const bsearchi = function <T>(arr: T[], comp: (x: T) => boolean): number {
     let left = 0;
     let right = arr.length;
-    let mid: number;
 
     while (left < right) {
-        mid = Math.floor((left + right) / 2);
+        const mid = Math.floor((left + right) / 2);
         if (comp(arr[mid])) {
             right = mid;
         } else {
@@ -43,8 +42,7 @@ const bsearchi = function <T>(arr: T[], comp: (x: T) => boolean): number {
         }
     }
 
-    // arr.length must be 0 or greater, left<right never be true on first, sets mid.
-    return mid!;
+    return left;
 };
 
 const App = () => {

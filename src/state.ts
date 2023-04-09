@@ -18,20 +18,21 @@ const tabinit: {
         until: number;
         limit: number;
     }>[];
-    selected: number; // or event_id?
+    selected: string;
 }[] = [
-        { name: "Recent", filter: "recent", selected: 0 },
-        { name: "Reply", filter: "reply", selected: 0 },
-        { name: "DM", filter: "dm", selected: 0 },
-        { name: "Favs", filter: "favs", selected: 0 },
-        {
-            name: "me",
-            filter: [
-                { authors: ["eeef"], kinds: [1], limit: 20 },
-                { "#p": ["eeef"], kinds: [1], limit: 20 },
-            ],
-            selected: 0,
-        },
+        { name: "Recent", filter: "recent", selected: "" },
+        { name: "Reply", filter: "reply", selected: "" },
+        { name: "DM", filter: "dm", selected: "" },
+        { name: "Favs", filter: "favs", selected: "" },
+        // {
+        //     name: "me",
+        //     filter: [
+        //         { authors: ["eeef"], kinds: [1], limit: 20 },
+        //         { "#p": ["eeef"], kinds: [1], limit: 20 },
+        //     ],
+        //     selected: "",
+        // },
+        { name: "global", filter: [{ kinds: [1, 6, 7], limit: 20 }], selected: "" },
     ];
 export default {
     preferences: {
