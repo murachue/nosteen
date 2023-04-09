@@ -360,7 +360,8 @@ const App = () => {
                                                 // not listed yet. no need to update objref
                                                 break;
                                             }
-                                            const i = postindex(tap, post);
+                                            // TODO: update all tabs
+                                            const i = postindex(tap, post.event!.event!.event);
                                             if (i !== null) {
                                                 tap[i] = post;
                                             }
@@ -438,6 +439,7 @@ const App = () => {
                                                 // don't list if main event is not ready. no need to update objref
                                                 break;
                                             }
+                                            // TODO: update all tabs
                                             const cat = post.event.event.event.created_at;
                                             const i = bsearchi(tap, p => cat < p.event!.event!.event.created_at);
                                             tap.splice(i, 0, post);

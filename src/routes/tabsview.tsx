@@ -1,6 +1,6 @@
 import Identicon from "identicon.js";
 import { useAtom } from "jotai";
-import { FC, memo, useState } from "react";
+import { FC, memo, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
@@ -127,7 +127,6 @@ export default () => {
     const data = useParams();
     const name = data.name || "";
     const [tabs, setTabs] = useAtom(state.tabs);
-    const [activetab, setActivetab] = useAtom(state.activetab);
     const [colorbase] = useAtom(state.preferences.colors.base);
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
@@ -137,6 +136,8 @@ export default () => {
     const [posts, setPosts] = useAtom(state.posts);
     const [relayinfo] = useAtom(state.relayinfo);
 
+    const [status, setStatus] = useState("status...");
+
     const tab = tabs.find(t => t.name === name);
     if (!tab) {
         navigate(`/tab/${tabs[0].name}`, { replace: true });
@@ -144,8 +145,9 @@ export default () => {
     }
 
     const [postdraft, setPostdraft] = useState("");
+    const posteditor = useRef<HTMLInputElement>(null);
 
-    const tap = posts.bytab.get(name);
+    const tap = posts.bytab.get(name)!;
     const selpost = tab.selected === "" ? undefined : posts.allposts.get(tab.selected);
     const selev = selpost?.event;
     const selrpev = selev && selpost.reposttarget;
@@ -153,7 +155,166 @@ export default () => {
         <Helmet>
             <title>{name} - nosteen</title>
         </Helmet>
-        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }} onKeyDown={e => {
+            switch (e.key) {
+                case "a": {
+                    const i = tabs.indexOf(tab);
+                    const n = tabs[i === 0 ? tabs.length - 1 : i - 1].name;
+                    navigate(`/tab/${n}`);
+                    break;
+                }
+                case "s": {
+                    const i = tabs.indexOf(tab);
+                    const n = tabs[i === tabs.length - 1 ? 0 : i + 1].name;
+                    navigate(`/tab/${n}`);
+                    break;
+                }
+                case "j": {
+                    const si = selpost && (postindex(tap, selpost.event!.event!.event) ?? undefined);
+                    const i = si === undefined ? tap.length - 1 : si + 1;
+                    if (i < tap.length) {
+                        // TODO: commonize with onClick, scroll to new Row?
+                        const ev = tap[i].event!.event!.event;
+                        const evid = ev.id;
+                        setTabs(produce(draft => {
+                            draft.find(t => t.name === name)!.selected = evid;
+                        }));
+                        setPosts(produce(draft => {
+                            const p = draft.allposts.get(evid)!;
+                            p.hasread = true;
+                            for (const tap of draft.bytab.values()) {
+                                const i = postindex(tap, ev);
+                                if (i !== null) {
+                                    tap[i] = p;
+                                }
+                            }
+                        }));
+                    }
+                    break;
+                }
+                case "k": {
+                    const si = selpost && (postindex(tap, selpost.event!.event!.event) ?? undefined);
+                    const i = si === undefined ? tap.length - 1 : si - 1;
+                    if (0 <= i) {
+                        // TODO: commonize with onClick, scroll to new Row?
+                        const ev = tap[i].event!.event!.event;
+                        const evid = ev.id;
+                        setTabs(produce(draft => {
+                            draft.find(t => t.name === name)!.selected = evid;
+                        }));
+                        setPosts(produce(draft => {
+                            const p = draft.allposts.get(evid)!;
+                            p.hasread = true;
+                            for (const tap of draft.bytab.values()) {
+                                const i = postindex(tap, ev);
+                                if (i !== null) {
+                                    tap[i] = p;
+                                }
+                            }
+                        }));
+                    }
+                    break;
+                }
+                case "h": {
+                    break;
+                }
+                case "l": {
+                    break;
+                }
+                case "p": {
+                    break;
+                }
+                case "n": {
+                    break;
+                }
+                case "i": {
+                    posteditor.current?.focus();
+                    e.preventDefault();
+                    break;
+                }
+                case "g": {
+                    const i = 0;
+                    if (0 < tap.length) {
+                        // TODO: commonize with onClick, scroll to new Row?
+                        const ev = tap[i].event!.event!.event;
+                        const evid = ev.id;
+                        setTabs(produce(draft => {
+                            draft.find(t => t.name === name)!.selected = evid;
+                        }));
+                        setPosts(produce(draft => {
+                            const p = draft.allposts.get(evid)!;
+                            p.hasread = true;
+                            for (const tap of draft.bytab.values()) {
+                                const i = postindex(tap, ev);
+                                if (i !== null) {
+                                    tap[i] = p;
+                                }
+                            }
+                        }));
+                    }
+                    break;
+                }
+                case "G": {
+                    const i = tap.length - 1;
+                    if (0 < i) {
+                        // TODO: commonize with onClick, scroll to new Row?
+                        const ev = tap[i].event!.event!.event;
+                        const evid = ev.id;
+                        setTabs(produce(draft => {
+                            draft.find(t => t.name === name)!.selected = evid;
+                        }));
+                        setPosts(produce(draft => {
+                            const p = draft.allposts.get(evid)!;
+                            p.hasread = true;
+                            for (const tap of draft.bytab.values()) {
+                                const i = postindex(tap, ev);
+                                if (i !== null) {
+                                    tap[i] = p;
+                                }
+                            }
+                        }));
+                    }
+                    break;
+                }
+                case "H": {
+                    break;
+                }
+                case "M": {
+                    break;
+                }
+                case "L": {
+                    break;
+                }
+                case "e": {
+                    break;
+                }
+                case "E": {
+                    break;
+                }
+                case "1":
+                case "2":
+                case "3":
+                case "4":
+                case "5":
+                case "6":
+                case "7":
+                case "8": {
+                    const t = tabs[Number(e.key) - 1];
+                    if (t) {
+                        navigate(`/tab/${t.name}`);
+                    }
+                    break;
+                }
+                case "9": {
+                    const t = tabs[tabs.length - 1];
+                    navigate(`/tab/${t.name}`);
+                    break;
+                }
+                case "SPACE": {
+                    break;
+                }
+            }
+        }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column" }}>
                 {!tap ? <p>?invariant failure: posts for tab not found</p> : <TheList posts={tap} selection={tab?.selected} onSelect={s => {
                     setTabs(produce(draft => {
@@ -164,7 +325,7 @@ export default () => {
                         const post = draft.allposts.get(s)!;
                         post.hasread = true;
                         const tap = draft.bytab.get(name)!;
-                        const i = postindex(tap, post);
+                        const i = postindex(tap, post.event!.event!.event);
                         if (i !== null) {
                             tap[i] = post;
                         }
@@ -199,12 +360,12 @@ export default () => {
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
             </div>
             <div style={{ display: "flex", alignItems: "center", background: coloruibg }}>
-                <input type="text" style={{ flex: "1", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} />
+                <input ref={posteditor} type="text" style={{ flex: "1", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} onKeyDown={e => { e.stopPropagation(); return false; }} />
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
-                <div style={{ flex: "1" }}>status here</div>
+                <div style={{ flex: "1" }}>{status}</div>
                 <div style={{ padding: "0 0.5em" }}>{relayinfo.healthy}/{relayinfo.all}</div>
             </div>
         </div>
