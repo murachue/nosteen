@@ -9,6 +9,7 @@ import TabBar from "../components/tabbar";
 import state from "../state";
 import { Post } from "../types";
 import produce from "immer";
+import { bsearchi, postindex } from "../util";
 
 const TheRow: FC<{ post: Post; selected: boolean; }> = memo(({ post, selected }) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -58,11 +59,11 @@ const TheList: FC<{ posts: Post[]; selection: string; onSelect?: (i: string) => 
             <div tabIndex={0} style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}>
                 <div style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg }}>
                     <TH>
-                        <TD width="1em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>m</div></TD>
-                        <TD width="1em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>u</div></TD>
+                        <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>m</div></TD>
+                        <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>u</div></TD>
                         <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>icon</div></TD>
-                        <TD width="8em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>username</div></TD>
-                        <TD width="35em"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>text</div></TD>
+                        <TD width="100px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>username</div></TD>
+                        <TD width="600px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>text</div></TD>
                     </TH>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
@@ -80,6 +81,47 @@ const TheList: FC<{ posts: Post[]; selection: string; onSelect?: (i: string) => 
     </div>;
 };
 
+const timefmt0 = (v: number, t: string) => v.toString().padStart(t.length, "0");
+const timefmt = (date: Date, fmt: string) => {
+    let str = "";
+    const re = /Y+|M+|D+|h+|m+|s+|[^YMDhms]+/g;
+    while (true) {
+        const grp = re.exec(fmt);
+        if (!grp) return str;
+        const token = grp[0];
+        switch (token[0]) {
+            case "Y": {
+                str += timefmt0(date.getFullYear(), token);
+                break;
+            }
+            case "M": {
+                str += timefmt0(date.getMonth() + 1, token);
+                break;
+            }
+            case "D": {
+                str += timefmt0(date.getDate(), token);
+                break;
+            }
+            case "h": {
+                str += timefmt0(date.getHours(), token);
+                break;
+            }
+            case "m": {
+                str += timefmt0(date.getMinutes(), token);
+                break;
+            }
+            case "s": {
+                str += timefmt0(date.getSeconds(), token);
+                break;
+            }
+            default: {
+                str += token;
+                break;
+            }
+        }
+    }
+};
+
 export default () => {
     const navigate = useNavigate();
     const data = useParams();
@@ -92,7 +134,7 @@ export default () => {
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
-    const [posts] = useAtom(state.posts);
+    const [posts, setPosts] = useAtom(state.posts);
     const [relayinfo] = useAtom(state.relayinfo);
 
     const tab = tabs.find(t => t.name === name);
@@ -104,6 +146,9 @@ export default () => {
     const [postdraft, setPostdraft] = useState("");
 
     const tap = posts.bytab.get(name);
+    const selpost = tab.selected === "" ? undefined : posts.allposts.get(tab.selected);
+    const selev = selpost?.event;
+    const selrpev = selev && selpost.reposttarget;
     return <>
         <Helmet>
             <title>{name} - nosteen</title>
@@ -114,6 +159,15 @@ export default () => {
                     setTabs(produce(draft => {
                         const tab = draft.find(t => t.name === name)!;
                         tab.selected = s;
+                    }));
+                    setPosts(produce(draft => {
+                        const post = draft.allposts.get(s)!;
+                        post.hasread = true;
+                        const tap = draft.bytab.get(name)!;
+                        const i = postindex(tap, post);
+                        if (i !== null) {
+                            tap[i] = post;
+                        }
                     }));
                 }} />}
                 <div>
@@ -126,19 +180,26 @@ export default () => {
                 <div>
                     <div style={{ width: "48px", height: "48px", border: "1px solid", borderColor: coloruitext, margin: "2px" }}>
                         {/* npubhex identicon makes icon samely for vanity... */}
-                        <img style={{ maxWidth: "100%" }} src={`data:image/png;base64,${new Identicon("effeab1e1234567", { background: [0, 0, 0, 0] }).toString()}`} />
+                        {!selev ? <></> : <img style={{ maxWidth: "100%" }} src={`data:image/png;base64,${new Identicon(selrpev?.event?.event?.pubkey || selev.event!.event.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}
                     </div>
                 </div>
                 <div style={{ flex: "1", display: "flex", flexDirection: "column" }}>
-                    <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px" }}>name here</div>
-                    <div style={{ flex: "1", overflowY: "auto", margin: "2px", background: colorbase, font: fonttext }}>
-                        text here...<br />here...
+                    <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex" }}>
+                        <div style={{ flex: "1" }}>{!selev ? "name..." : (selrpev?.event?.event?.pubkey || selev.event!.event.pubkey)}</div>
+                        <div>{!selev ? "time..." : (() => {
+                            const t = selrpev ? selrpev.event!.event.created_at : selev.event!.event.created_at;
+                            const d = new Date(t * 1000);
+                            return timefmt(d, "YYYY-MM-DD hh:mm:ss");
+                        })()}</div>
+                    </div>
+                    <div style={{ flex: "1", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
+                        {!selev ? "text..." : (selrpev?.event?.event.content || selev?.event?.event.content)}
                     </div>
                 </div>
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
             </div>
             <div style={{ display: "flex", alignItems: "center", background: coloruibg }}>
-                <input type="text" style={{ flex: "1", background: colorbase, borderColor: colornormal }} value={postdraft} onChange={e => setPostdraft(e.target.value)} />
+                <input type="text" style={{ flex: "1", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} />
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>

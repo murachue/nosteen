@@ -28,3 +28,13 @@ export type Post = {
     myreaction: DeletableEvent | null; // kind7 may be posted more than 2...? pick first-received one. and it may be dislikes...
     hasread: boolean;
 };
+
+export const Kinds = {
+    profile: 0,
+    post: 1,
+    contacts: 3,
+    dm: 4,
+    delete: 5,
+    repost: 6,
+    reaction: 7,
+};

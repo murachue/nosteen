@@ -15,35 +15,10 @@ import Root from './routes/root';
 import TabsView from './routes/tabsview';
 import TestApp from './routes/test';
 import state from './state';
-import { DeletableEvent, ReceivedEvent } from './types';
+import { Kinds, ReceivedEvent } from './types';
+import { bsearchi, postindex } from './util';
 
 enableMapSet();
-
-const Kinds = {
-    profile: 0,
-    post: 1,
-    contacts: 3,
-    dm: 4,
-    delete: 5,
-    repost: 6,
-    reaction: 7,
-};
-
-const bsearchi = function <T>(arr: T[], comp: (x: T) => boolean): number {
-    let left = 0;
-    let right = arr.length;
-
-    while (left < right) {
-        const mid = Math.floor((left + right) / 2);
-        if (comp(arr[mid])) {
-            right = mid;
-        } else {
-            left = mid + 1;
-        }
-    }
-
-    return left;
-};
 
 const App = () => {
     const [prefrelays] = useAtom(state.preferences.relays);
@@ -385,17 +360,9 @@ const App = () => {
                                                 // not listed yet. no need to update objref
                                                 break;
                                             }
-                                            const cat = post.event.event.event.created_at;
-                                            for (
-                                                let i = bsearchi(tap, p => cat <= p.event!.event!.event.created_at);
-                                                tap[i] && tap[i].event!.event!.event.created_at === cat;
-                                                i++
-                                            ) {
-                                                if (tap[i].event!.event!.event.id === evid) {
-                                                    // update
-                                                    tap[i] = post;
-                                                    break;
-                                                }
+                                            const i = postindex(tap, post);
+                                            if (i !== null) {
+                                                tap[i] = post;
                                             }
 
                                             break;
@@ -447,6 +414,7 @@ const App = () => {
                                             posts.set(evid, post);
 
                                             if (ev.kind === Kinds.repost) {
+                                                post.event = dev;
                                                 const target = events.get(oeid);
                                                 if (target) {
                                                     post.reposttarget = target;
@@ -454,10 +422,16 @@ const App = () => {
                                                     // TODO: fetch request with remembering ev.id (repost N:1 target)
                                                 }
                                             } else if (ev.kind === Kinds.reaction) {
-                                                post.myreaction = dev;
+                                                if (ev.pubkey === prefaccount?.pubkey) {
+                                                    post.myreaction = dev;
+                                                    if (!post.event) {
+                                                        // TODO: fetch request with remembering ev.id (repost N:1 target)
+                                                    }
+                                                }
                                             } else {
                                                 post.event = dev;
                                             }
+
 
                                             // update bytab to keep objref consistent and make component update
                                             if (!post.event?.event) {
