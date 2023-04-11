@@ -11,14 +11,29 @@ import { Post } from "../types";
 import produce from "immer";
 import { bsearchi, postindex } from "../util";
 
-const TheRow: FC<{ post: Post; selected: boolean; }> = memo(({ post, selected }) => {
+const TheRow: FC<{ post: Post; selected: Post | null; }> = memo(({ post, selected }) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
+    const [colorrepost] = useAtom(state.preferences.colors.repost);
     const [colorselbg] = useAtom(state.preferences.colors.selectedbg);
     const [colorseltext] = useAtom(state.preferences.colors.selectedtext);
     const [fonttext] = useAtom(state.preferences.fonts.text);
 
     const ev = post.event!.event!.event;
-    return <div style={{ display: "flex", width: "100%", alignItems: "center", background: selected ? colorselbg : undefined, color: selected ? colorseltext : colornormal, font: fonttext }}>
+
+    const [bg, text] = (() => {
+        if (post === selected) {
+            return [colorselbg, colorseltext];
+        }
+        if (post.event!.event!.event.pubkey === selected?.event!.event!.event.pubkey) {
+
+        }
+        if (post.event!.event!.event.kind === 6) {
+            return [undefined, colorrepost];
+        }
+        return [undefined, colornormal];
+    })();
+
+    return <div style={{ display: "flex", width: "100%", alignItems: "center", background: bg, color: text, font: fonttext }}>
         <TR>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
@@ -49,7 +64,7 @@ const TheRow: FC<{ post: Post; selected: boolean; }> = memo(({ post, selected })
     </div>;
 });
 
-const TheList: FC<{ posts: Post[]; selection: string; onSelect?: (i: string) => void; }> = ({ posts, selection, onSelect }) => {
+const TheList: FC<{ posts: Post[]; selection: Post | null; onSelect?: (i: string) => void; }> = ({ posts, selection, onSelect }) => {
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontui] = useAtom(state.preferences.fonts.ui);
@@ -71,7 +86,7 @@ const TheList: FC<{ posts: Post[]; selection: string; onSelect?: (i: string) => 
                         {posts.map(p => {
                             const evid = p.event!.event!.event.id;
                             return <div key={evid} onPointerDown={e => onSelect && onSelect(evid)}>
-                                <TheRow post={p} selected={selection === evid} />
+                                <TheRow post={p} selected={selection} />
                             </div>;
                         })}
                     </TBody>
@@ -310,13 +325,38 @@ export default () => {
                     navigate(`/tab/${t.name}`);
                     break;
                 }
-                case "SPACE": {
+                case " ": {
+                    const tapl = tap.length;
+                    let i: number;
+                    for (i = 0; i < tapl; i++) {
+                        if (!tap[i].hasread) {
+                            break;
+                        }
+                    }
+                    if (i < tapl) {
+                        // TODO: commonize with onClick, scroll to new Row?
+                        const ev = tap[i].event!.event!.event;
+                        const evid = ev.id;
+                        setTabs(produce(draft => {
+                            draft.find(t => t.name === name)!.selected = evid;
+                        }));
+                        setPosts(produce(draft => {
+                            const p = draft.allposts.get(evid)!;
+                            p.hasread = true;
+                            for (const tap of draft.bytab.values()) {
+                                const i = postindex(tap, ev);
+                                if (i !== null) {
+                                    tap[i] = p;
+                                }
+                            }
+                        }));
+                    }
                     break;
                 }
             }
         }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column" }}>
-                {!tap ? <p>?invariant failure: posts for tab not found</p> : <TheList posts={tap} selection={tab?.selected} onSelect={s => {
+                {!tap ? <p>?invariant failure: posts for tab not found</p> : <TheList posts={tap} selection={selpost || null} onSelect={s => {
                     setTabs(produce(draft => {
                         const tab = draft.find(t => t.name === name)!;
                         tab.selected = s;
@@ -367,6 +407,7 @@ export default () => {
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
                 <div style={{ flex: "1" }}>{status}</div>
                 <div style={{ padding: "0 0.5em" }}>{relayinfo.healthy}/{relayinfo.all}</div>
+                <div style={{ position: "relative" }}>hashtag</div>
             </div>
         </div>
     </>;
