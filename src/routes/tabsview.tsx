@@ -407,7 +407,17 @@ export default () => {
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
                 <div style={{ flex: "1" }}>{status}</div>
                 <div style={{ padding: "0 0.5em" }}>{relayinfo.healthy}/{relayinfo.all}</div>
-                <div style={{ position: "relative" }}>hashtag</div>
+                <div style={{ position: "relative" }}>
+                    #hashtag
+                    <div style={{ display: "none", position: "absolute", bottom: "100%", right: "0px", padding: "5px", minWidth: "10em", border: "2px outset", background: coloruibg, color: coloruitext }}>
+                        <div style={{ height: "1.5em" }}>#foo</div>
+                        <div style={{ height: "1.5em" }}>#bar</div>
+                        <div style={{ height: "1.5em", display: "flex", flexFlow: "row", alignItems: "center" }}>
+                            #
+                            <input type="text" value="" placeholder="hashtag" style={{ flex: "1", boxSizing: "border-box", font: fontui }} onKeyDown={e => e.stopPropagation()} />
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </>;
