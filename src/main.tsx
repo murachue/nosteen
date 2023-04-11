@@ -211,7 +211,27 @@ const App = () => {
                                             };
                                             okevs.set(event.id, okev);
                                             okev.receivedfrom.add(relay);
-                                            // TODO: kind6.content
+
+                                            // TODO: this must be set to reposting event's repostevent.
+                                            //       following code lists as originated, not reposted
+                                            // if (event.kind === 6) {
+                                            //     const cobj = (() => { try { return JSON.parse(event.content); } catch { return undefined; } })();
+                                            //     if (cobj) {
+                                            //         const subevent = cobj as Event;
+                                            //         const sr = await verifyEvent(subevent);
+                                            //         if (typeof sr === "string") {
+                                            //             // TODO: invalid sig...
+                                            //         } else {
+                                            //             ops.push({ type: "event", event: subevent, relay });
+                                            //             const okev = okevs.get(subevent.id) || {
+                                            //                 event: subevent,
+                                            //                 receivedfrom: new Set(),
+                                            //             };
+                                            //             okevs.set(subevent.id, okev);
+                                            //             okev.receivedfrom.add(relay);
+                                            //         }
+                                            //     }
+                                            // }
                                         }
                                     }
                                 }
