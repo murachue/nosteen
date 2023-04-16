@@ -1,4 +1,4 @@
-import { Event, Relay } from "nostr-mux";
+import { Event, EventMessage, Filter, Relay, RelayMessageEvent } from "nostr-mux";
 
 // export type Event = {
 //     id: string;
@@ -28,6 +28,11 @@ export type Post = {
     myreaction: DeletableEvent | null; // kind7 may be posted more than 2...? pick first-received one. and it may be dislikes...
     hasread: boolean;
 };
+
+export type Filled<T extends unknown[]> = [T[number], ...T];
+export type FilledFilters = Filled<Filter[]>;
+export type EventMessageFromRelay = RelayMessageEvent<EventMessage>;
+export type FilledEventMessagesFromRelay = Filled<EventMessageFromRelay[]>;
 
 export const Kinds = {
     profile: 0,

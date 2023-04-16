@@ -171,6 +171,9 @@ export default () => {
             <title>{name} - nosteen</title>
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }} onKeyDown={e => {
+            if (e.currentTarget.tagName === "input" || e.currentTarget.tagName === "textarea" || e.currentTarget.tagName === "button") {
+                return;
+            }
             switch (e.key) {
                 case "a": {
                     const i = tabs.indexOf(tab);
@@ -400,7 +403,7 @@ export default () => {
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
             </div>
             <div style={{ display: "flex", alignItems: "center", background: coloruibg }}>
-                <input ref={posteditor} type="text" style={{ flex: "1", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} onKeyDown={e => { e.stopPropagation(); return false; }} />
+                <input ref={posteditor} type="text" style={{ flex: "1", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} onKeyDown={e => { /* e.stopPropagation(); return false; */ }} />
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
@@ -414,7 +417,7 @@ export default () => {
                         <div style={{ height: "1.5em" }}>#bar</div>
                         <div style={{ height: "1.5em", display: "flex", flexFlow: "row", alignItems: "center" }}>
                             #
-                            <input type="text" value="" placeholder="hashtag" style={{ flex: "1", boxSizing: "border-box", font: fontui }} onKeyDown={e => e.stopPropagation()} />
+                            <input type="text" value="" placeholder="hashtag" style={{ flex: "1", boxSizing: "border-box", font: fontui }} onChange={e => { }} onKeyDown={e => e.stopPropagation()} />
                         </div>
                     </div>
                 </div>

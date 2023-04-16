@@ -24,7 +24,7 @@ export const postindex = <T extends Post | WritableDraft<Post>, U extends Event 
     const cat = event.created_at;
     for (
         let i = bsearchi(posts, p => cat <= p.event!.event!.event.created_at);
-        posts[i]?.event!.event!.event.created_at === cat;
+        posts[i].event!.event!.event.created_at === cat;
         i++
     ) {
         if (posts[i].event!.event!.event.id === evid) {
@@ -32,4 +32,18 @@ export const postindex = <T extends Post | WritableDraft<Post>, U extends Event 
         }
     }
     return null;
+};
+
+// FIXME: ugh type. how to eliminate WritableDefault?
+export const postupsertindex = <T extends Post | WritableDraft<Post>, U extends Event | WritableDraft<Event>>(posts: T[], event: U): { type: "insert" | "update"; index: number; } => {
+    const evid = event.id;
+    const cat = event.created_at;
+    let i = bsearchi(posts, p => cat <= p.event!.event!.event.created_at);
+    while (posts[i].event!.event!.event.created_at === cat) {
+        if (posts[i].event!.event!.event.id === evid) {
+            return { type: "update", index: i };
+        }
+        i++;
+    }
+    return { type: "insert", index: i };
 };

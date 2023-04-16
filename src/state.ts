@@ -66,6 +66,12 @@ export default {
             text: atomWithStorage("preferences.fonts.text", "1em sans-serif"),
             ui: atomWithStorage("preferences.fonts.ui", "1em ui-sans-serif"),
         },
+        // should be "list" not special "mute"
+        mute: {
+            public: atomWithStorage("preferences.mute.public", []),
+            private: atomWithStorage("preferences.mute.private", []),
+            local: atomWithStorage("preferences.mute.local", []),
+        },
     },
     relays: atom(new Map<string, Relay>()),
     relaymux: atom(new Mux()),
