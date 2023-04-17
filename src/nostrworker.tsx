@@ -4,7 +4,7 @@ import { UnsignedEvent, finishEvent } from "nostr-tools";
 import { FC, PropsWithChildren, createContext, useContext } from "react";
 import { DeletableEvent, EventMessageFromRelay, FilledEventMessagesFromRelay, FilledFilters, Kinds, Post } from "./types";
 import invariant from "tiny-invariant";
-import { postupsertindex } from "./util";
+import { postindex, postupsertindex } from "./util";
 
 export type MuxRelayEvent = {
     mux: Mux;
@@ -93,6 +93,23 @@ const objectFromContent = (content: string): object | null => {
     }
 };
 
+const repostedId = (e: Event): string | null => {
+    const id = repostedIdByTag(e);
+    if (id) {
+        return id;
+    }
+
+    // also try content (Damus/Amethyst style https://github.com/nostr-protocol/nips/pull/397#issuecomment-1488867364 )
+    const r = objectFromContent(e.content);
+    if (r !== null && "id" in r && typeof r.id === "string") {
+        // FIXME: trusting content!! but verifying needs async... how?
+        //        invading verify to content on above async-verify?
+        return r.id;
+    }
+
+    return null;
+};
+
 const reactedIdFromTag = (e: Event): string | null => {
     let etag: string | null = null;
     for (const tag of e.tags) {
@@ -106,37 +123,19 @@ const reactedIdFromTag = (e: Event): string | null => {
 };
 
 const getPostId = (e: Event): string | null => {
-    const k = e.kind;
-    if (k === Kinds.repost) {
-        const id = repostedIdByTag(e);
-        if (id) {
-            return id;
+    switch (e.kind) {
+        case Kinds.reaction: {
+            return reactedIdFromTag(e);
         }
-
-        // also try content (Damus/Amethyst style https://github.com/nostr-protocol/nips/pull/397#issuecomment-1488867364 )
-        const r = objectFromContent(e.content);
-        if (r !== null && "id" in r && typeof r.id === "string") {
-            // FIXME: trusting content!! but verifying needs async... how?
-            //        invading verify to content on above async-verify?
-            return r.id;
-        }
-
-        return null;
-    }
-    if (k === Kinds.reaction) {
-        const tid = reactedIdFromTag(e);
-        if (!tid) {
+        case Kinds.delete: {
+            // delete is another layer; no originate event.
             return null;
         }
-
-        return tid;
+        default: {
+            // post, dm, repost or unknown... itself is a post.
+            return e.id;
+        }
     }
-    if (k === Kinds.delete) {
-        // delete is another layer; no originate event.
-        return null;
-    }
-    // post, dm, repost or unknown... itself is a post.
-    return e.id;
 };
 
 export class NostrWorker {
@@ -150,7 +149,7 @@ export class NostrWorker {
     pubkey: string | null = null;
     profiles = new Map<string, { profile: Event | null, contacts: Event | null; relays: Event | null; }>();
     onHealthy = new SimpleEmitter<MuxRelayEvent>();
-    receiveEmitter = new Map<string, Emitter<null>>();
+    receiveEmitter = new Map<string, Emitter<string>>();
     addq: { name: string, messages: FilledEventMessagesFromRelay; }[] = [];
     fetchq: { filter: Filter, onComplete: (receives: EventMessageFromRelay) => void; }[] = [];
 
@@ -271,6 +270,7 @@ export class NostrWorker {
             // removed
             this.mux.unSubscribe(sub.sid);
             this.subs.delete(name);
+            this.postStreams.delete(name);
         }
 
         for (const [name, filters] of subs.entries()) {
@@ -280,6 +280,8 @@ export class NostrWorker {
 
                 // changed; unsubscribe to override (nostr protocol supports override but nostr-mux silently rejects it)
                 this.mux.unSubscribe(sub.sid);
+            } else {
+                this.postStreams.set(name, []);
             }
 
             // TODO: we should intro global async verify/add queue?
@@ -301,12 +303,12 @@ export class NostrWorker {
         const ev = finishEvent(etl, sk);
         // TODO
     }
-    addListener(name: string, fn: () => void) {
+    addListener(name: string, fn: (name: string) => void) {
         const emitter = this.receiveEmitter.get(name) || new SimpleEmitter();
         this.receiveEmitter.set(name, emitter);
         emitter.listen(fn);
     }
-    removeListener(name: string, fn: () => void) {
+    removeListener(name: string, fn: (name: string) => void) {
         const emitter = this.receiveEmitter.get(name);
         if (!emitter) {
             return;
@@ -321,6 +323,32 @@ export class NostrWorker {
                 console.error(e);
                 this.fetchq.splice(0);
             });
+        }
+    }
+    getPost(id: string) {
+        return this.posts.get(id);
+    }
+    setHasread(id: string, hasRead: boolean) {
+        const post = this.posts.get(id);
+        if (!post) {
+            return undefined;
+        }
+        if (post.hasread === hasRead) {
+            return post;
+        }
+        const ev = post.event?.event?.event;
+        if (!ev) {
+            return undefined;
+        }
+
+        post.hasread = hasRead;
+
+        for (const [name, tab] of this.postStreams.entries()) {
+            const cursor = postindex(tab, ev);
+            if (cursor === null) {
+                continue;
+            }
+            this.receiveEmitter.get(name)?.emit(name);
         }
     }
 
@@ -571,6 +599,7 @@ export class NostrWorker {
         // then post layer.
         const tap = this.postStreams.get(name);
         invariant(tap, `no postStream for ${name}`);
+        let posted = false;
         for (const recv of okrecv.values()) {
             if (!recv.event) {
                 // we cannot update stream without the event...
@@ -592,13 +621,18 @@ export class NostrWorker {
             };
             this.posts.set(pid, post);
 
+            posted = true;
+
             if (recv.event.event.kind === Kinds.repost) {
                 post.event = recv;
-                const target = this.events.get(pid);
-                if (target) {
-                    post.reposttarget = target;
-                } else {
-                    // TODO: fetch request with remembering ev.id (repost N:1 target)
+                const tid = repostedId(recv.event.event);
+                if (tid) {
+                    const target = this.events.get(tid);
+                    if (target) {
+                        post.reposttarget = target;
+                    } else {
+                        // TODO: fetch request with remembering ev.id (repost N:1 target)
+                    }
                 }
             } else if (recv.event.event.kind === Kinds.reaction) {
                 if (recv.event.event.pubkey === this.pubkey) {
@@ -618,6 +652,10 @@ export class NostrWorker {
                     tap.splice(cursor.index, 0, post);
                 }
             }
+        }
+
+        if (posted) {
+            this.receiveEmitter.get(name)?.emit(name);
         }
     }
 }

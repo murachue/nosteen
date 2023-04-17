@@ -22,9 +22,10 @@ export const bsearchi = <T>(arr: T[], comp: (x: T) => boolean): number => {
 export const postindex = <T extends Post | WritableDraft<Post>, U extends Event | WritableDraft<Event>>(posts: T[], event: U): number | null => {
     const evid = event.id;
     const cat = event.created_at;
+    const l = posts.length;
     for (
         let i = bsearchi(posts, p => cat <= p.event!.event!.event.created_at);
-        posts[i].event!.event!.event.created_at === cat;
+        i < l && posts[i].event!.event!.event.created_at === cat;
         i++
     ) {
         if (posts[i].event!.event!.event.id === evid) {
@@ -39,7 +40,8 @@ export const postupsertindex = <T extends Post | WritableDraft<Post>, U extends 
     const evid = event.id;
     const cat = event.created_at;
     let i = bsearchi(posts, p => cat <= p.event!.event!.event.created_at);
-    while (posts[i].event!.event!.event.created_at === cat) {
+    const l = posts.length;
+    while (i < l && posts[i].event!.event!.event.created_at === cat) {
         if (posts[i].event!.event!.event.id === evid) {
             return { type: "update", index: i };
         }

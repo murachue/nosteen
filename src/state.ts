@@ -18,12 +18,12 @@ const tabinit: {
         until: number;
         limit: number;
     }>[];
-    selected: string;
+    selected: number | null;
 }[] = [
-        { name: "Recent", filter: "recent", selected: "" },
-        { name: "Reply", filter: "reply", selected: "" },
-        { name: "DM", filter: "dm", selected: "" },
-        { name: "Favs", filter: "favs", selected: "" },
+        { name: "Recent", filter: "recent", selected: null },
+        { name: "Reply", filter: "reply", selected: null },
+        { name: "DM", filter: "dm", selected: null },
+        { name: "Favs", filter: "favs", selected: null },
         // {
         //     name: "me",
         //     filter: [
@@ -32,7 +32,7 @@ const tabinit: {
         //     ],
         //     selected: "",
         // },
-        { name: "global", filter: [{ kinds: [1, 6, 7], limit: 20 }], selected: "" },
+        { name: "global", filter: [{ kinds: [1, 6, 7], limit: 100 }], selected: null },
     ];
 export default {
     preferences: {

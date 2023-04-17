@@ -1,19 +1,25 @@
 import Identicon from "identicon.js";
+import produce from "immer";
 import { useAtom } from "jotai";
-import { FC, memo, useRef, useState } from "react";
+import { FC, Ref, forwardRef, memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import TabBar from "../components/tabbar";
+import { useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { Post } from "../types";
-import produce from "immer";
-import { bsearchi, postindex } from "../util";
+import VList from "react-virtualized-listview";
 
-const TheRow: FC<{ post: Post; selected: Post | null; }> = memo(({ post, selected }) => {
+const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorrepost] = useAtom(state.preferences.colors.repost);
+    const [colorreacted] = useAtom(state.preferences.colors.reacted);
+    const [colormypost] = useAtom(state.preferences.colors.mypost);
+    const [colorreplytome] = useAtom(state.preferences.colors.replytome);
+    const [colorthempost] = useAtom(state.preferences.colors.thempost);
+    const [colorthemreplyto] = useAtom(state.preferences.colors.themreplyto);
     const [colorselbg] = useAtom(state.preferences.colors.selectedbg);
     const [colorseltext] = useAtom(state.preferences.colors.selectedtext);
     const [fonttext] = useAtom(state.preferences.fonts.text);
@@ -24,16 +30,40 @@ const TheRow: FC<{ post: Post; selected: Post | null; }> = memo(({ post, selecte
         if (post === selected) {
             return [colorselbg, colorseltext];
         }
-        if (post.event!.event!.event.pubkey === selected?.event!.event!.event.pubkey) {
 
-        }
+        let bg = undefined;
+        let text = colornormal;
+
         if (post.event!.event!.event.kind === 6) {
-            return [undefined, colorrepost];
+            text = colorrepost;
         }
-        return [undefined, colornormal];
+        if (post.myreaction?.event) {
+            text = colorreacted;
+            // TODO: also check for reposted
+        }
+
+        const evpub = ev.pubkey;
+        const evid = ev.id;
+        const selev = selected?.event!.event!.event;
+        const selpub = selev?.pubkey;
+        if (evpub === selpub) {
+            bg = colorthempost;
+        }
+        if (evpub === mypubkey) {
+            bg = colormypost;
+        }
+        // XXX: O(NM) is heavy
+        if (selev && selev.tags.findIndex(t => t[0] === "e" && t[1] === evid) !== -1) {
+            bg = colorthemreplyto;
+        }
+        if (ev.tags.findIndex(t => t[0] === "p" && t[1] === mypubkey) !== -1) {
+            bg = colorreplytome;
+        }
+
+        return [bg, text];
     })();
 
-    return <div style={{ display: "flex", width: "100%", alignItems: "center", background: bg, color: text, font: fonttext }}>
+    return <div ref={ref} style={{ display: "flex", width: "100%", alignItems: "center", background: bg, color: text, font: fonttext }}>
         <TR>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
@@ -47,7 +77,9 @@ const TheRow: FC<{ post: Post; selected: Post | null; }> = memo(({ post, selecte
             </TD>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {<img style={{ maxWidth: "16px" }} src={`data:image/png;base64,${new Identicon(ev.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}
+                    {<img style={{ maxWidth: "16px" }} src={`data:image/png;base64,${new Identicon(
+                        post.reposttarget?.event?.event.pubkey || ev.pubkey,
+                        { background: [0, 0, 0, 0] }).toString()}`} />}
                 </div>
             </TD>
             <TD>
@@ -62,16 +94,24 @@ const TheRow: FC<{ post: Post; selected: Post | null; }> = memo(({ post, selecte
             </TD>
         </TR>
     </div>;
-});
+}));
 
-const TheList: FC<{ posts: Post[]; selection: Post | null; onSelect?: (i: string) => void; }> = ({ posts, selection, onSelect }) => {
+const TheList = forwardRef<HTMLDivElement, {
+    posts: Post[];
+    mypubkey: string | undefined;
+    selection: Post | null;
+    onSelect?: (i: number) => void;
+    selref?: Ref<HTMLDivElement>;
+    lastref?: Ref<HTMLDivElement>;
+}>(({ posts, mypubkey, selection, onSelect, selref, lastref }, ref) => {
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontui] = useAtom(state.preferences.fonts.ui);
+    const lasti = posts.length - 1;
 
     return <div style={{ flex: "1 0 0px", height: "0" }}>
         <ListView>
-            <div tabIndex={0} style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}>
+            <div ref={ref} tabIndex={0} style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}>
                 <div style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg }}>
                     <TH>
                         <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>m</div></TD>
@@ -83,10 +123,13 @@ const TheList: FC<{ posts: Post[]; selection: Post | null; onSelect?: (i: string
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
                     <TBody>
-                        {posts.map(p => {
+                        {posts.map((p, i) => {
                             const evid = p.event!.event!.event.id;
-                            return <div key={evid} onPointerDown={e => onSelect && onSelect(evid)}>
-                                <TheRow post={p} selected={selection} />
+                            return <div
+                                key={evid}
+                                ref={i === lasti ? lastref : p === selection ? selref : undefined} // TODO: what if selected is last?
+                                onPointerDown={e => onSelect && onSelect(i)}>
+                                <TheRow post={p} mypubkey={mypubkey} selected={selection} />
                             </div>;
                         })}
                     </TBody>
@@ -94,7 +137,7 @@ const TheList: FC<{ posts: Post[]; selection: Post | null; onSelect?: (i: string
             </div>
         </ListView>
     </div>;
-};
+});
 
 const timefmt0 = (v: number, t: string) => v.toString().padStart(t.length, "0");
 const timefmt = (date: Date, fmt: string) => {
@@ -141,6 +184,7 @@ export default () => {
     const navigate = useNavigate();
     const data = useParams();
     const name = data.name || "";
+    const [account] = useAtom(state.preferences.account);
     const [tabs, setTabs] = useAtom(state.tabs);
     const [colorbase] = useAtom(state.preferences.colors.base);
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -148,8 +192,13 @@ export default () => {
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
+    const noswk = useNostrWorker();
     const [posts, setPosts] = useAtom(state.posts);
     const [relayinfo] = useAtom(state.relayinfo);
+    const listref = useRef<HTMLDivElement>(null);
+    const selref = useRef<HTMLDivElement>(null);
+    const lastref = useRef<HTMLDivElement>(null);
+    const [scrollto, setScrollto] = useState({ ref: "", t: 0 }); // just another object instance is enough, but easier for eyeball debugging.
 
     const [status, setStatus] = useState("status...");
 
@@ -162,16 +211,63 @@ export default () => {
     const [postdraft, setPostdraft] = useState("");
     const posteditor = useRef<HTMLInputElement>(null);
 
-    const tap = posts.bytab.get(name)!;
-    const selpost = tab.selected === "" ? undefined : posts.allposts.get(tab.selected);
+    // const tap = posts.bytab.get(name)!;
+    const tap = useSyncExternalStore(
+        (onStoreChange) => {
+            const onChange = (nm: string) => { nm === name && onStoreChange(); };
+            noswk!.addListener(name, onChange);
+            return () => noswk!.removeListener(name, onChange);
+        },
+        () => {
+            return noswk!.getPostStream(name)!;
+        },
+    );
+    useEffect(() => {
+        const onChange = (nm: string) => {
+            if (nm !== name) return;
+            const list = listref.current;
+            if (!list) return;
+            const last = lastref.current;
+            if (!last) return;
+            const scrollBottom = list.scrollTop + list.clientHeight;
+            if (last.offsetTop < scrollBottom) {
+                setScrollto({ ref: "last", t: Date.now() });
+            }
+        };
+        noswk!.addListener(name, onChange);
+        return () => noswk!.removeListener(name, onChange);
+    }, [name, listref, noswk]);
+    const selpost = tab.selected === null ? undefined : tap[tab.selected];
     const selev = selpost?.event;
     const selrpev = selev && selpost.reposttarget;
+    const onselect = useCallback((i: number) => {
+        const s = tap[i].id;
+        noswk!.setHasread(s, true);
+        setTabs(produce(draft => {
+            const tab = draft.find(t => t.name === name)!;
+            tab.selected = i;
+        }));
+        setScrollto({ ref: "sel", t: Date.now() });
+    }, [tap, noswk]);
+    useEffect(() => {
+        switch (scrollto.ref) {
+            case "ref": {
+                selref.current?.scrollIntoView();
+                break;
+            }
+            case "last": {
+                lastref.current?.scrollIntoView();
+                break;
+            }
+        }
+    }, [scrollto]);
     return <>
         <Helmet>
             <title>{name} - nosteen</title>
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }} onKeyDown={e => {
-            if (e.currentTarget.tagName === "input" || e.currentTarget.tagName === "textarea" || e.currentTarget.tagName === "button") {
+            const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
+            if (tagName === "input" || tagName === "textarea" || tagName === "button") {
                 return;
             }
             switch (e.key) {
@@ -188,48 +284,16 @@ export default () => {
                     break;
                 }
                 case "j": {
-                    const si = selpost && (postindex(tap, selpost.event!.event!.event) ?? undefined);
-                    const i = si === undefined ? tap.length - 1 : si + 1;
+                    const i = tab.selected === null ? tap.length - 1 : tab.selected + 1;
                     if (i < tap.length) {
-                        // TODO: commonize with onClick, scroll to new Row?
-                        const ev = tap[i].event!.event!.event;
-                        const evid = ev.id;
-                        setTabs(produce(draft => {
-                            draft.find(t => t.name === name)!.selected = evid;
-                        }));
-                        setPosts(produce(draft => {
-                            const p = draft.allposts.get(evid)!;
-                            p.hasread = true;
-                            for (const tap of draft.bytab.values()) {
-                                const i = postindex(tap, ev);
-                                if (i !== null) {
-                                    tap[i] = p;
-                                }
-                            }
-                        }));
+                        onselect(i);
                     }
                     break;
                 }
                 case "k": {
-                    const si = selpost && (postindex(tap, selpost.event!.event!.event) ?? undefined);
-                    const i = si === undefined ? tap.length - 1 : si - 1;
+                    const i = tab.selected === null ? tap.length - 1 : tab.selected - 1;
                     if (0 <= i) {
-                        // TODO: commonize with onClick, scroll to new Row?
-                        const ev = tap[i].event!.event!.event;
-                        const evid = ev.id;
-                        setTabs(produce(draft => {
-                            draft.find(t => t.name === name)!.selected = evid;
-                        }));
-                        setPosts(produce(draft => {
-                            const p = draft.allposts.get(evid)!;
-                            p.hasread = true;
-                            for (const tap of draft.bytab.values()) {
-                                const i = postindex(tap, ev);
-                                if (i !== null) {
-                                    tap[i] = p;
-                                }
-                            }
-                        }));
+                        onselect(i);
                     }
                     break;
                 }
@@ -252,45 +316,15 @@ export default () => {
                 }
                 case "g": {
                     const i = 0;
-                    if (0 < tap.length) {
-                        // TODO: commonize with onClick, scroll to new Row?
-                        const ev = tap[i].event!.event!.event;
-                        const evid = ev.id;
-                        setTabs(produce(draft => {
-                            draft.find(t => t.name === name)!.selected = evid;
-                        }));
-                        setPosts(produce(draft => {
-                            const p = draft.allposts.get(evid)!;
-                            p.hasread = true;
-                            for (const tap of draft.bytab.values()) {
-                                const i = postindex(tap, ev);
-                                if (i !== null) {
-                                    tap[i] = p;
-                                }
-                            }
-                        }));
+                    if (i < tap.length) {
+                        onselect(i);
                     }
                     break;
                 }
                 case "G": {
                     const i = tap.length - 1;
-                    if (0 < i) {
-                        // TODO: commonize with onClick, scroll to new Row?
-                        const ev = tap[i].event!.event!.event;
-                        const evid = ev.id;
-                        setTabs(produce(draft => {
-                            draft.find(t => t.name === name)!.selected = evid;
-                        }));
-                        setPosts(produce(draft => {
-                            const p = draft.allposts.get(evid)!;
-                            p.hasread = true;
-                            for (const tap of draft.bytab.values()) {
-                                const i = postindex(tap, ev);
-                                if (i !== null) {
-                                    tap[i] = p;
-                                }
-                            }
-                        }));
+                    if (0 <= i) {
+                        onselect(i);
                     }
                     break;
                 }
@@ -337,50 +371,21 @@ export default () => {
                         }
                     }
                     if (i < tapl) {
-                        // TODO: commonize with onClick, scroll to new Row?
-                        const ev = tap[i].event!.event!.event;
-                        const evid = ev.id;
-                        setTabs(produce(draft => {
-                            draft.find(t => t.name === name)!.selected = evid;
-                        }));
-                        setPosts(produce(draft => {
-                            const p = draft.allposts.get(evid)!;
-                            p.hasread = true;
-                            for (const tap of draft.bytab.values()) {
-                                const i = postindex(tap, ev);
-                                if (i !== null) {
-                                    tap[i] = p;
-                                }
-                            }
-                        }));
+                        onselect(i);
                     }
                     break;
                 }
             }
         }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column" }}>
-                {!tap ? <p>?invariant failure: posts for tab not found</p> : <TheList posts={tap} selection={selpost || null} onSelect={s => {
-                    setTabs(produce(draft => {
-                        const tab = draft.find(t => t.name === name)!;
-                        tab.selected = s;
-                    }));
-                    setPosts(produce(draft => {
-                        const post = draft.allposts.get(s)!;
-                        post.hasread = true;
-                        const tap = draft.bytab.get(name)!;
-                        const i = postindex(tap, post.event!.event!.event);
-                        if (i !== null) {
-                            tap[i] = post;
-                        }
-                    }));
-                }} />}
+                {<TheList posts={tap || []} mypubkey={account?.pubkey} selection={selpost || null} ref={listref} selref={selref} lastref={lastref} onSelect={onselect} />}
                 <div>
                     <TabBar>
                         {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
                     </TabBar>
                 </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "row", background: coloruibg, height: "100px" }}>
+            <div style={{ display: "flex", flexDirection: "row", background: coloruibg }}>
                 <div>
                     <div style={{ width: "48px", height: "48px", border: "1px solid", borderColor: coloruitext, margin: "2px" }}>
                         {/* npubhex identicon makes icon samely for vanity... */}
@@ -396,14 +401,14 @@ export default () => {
                             return timefmt(d, "YYYY-MM-DD hh:mm:ss");
                         })()}</div>
                     </div>
-                    <div style={{ flex: "1", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
+                    <div style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
                         {!selev ? "text..." : (selrpev?.event?.event.content || selev?.event?.event.content)}
                     </div>
                 </div>
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
             </div>
             <div style={{ display: "flex", alignItems: "center", background: coloruibg }}>
-                <input ref={posteditor} type="text" style={{ flex: "1", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} onKeyDown={e => { /* e.stopPropagation(); return false; */ }} />
+                <input ref={posteditor} type="text" style={{ flex: "1", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} />
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
@@ -417,7 +422,7 @@ export default () => {
                         <div style={{ height: "1.5em" }}>#bar</div>
                         <div style={{ height: "1.5em", display: "flex", flexFlow: "row", alignItems: "center" }}>
                             #
-                            <input type="text" value="" placeholder="hashtag" style={{ flex: "1", boxSizing: "border-box", font: fontui }} onChange={e => { }} onKeyDown={e => e.stopPropagation()} />
+                            <input type="text" value="" placeholder="hashtag" style={{ flex: "1", boxSizing: "border-box", font: fontui }} onChange={e => { }} />
                         </div>
                     </div>
                 </div>

@@ -1,6 +1,6 @@
 import { enableMapSet } from 'immer';
 import { useAtom } from 'jotai/react';
-import { Filter, RelayEvent } from 'nostr-mux';
+import { RelayEvent } from 'nostr-mux';
 import React, { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
@@ -24,11 +24,6 @@ const App = () => {
     const [mux] = useAtom(state.relaymux);
     const [tabs] = useAtom(state.tabs);
     const noswk = useNostrWorker();
-    type Sub = {
-        name: string;
-        filters: [Filter, ...Filter[]];
-        sid: string;
-    };
 
     // TODO: unsub on unload, but useEffect.return is overkill
     useEffect(() => {
