@@ -84,12 +84,12 @@ const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | 
             </TD>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {ev.pubkey}
+                    {post.reposttarget ? `${post.reposttarget.event!.event.pubkey} (RT: ${ev.pubkey})` : ev.pubkey}
                 </div>
             </TD>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {/* ev.id */}{ev.content}
+                    {post.reposttarget?.event?.event.content || ev.content}
                 </div>
             </TD>
         </TR>
@@ -188,6 +188,7 @@ export default () => {
     const [tabs, setTabs] = useAtom(state.tabs);
     const [colorbase] = useAtom(state.preferences.colors.base);
     const [colornormal] = useAtom(state.preferences.colors.normal);
+    const [colorrepost] = useAtom(state.preferences.colors.repost);
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
@@ -392,9 +393,15 @@ export default () => {
                         {!selev ? <></> : <img style={{ maxWidth: "100%" }} src={`data:image/png;base64,${new Identicon(selrpev?.event?.event?.pubkey || selev.event!.event.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}
                     </div>
                 </div>
-                <div style={{ flex: "1", display: "flex", flexDirection: "column" }}>
+                <div style={{ flex: "1", /* display: "flex", flexDirection: "column" */ }}>
                     <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex" }}>
-                        <div style={{ flex: "1" }}>{!selev ? "name..." : (selrpev?.event?.event?.pubkey || selev.event!.event.pubkey)}</div>
+                        <div style={{ flex: "1", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {!selev ? "name..." : (
+                                selpost.reposttarget
+                                    ? `${selpost.reposttarget.event!.event.pubkey} (RT: ${selev.event!.event.pubkey})`
+                                    : selev.event!.event.pubkey
+                            )}
+                        </div>
                         <div>{!selev ? "time..." : (() => {
                             const t = selrpev ? selrpev.event!.event.created_at : selev.event!.event.created_at;
                             const d = new Date(t * 1000);
