@@ -221,7 +221,9 @@ class PostStreamWrapper {
     }
 }
 
-export default () => {
+const Tabsview: FC<{
+    setGlobalOnKeyDown: React.Dispatch<React.SetStateAction<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>>;
+}> = ({ setGlobalOnKeyDown }) => {
     const navigate = useNavigate();
     const data = useParams();
     const name = data.name || "";
@@ -325,11 +327,8 @@ export default () => {
             }
         }
     }, [scrollto]);
-    return <>
-        <Helmet>
-            <title>{name} - nosteen</title>
-        </Helmet>
-        <div style={{ display: "flex", flexDirection: "column", height: "100%" }} onKeyDown={e => {
+    useEffect(() => {
+        setGlobalOnKeyDown((x: React.DOMAttributes<HTMLDivElement>["onKeyDown"]) => (e: React.KeyboardEvent<HTMLDivElement>) => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
             if (tagName === "input" || tagName === "textarea" || tagName === "button") {
                 return;
@@ -452,7 +451,14 @@ export default () => {
                     break;
                 }
             }
-        }}>
+        });
+        return () => setGlobalOnKeyDown(undefined);
+    }, [tabs, tap, onselect]);
+    return <>
+        <Helmet>
+            <title>{name} - nosteen</title>
+        </Helmet>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default" }}>
                 {<TheList posts={tap?.posts || []} mypubkey={account?.pubkey} selection={selpost || null} ref={listref} selref={selref} lastref={lastref} onSelect={onselect} />}
                 <div>
@@ -512,3 +518,4 @@ export default () => {
         </div>
     </>;
 };
+export default Tabsview;

@@ -1,9 +1,10 @@
-import { Helmet } from "react-helmet";
 import { useAtom } from "jotai";
+import { FC } from "react";
+import { Helmet } from "react-helmet";
 import { Outlet } from "react-router";
 import state from "../state";
 
-const Global = () => {
+const Global: FC<Pick<React.DOMAttributes<HTMLDivElement>, "onKeyDown">> = ({ onKeyDown }) => {
     const [colorBase] = useAtom(state.preferences.colors.base);
     return <div style={{
         position: "fixed",
@@ -13,7 +14,7 @@ const Global = () => {
         right: "0",
         backgroundColor: colorBase,
         color: "#ccc"
-    }}>
+    }} onKeyDown={onKeyDown} tabIndex={-1}>{/* needs tabIndex? https://qiita.com/roottool/items/50b8ab5e5e1de1520e09 */}
         <Helmet>
             <title>nosteen</title>
         </Helmet>

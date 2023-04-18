@@ -1,7 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Mux, Relay } from "nostr-mux";
-import { DeletableEvent, Kinds, Post, ReceivedEvent } from "./types";
+import { DeletableEvent, Kinds, Post } from "./types";
 
 const tabinit: {
     name: string;

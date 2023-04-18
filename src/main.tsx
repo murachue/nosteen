@@ -1,7 +1,7 @@
 import { enableMapSet } from 'immer';
 import { useAtom } from 'jotai/react';
 import { RelayEvent } from 'nostr-mux';
-import React, { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
@@ -23,6 +23,7 @@ const App = () => {
     const [prefaccount] = useAtom(state.preferences.account);
     const [mux] = useAtom(state.relaymux);
     const [tabs] = useAtom(state.tabs);
+    const [globalOnKeyDown, setGlobalOnKeyDown] = useState<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>(undefined);
     const noswk = useNostrWorker();
 
     // TODO: unsub on unload, but useEffect.return is overkill
@@ -66,10 +67,10 @@ const App = () => {
 
     return <HashRouter>
         <Routes>
-            <Route element={<Global />} errorElement={<ErrorPage />}>
+            <Route element={<Global onKeyDown={globalOnKeyDown} />} errorElement={<ErrorPage />}>
                 <Route path="/" element={<Root />} />
                 <Route element={<MainLayout />}>
-                    <Route path="/tab/:name?" element={<TabsView />} />
+                    <Route path="/tab/:name?" element={<TabsView setGlobalOnKeyDown={setGlobalOnKeyDown} />} />
                     <Route path="test" element={<TestApp />} />
                 </Route>
                 <Route path="/preferences" element={<Preferences />} />
