@@ -49,3 +49,16 @@ export const postupsertindex = <T extends Post | WritableDraft<Post>, U extends 
     }
     return { type: "insert", index: i };
 };
+
+export const getmk = <K, V>(map: Map<K, V>, key: K, make: () => V) => {
+    const val = map.get(key);
+    // don't support falsy value
+    if (val) {
+        return val;
+    }
+
+    const newval = make();
+    map.set(key, newval);
+
+    return newval;
+};

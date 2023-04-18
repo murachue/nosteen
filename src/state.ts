@@ -1,7 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Mux, Relay } from "nostr-mux";
-import { DeletableEvent, Post, ReceivedEvent } from "./types";
+import { DeletableEvent, Kinds, Post, ReceivedEvent } from "./types";
 
 const tabinit: {
     name: string;
@@ -32,7 +32,7 @@ const tabinit: {
         //     ],
         //     selected: "",
         // },
-        { name: "global", filter: [{ kinds: [1, 6, 7], limit: 100 }], selected: null },
+        { name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost, Kinds.reaction], limit: 100 }], selected: null },
     ];
 export default {
     preferences: {

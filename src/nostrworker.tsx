@@ -207,12 +207,12 @@ export class NostrWorker {
                         kinds: [Kinds.post, Kinds.delete, Kinds.repost],
                         limit: 30,
                     },
-                    // and my reactions... processed by "favs" tab
-                    // {
-                    //     authors: [this.pubkey],
-                    //     kinds: [Kinds.reaction],
-                    //     limit: 30,
-                    // },
+                    // and my reactions (duped with "favs")
+                    {
+                        authors: [this.pubkey],
+                        kinds: [Kinds.reaction],
+                        limit: 30,
+                    },
                 ];
             }
             case "reply": {

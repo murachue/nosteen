@@ -1,16 +1,17 @@
 import Identicon from "identicon.js";
 import produce from "immer";
 import { useAtom } from "jotai";
-import { FC, Ref, forwardRef, memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { FC, Ref, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import TabBar from "../components/tabbar";
-import { useNostrWorker } from "../nostrworker";
+import { NostrWorker, useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { Post } from "../types";
 import VList from "react-virtualized-listview";
+import { getmk } from "../util";
 
 const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -181,6 +182,33 @@ const timefmt = (date: Date, fmt: string) => {
     }
 };
 
+class PostStreamWrapper {
+    private readonly listeners = new Map<string, Map<(name: string) => void, (name: string) => void>>();
+    private readonly streams = new Map<string, Post[]>();
+    constructor(private readonly noswk: NostrWorker) { }
+    addListener(name: string, onChange: (name: string) => void) {
+        const listener = (name: string): void => {
+            const stream = this.noswk.getPostStream(name);
+            if (stream) {
+                this.streams.set(name, [...stream]); // shallow copy to notify immutable change
+            }
+            onChange(name);
+        };
+        getmk(this.listeners, name, () => new Map()).set(onChange, listener);
+        this.noswk.addListener(name, listener);
+    }
+    removeListener(name: string, onChange: (name: string) => void) {
+        const listener = this.listeners.get(name)?.get(onChange);
+        if (!listener) {
+            return;
+        }
+        this.noswk.removeListener(name, listener);
+    }
+    getPostStream(name: string) {
+        return this.streams.get(name);
+    }
+}
+
 export default () => {
     const navigate = useNavigate();
     const data = useParams();
@@ -195,6 +223,7 @@ export default () => {
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
     const noswk = useNostrWorker();
+    const streams = useMemo(() => noswk && new PostStreamWrapper(noswk), [noswk]);
     const [posts, setPosts] = useAtom(state.posts);
     const [relayinfo] = useAtom(state.relayinfo);
     const listref = useRef<HTMLDivElement>(null);
@@ -217,13 +246,12 @@ export default () => {
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
             const onChange = (nm: string) => { nm === name && onStoreChange(); };
-            noswk!.addListener(name, onChange);
-            return () => noswk!.removeListener(name, onChange);
-        }, []),
+            streams!.addListener(name, onChange);
+            return () => streams!.removeListener(name, onChange);
+        }, [streams, name]),
         useCallback(() => {
-            // FIXME: this must return same immutable value while rendering
-            return noswk!.getPostStream(name)!;
-        }, []),
+            return streams!.getPostStream(name)!;
+        }, [streams, name]),
     );
     useEffect(() => {
         const onChange = (nm: string) => {
@@ -237,9 +265,9 @@ export default () => {
                 setScrollto({ ref: "last", t: Date.now() });
             }
         };
-        noswk!.addListener(name, onChange);
-        return () => noswk!.removeListener(name, onChange);
-    }, [name, listref, noswk]);
+        streams!.addListener(name, onChange);
+        return () => streams!.removeListener(name, onChange);
+    }, [name, listref, streams]);
     const selpost = tab.selected === null ? undefined : tap[tab.selected];
     const selev = selpost?.event;
     const selrpev = selev && selpost.reposttarget;
