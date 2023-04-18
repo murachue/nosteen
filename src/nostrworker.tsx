@@ -138,6 +138,13 @@ const getPostId = (e: Event): string | null => {
     }
 };
 
+export type NostrWorkerListenerMessage = {
+    name: string;
+    type: "event" | "eose" | "hasread";
+};
+
+const isFilledEventMessagesFromRelay = (ms: EventMessageFromRelay[]): ms is FilledEventMessagesFromRelay => 0 < ms.length;
+
 export class NostrWorker {
     mux = new Mux();
     relays = new Map<string, Relay>();
@@ -145,12 +152,13 @@ export class NostrWorker {
     // TODO: GC/LRUify events and posts. copy-gc from postStreams?
     events = new Map<string, DeletableEvent>();
     posts = new Map<string, Post>();
-    postStreams = new Map<string, Post[]>(); // order by created_at TODO: also received_at for LRU considering fetching older post that is mentioned?
+    nunreads = 0;
+    postStreams = new Map<string, { posts: Post[], nunreads: number; }>(); // order by created_at TODO: also received_at for LRU considering fetching older post that is mentioned?
     pubkey: string | null = null;
     profiles = new Map<string, { profile: Event | null, contacts: Event | null; relays: Event | null; }>();
     onHealthy = new SimpleEmitter<MuxRelayEvent>();
-    receiveEmitter = new Map<string, Emitter<string>>();
-    addq: { name: string, messages: FilledEventMessagesFromRelay; }[] = [];
+    receiveEmitter = new Map<string, Emitter<NostrWorkerListenerMessage>>();
+    addq: { name: string, messages: EventMessageFromRelay[]; }[] = [];
     fetchq: { filter: Filter, onComplete: (receives: EventMessageFromRelay) => void; }[] = [];
 
     setRelays(newrelays: { url: string, read: boolean, write: boolean; }[]) {
@@ -281,7 +289,7 @@ export class NostrWorker {
                 // changed; unsubscribe to override (nostr protocol supports override but nostr-mux silently rejects it)
                 this.mux.unSubscribe(sub.sid);
             } else {
-                this.postStreams.set(name, []);
+                this.postStreams.set(name, { posts: [], nunreads: 0 });
             }
 
             // TODO: we should intro global async verify/add queue?
@@ -289,6 +297,7 @@ export class NostrWorker {
                 filters: filters,
                 enableBuffer: { flushInterval: 50 },
                 onEvent: receives => this.onReceive(name, receives),
+                onEose: subid => this.onReceive(name, []),
             });
             this.subs.set(name, {
                 filters,
@@ -306,12 +315,12 @@ export class NostrWorker {
         const ev = finishEvent(etl, sk);
         // TODO
     }
-    addListener(name: string, fn: (name: string) => void) {
+    addListener(name: string, fn: (msg: NostrWorkerListenerMessage) => void) {
         const emitter = this.receiveEmitter.get(name) || new SimpleEmitter();
         this.receiveEmitter.set(name, emitter);
         emitter.listen(fn);
     }
-    removeListener(name: string, fn: (name: string) => void) {
+    removeListener(name: string, fn: (msg: NostrWorkerListenerMessage) => void) {
         const emitter = this.receiveEmitter.get(name);
         if (!emitter) {
             return;
@@ -345,13 +354,15 @@ export class NostrWorker {
         }
 
         post.hasread = hasRead;
+        this.nunreads += hasRead ? -1 : 1;
 
         for (const [name, tab] of this.postStreams.entries()) {
-            const cursor = postindex(tab, ev);
+            const cursor = postindex(tab.posts, ev);
             if (cursor === null) {
                 continue;
             }
-            this.receiveEmitter.get(name)?.emit(name);
+            tab.nunreads += hasRead ? -1 : 1;
+            this.receiveEmitter.get(name)?.emit({ name, type: "hasread" });
         }
     }
 
@@ -388,7 +399,7 @@ export class NostrWorker {
         }
     }
 
-    private onReceive(name: string, messages: FilledEventMessagesFromRelay) {
+    private onReceive(name: string, messages: EventMessageFromRelay[]) {
         const first = this.addq.length === 0;
         this.addq.push({ name, messages });
         if (first) {
@@ -403,7 +414,11 @@ export class NostrWorker {
         while (this.addq.length) {
             // peek not pop to avoid launch receive proc while processing last.
             const { name, messages } = this.addq[0];
-            await this.receiveOneProc(name, messages);
+            if (isFilledEventMessagesFromRelay(messages)) {
+                await this.receiveOneProc(name, messages);
+            } else {
+                this.receiveEmitter.get(name)?.emit({ name, type: "eose" });
+            }
 
             this.addq.splice(0, 1);
         }
@@ -625,6 +640,7 @@ export class NostrWorker {
             this.posts.set(pid, post);
 
             posted = true;
+            const wasempty = !post.event;
 
             if (recv.event.event.kind === Kinds.repost) {
                 post.event = recv;
@@ -648,17 +664,20 @@ export class NostrWorker {
                 post.event = recv;
             }
 
+            this.nunreads += (wasempty && post.event) ? 1 : 0;
+
             // to support pop up events like reacting completely unrelated event, we must not premise that "post appears only on event is just filled."
             if (post.event) {
-                const cursor = postupsertindex(tap, post.event.event!.event);
+                const cursor = postupsertindex(tap.posts, post.event.event!.event);
                 if (cursor.type === "insert") {
-                    tap.splice(cursor.index, 0, post);
+                    tap.posts.splice(cursor.index, 0, post);
+                    tap.nunreads += (wasempty && post.event) ? 1 : 0;
                 }
             }
         }
 
         if (posted) {
-            this.receiveEmitter.get(name)?.emit(name);
+            this.receiveEmitter.get(name)?.emit({ name, type: "event" });
         }
     }
 }

@@ -1,6 +1,7 @@
 import { WritableDraft } from "immer/dist/internal";
-import { Post } from "./types";
 import { Event } from "nostr-mux";
+import { Ref } from "react";
+import { Post } from "./types";
 
 export const bsearchi = <T>(arr: T[], comp: (x: T) => boolean): number => {
     let left = 0;

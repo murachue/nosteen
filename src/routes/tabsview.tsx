@@ -7,7 +7,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import TabBar from "../components/tabbar";
-import { NostrWorker, useNostrWorker } from "../nostrworker";
+import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { Post } from "../types";
 import VList from "react-virtualized-listview";
@@ -129,7 +129,7 @@ const TheList = forwardRef<HTMLDivElement, {
                             const evid = p.event!.event!.event.id;
                             return <div
                                 key={evid}
-                                ref={i === lasti ? lastref : p === selection ? selref : undefined} // TODO: what if selected is last?
+                                ref={i === lasti ? lastref : p === selection ? selref : undefined} // TODO: react-merge-refs?
                                 onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}>
                                 <TheRow post={p} mypubkey={mypubkey} selected={selection} />
                             </div>;
@@ -183,21 +183,26 @@ const timefmt = (date: Date, fmt: string) => {
 };
 
 class PostStreamWrapper {
-    private readonly listeners = new Map<string, Map<(name: string) => void, (name: string) => void>>();
-    private readonly streams = new Map<string, Post[]>();
+    private readonly listeners = new Map<string, Map<(msg: NostrWorkerListenerMessage) => void, (msg: NostrWorkerListenerMessage) => void>>();
+    private readonly streams = new Map<string, ReturnType<typeof NostrWorker.prototype.getPostStream>>();
     constructor(private readonly noswk: NostrWorker) { }
-    addListener(name: string, onChange: (name: string) => void) {
-        const listener = (name: string): void => {
-            const stream = this.noswk.getPostStream(name);
-            if (stream) {
-                this.streams.set(name, [...stream]); // shallow copy to notify immutable change
+    addListener(name: string, onChange: (msg: NostrWorkerListenerMessage) => void) {
+        const listener = (msg: NostrWorkerListenerMessage): void => {
+            const { name, type } = msg;
+            if (type !== "eose") {
+                const stream = this.noswk.getPostStream(name);
+                if (stream) {
+                    // shallow copy to notify immutable change
+                    // FIXME: each element mutates, and that post may not re-rendered
+                    this.streams.set(name, { posts: [...stream.posts], nunreads: stream.nunreads });
+                }
             }
-            onChange(name);
+            onChange(msg);
         };
         getmk(this.listeners, name, () => new Map()).set(onChange, listener);
         this.noswk.addListener(name, listener);
     }
-    removeListener(name: string, onChange: (name: string) => void) {
+    removeListener(name: string, onChange: (msg: NostrWorkerListenerMessage) => void) {
         const listener = this.listeners.get(name)?.get(onChange);
         if (!listener) {
             return;
@@ -206,6 +211,13 @@ class PostStreamWrapper {
     }
     getPostStream(name: string) {
         return this.streams.get(name);
+    }
+    getAllPosts() {
+        // TODO: make immutable and listenable that needs noswk support
+        return this.noswk.getAllPosts();
+    }
+    getNunreads() {
+        return this.noswk.nunreads;
     }
 }
 
@@ -245,17 +257,18 @@ export default () => {
     // const tap = posts.bytab.get(name)!;
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
-            const onChange = (nm: string) => { nm === name && onStoreChange(); };
+            const onChange = (msg: NostrWorkerListenerMessage) => { msg.type !== "eose" && msg.name === name && onStoreChange(); };
             streams!.addListener(name, onChange);
             return () => streams!.removeListener(name, onChange);
         }, [streams, name]),
         useCallback(() => {
-            return streams!.getPostStream(name)!;
+            return streams!.getPostStream(name);
         }, [streams, name]),
     );
     useEffect(() => {
-        const onChange = (nm: string) => {
-            if (nm !== name) return;
+        const onChange = (msg: NostrWorkerListenerMessage) => {
+            if (msg.type !== "event") return;
+            if (msg.name !== name) return;
             const list = listref.current;
             if (!list) return;
             const last = lastref.current;
@@ -268,12 +281,13 @@ export default () => {
         streams!.addListener(name, onChange);
         return () => streams!.removeListener(name, onChange);
     }, [name, streams]);
-    const selpost = tab.selected === null ? undefined : tap[tab.selected];
+    const selpost = tab.selected === null ? undefined : tap?.posts[tab.selected];
     const selev = selpost?.event;
     const selrpev = selev && selpost.reposttarget;
     const onselect = useCallback((i: number) => {
-        const s = tap[i].id;
-        noswk!.setHasread(s, true);
+        if (tap) {
+            noswk!.setHasread(tap.posts[i].id, true);
+        }
         setTabs(produce(draft => {
             const tab = draft.find(t => t.name === name)!;
             tab.selected = i;
@@ -294,6 +308,7 @@ export default () => {
                 }
                 if (sel.offsetTop < list.scrollTop) {
                     sel.scrollIntoView(true);
+                    // TODO: don't overlap with sticky listview header
                     break;
                 }
                 const listScrollBottom = list.scrollTop + list.clientHeight;
@@ -322,6 +337,9 @@ export default () => {
             if (e.ctrlKey || e.altKey || e.metaKey) {
                 return;
             }
+            if (e.nativeEvent.isComposing) {
+                return;
+            }
             switch (e.key) {
                 case "a": {
                     const i = tabs.indexOf(tab);
@@ -336,14 +354,16 @@ export default () => {
                     break;
                 }
                 case "j": {
-                    const i = tab.selected === null ? tap.length - 1 : tab.selected + 1;
-                    if (i < tap.length) {
+                    if (!tap) break;
+                    const i = tab.selected === null ? tap.posts.length - 1 : tab.selected + 1;
+                    if (i < tap.posts.length) {
                         onselect(i);
                     }
                     break;
                 }
                 case "k": {
-                    const i = tab.selected === null ? tap.length - 1 : tab.selected - 1;
+                    if (!tap) break;
+                    const i = tab.selected === null ? tap.posts.length - 1 : tab.selected - 1;
                     if (0 <= i) {
                         onselect(i);
                     }
@@ -367,14 +387,16 @@ export default () => {
                     break;
                 }
                 case "g": {
+                    if (!tap) break;
                     const i = 0;
-                    if (i < tap.length) {
+                    if (i < tap.posts.length) {
                         onselect(i);
                     }
                     break;
                 }
                 case "G": {
-                    const i = tap.length - 1;
+                    if (!tap) break;
+                    const i = tap.posts.length - 1;
                     if (0 <= i) {
                         onselect(i);
                     }
@@ -415,22 +437,24 @@ export default () => {
                     break;
                 }
                 case " ": {
-                    const tapl = tap.length;
+                    if (!tap) break;
+                    const tapl = tap.posts.length;
                     let i: number;
                     for (i = 0; i < tapl; i++) {
-                        if (!tap[i].hasread) {
+                        if (!tap.posts[i].hasread) {
                             break;
                         }
                     }
                     if (i < tapl) {
                         onselect(i);
+                        e.preventDefault();
                     }
                     break;
                 }
             }
         }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default" }}>
-                {<TheList posts={tap || []} mypubkey={account?.pubkey} selection={selpost || null} ref={listref} selref={selref} lastref={lastref} onSelect={onselect} />}
+                {<TheList posts={tap?.posts || []} mypubkey={account?.pubkey} selection={selpost || null} ref={listref} selref={selref} lastref={lastref} onSelect={onselect} />}
                 <div>
                     <TabBar>
                         {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
@@ -471,7 +495,7 @@ export default () => {
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
-                <div style={{ flex: "1" }}>{status}</div>
+                <div style={{ flex: "1" }}>tab {tap?.nunreads}/{tap?.posts?.length}, all {streams?.getNunreads()}/{streams?.getAllPosts()?.size} | {status}</div>
                 <div style={{ padding: "0 0.5em" }}>{relayinfo.healthy}/{relayinfo.all}</div>
                 <div style={{ position: "relative" }}>
                     #hashtag
