@@ -514,7 +514,20 @@ const Tabsview: FC<{
                         })()}</div>
                     </div>
                     <div style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
-                        {!selev ? "text..." : (selrpev?.event?.event.content || selev?.event?.event.content)}
+                        <div>{!selev ? "text..." : (selrpev?.event?.event.content || selev?.event?.event.content)}</div>
+                        {!selev || selev.event!.event!.tags!.length === 0
+                            ? null
+                            : <div style={{ margin: "0.5em", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px" }}>
+                                {selev!.event!.event.tags.map(t => <div style={{
+                                    border: "1px solid",
+                                    borderColor: colornormal,
+                                    borderRadius: "2px",
+                                }}>
+                                    <span style={{ padding: "0 0.3em", background: colornormal, color: colorbase }}>{t[0]}</span>
+                                    <span style={{ padding: "0 0.3em" }}>{t[1]}</span>
+                                    {t.length <= 2 ? null : <span style={{ padding: "0 0.3em", borderLeft: "1px solid", borderLeftColor: colornormal }}>{JSON.stringify(t.slice(2))}</span>}
+                                </div>)}
+                            </div>}
                     </div>
                 </div>
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
