@@ -68,6 +68,7 @@ const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | 
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
                     {ev.tags.find(t => t[0] === "p" || t[0] === "e") ? "→" : ""}
+                    {post.event!.deleteevent ? "×" : ""}
                 </div>
             </TD>
             <TD>
@@ -214,14 +215,15 @@ export default () => {
 
     // const tap = posts.bytab.get(name)!;
     const tap = useSyncExternalStore(
-        (onStoreChange) => {
+        useCallback((onStoreChange) => {
             const onChange = (nm: string) => { nm === name && onStoreChange(); };
             noswk!.addListener(name, onChange);
             return () => noswk!.removeListener(name, onChange);
-        },
-        () => {
+        }, []),
+        useCallback(() => {
+            // FIXME: this must return same immutable value while rendering
             return noswk!.getPostStream(name)!;
-        },
+        }, []),
     );
     useEffect(() => {
         const onChange = (nm: string) => {
@@ -378,7 +380,7 @@ export default () => {
                 }
             }
         }}>
-            <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column" }}>
+            <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default" }}>
                 {<TheList posts={tap || []} mypubkey={account?.pubkey} selection={selpost || null} ref={listref} selref={selref} lastref={lastref} onSelect={onselect} />}
                 <div>
                     <TabBar>
@@ -393,7 +395,7 @@ export default () => {
                         {!selev ? <></> : <img style={{ maxWidth: "100%" }} src={`data:image/png;base64,${new Identicon(selrpev?.event?.event?.pubkey || selev.event!.event.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}
                     </div>
                 </div>
-                <div style={{ flex: "1", /* display: "flex", flexDirection: "column" */ }}>
+                <div style={{ flex: "1", minWidth: "0", /* display: "flex", flexDirection: "column" */ }}>
                     <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex" }}>
                         <div style={{ flex: "1", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {!selev ? "name..." : (
