@@ -130,7 +130,7 @@ const TheList = forwardRef<HTMLDivElement, {
                             return <div
                                 key={evid}
                                 ref={i === lasti ? lastref : p === selection ? selref : undefined} // TODO: what if selected is last?
-                                onPointerDown={e => onSelect && onSelect(i)}>
+                                onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}>
                                 <TheRow post={p} mypubkey={mypubkey} selected={selection} />
                             </div>;
                         })}
@@ -229,7 +229,7 @@ export default () => {
     const listref = useRef<HTMLDivElement>(null);
     const selref = useRef<HTMLDivElement>(null);
     const lastref = useRef<HTMLDivElement>(null);
-    const [scrollto, setScrollto] = useState({ ref: "", t: 0 }); // just another object instance is enough, but easier for eyeball debugging.
+    const [scrollto, setScrollto] = useState<{ ref: "" | "sel" | "last", t: number; }>({ ref: "", t: 0 }); // just another object instance is enough, but easier for eyeball debugging.
 
     const [status, setStatus] = useState("status...");
 
@@ -267,7 +267,7 @@ export default () => {
         };
         streams!.addListener(name, onChange);
         return () => streams!.removeListener(name, onChange);
-    }, [name, listref, streams]);
+    }, [name, streams]);
     const selpost = tab.selected === null ? undefined : tap[tab.selected];
     const selev = selpost?.event;
     const selrpev = selev && selpost.reposttarget;
@@ -282,8 +282,26 @@ export default () => {
     }, [tap, noswk]);
     useEffect(() => {
         switch (scrollto.ref) {
-            case "ref": {
-                selref.current?.scrollIntoView();
+            case "sel": {
+                // scrollIntoViewIfNeeded(false) is not supported by Firefox 114 yet
+                const sel = selref.current || lastref.current;
+                if (!sel) {
+                    break;
+                }
+                const list = listref.current;
+                if (!list) {
+                    break;
+                }
+                if (sel.offsetTop < list.scrollTop) {
+                    sel.scrollIntoView(true);
+                    break;
+                }
+                const listScrollBottom = list.scrollTop + list.clientHeight;
+                const selOffsetBottom = sel.offsetTop + sel.offsetHeight;
+                if (listScrollBottom < selOffsetBottom) {
+                    sel.scrollIntoView(false);
+                    break;
+                }
                 break;
             }
             case "last": {
@@ -299,6 +317,9 @@ export default () => {
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }} onKeyDown={e => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
             if (tagName === "input" || tagName === "textarea" || tagName === "button") {
+                return;
+            }
+            if (e.ctrlKey || e.altKey || e.metaKey) {
                 return;
             }
             switch (e.key) {

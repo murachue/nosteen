@@ -296,6 +296,9 @@ export class NostrWorker {
             });
         }
     }
+    getAllPosts() {
+        return this.posts;
+    }
     getPostStream(name: string) {
         return this.postStreams.get(name);
     }
