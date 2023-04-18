@@ -32,7 +32,7 @@ const tabinit: {
         //     ],
         //     selected: "",
         // },
-        { name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost, Kinds.reaction], limit: 100 }], selected: null },
+        { name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }], selected: null },
     ];
 export default {
     preferences: {

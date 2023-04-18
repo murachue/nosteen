@@ -369,9 +369,29 @@ const Tabsview: FC<{
                     break;
                 }
                 case "h": {
+                    if (!tap) break;
+                    if (tab.selected === null) break;
+                    const pk = tap.posts[tab.selected].event!.event!.event.pubkey;
+                    for (let i = tab.selected - 1; 0 <= i; i--) {
+                        if (tap.posts[i].event!.event!.event.pubkey === pk) {
+                            onselect(i);
+                            break;
+                        }
+                    }
+                    break;
                     break;
                 }
                 case "l": {
+                    if (!tap) break;
+                    if (tab.selected === null) break;
+                    const l = tap.posts.length;
+                    const pk = tap.posts[tab.selected].event!.event!.event.pubkey;
+                    for (let i = tab.selected + 1; i < l; i++) {
+                        if (tap.posts[i].event!.event!.event.pubkey === pk) {
+                            onselect(i);
+                            break;
+                        }
+                    }
                     break;
                 }
                 case "p": {
@@ -445,15 +465,19 @@ const Tabsview: FC<{
                         }
                     }
                     if (i < tapl) {
-                        onselect(i);
+                        onselect(i); // TODO: scroll to top
                         e.preventDefault();
                     }
+                    break;
+                }
+                case ",": {
+                    navigate("/preferences");
                     break;
                 }
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tap, onselect]);
+    }, [tabs, tab, tap, onselect]);
     return <>
         <Helmet>
             <title>{name} - nosteen</title>
