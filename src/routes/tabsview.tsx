@@ -6,12 +6,11 @@ import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
-import TabBar from "../components/tabbar";
 import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { Post } from "../types";
-import VList from "react-virtualized-listview";
 import { getmk } from "../util";
+import VList from "react-virtualized-listview";
 
 const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -491,14 +490,29 @@ const Tabsview: FC<{
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default" }}>
                 {<TheList posts={tap?.posts || []} mypubkey={account?.pubkey} selection={selpost || null} ref={listref} selref={selref} lastref={lastref} onSelect={onselect} />}
-                <div style={{ display: "flex" }}>
-                    <div style={{ flex: "1" }}>
-                        <TabBar>
-                            {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
-                        </TabBar>
+                <div style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    overflow: "visible",
+                    lineHeight: "1em",
+                    backgroundColor: coloruibg,
+                    border: "2px inset",
+                    padding: "0 0 0 2px",
+                }}>
+                    <div style={{ flex: "1", display: "flex", alignItems: "flex-start", overflow: "visible" }}>
+                        {/* <TabBar> */}
+                        {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
+                        {/* </TabBar> */}
                     </div>
                     <div>
-                        <Link to="/preferences" style={{ background: coloruibg, color: coloruitext, font: fontui }}>Prefs</Link>
+                        <Link to="/preferences" style={{
+                            background: coloruibg,
+                            color: coloruitext,
+                            font: fontui,
+                            margin: "0 0.3em",
+                        }} tabIndex={-1}>
+                            Prefs...
+                        </Link>
                     </div>
                 </div>
             </div>
