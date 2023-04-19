@@ -3,7 +3,7 @@ import produce from "immer";
 import { useAtom } from "jotai";
 import { FC, Ref, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import TabBar from "../components/tabbar";
@@ -285,7 +285,7 @@ const Tabsview: FC<{
     }, [name, streams]);
     const selpost = tab.selected === null ? undefined : tap?.posts[tab.selected];
     const selev = selpost?.event;
-    const selrpev = selev && selpost.reposttarget;
+    const selrpev = selpost?.reposttarget;
     const onselect = useCallback((i: number) => {
         if (tap) {
             noswk!.setHasread(tap.posts[i].id, true);
@@ -474,6 +474,12 @@ const Tabsview: FC<{
                     navigate("/preferences");
                     break;
                 }
+                case "/": {
+                    break;
+                }
+                case "?": {
+                    break;
+                }
             }
         });
         return () => setGlobalOnKeyDown(undefined);
@@ -485,10 +491,15 @@ const Tabsview: FC<{
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default" }}>
                 {<TheList posts={tap?.posts || []} mypubkey={account?.pubkey} selection={selpost || null} ref={listref} selref={selref} lastref={lastref} onSelect={onselect} />}
-                <div>
-                    <TabBar>
-                        {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
-                    </TabBar>
+                <div style={{ display: "flex" }}>
+                    <div style={{ flex: "1" }}>
+                        <TabBar>
+                            {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
+                        </TabBar>
+                    </div>
+                    <div>
+                        <Link to="/preferences" style={{ background: coloruibg, color: coloruitext, font: fontui }}>Prefs</Link>
+                    </div>
                 </div>
             </div>
             <div style={{ display: "flex", flexDirection: "row", background: coloruibg }}>
@@ -514,11 +525,11 @@ const Tabsview: FC<{
                         })()}</div>
                     </div>
                     <div style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
-                        <div>{!selev ? "text..." : (selrpev?.event?.event.content || selev?.event?.event.content)}</div>
-                        {!selev || selev.event!.event!.tags!.length === 0
+                        <div>{!selev ? "text..." : ((selrpev || selev)?.event?.event?.content)}</div>
+                        {!selev
                             ? null
                             : <div style={{ margin: "0.5em", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px" }}>
-                                {selev!.event!.event.tags.map(t => <div style={{
+                                {((selrpev || selev)?.event?.event?.tags || []).map((t, i) => <div key={i} style={{
                                     border: "1px solid",
                                     borderColor: colornormal,
                                     borderRadius: "2px",

@@ -8,11 +8,9 @@ import './index.css';
 import { NostrWorkerProvider, useNostrWorker } from './nostrworker';
 import ErrorPage from './routes/errorpage';
 import Global from './routes/global';
-import MainLayout from './routes/mainlayout';
 import Preferences from './routes/preferences';
 import Root from './routes/root';
 import TabsView from './routes/tabsview';
-import TestApp from './routes/test';
 import state from './state';
 import { FilledFilters } from './types';
 
@@ -69,10 +67,7 @@ const App = () => {
         <Routes>
             <Route element={<Global onKeyDown={globalOnKeyDown} />} errorElement={<ErrorPage />}>
                 <Route path="/" element={<Root />} />
-                <Route element={<MainLayout />}>
-                    <Route path="/tab/:name?" element={<TabsView setGlobalOnKeyDown={setGlobalOnKeyDown} />} />
-                    <Route path="test" element={<TestApp />} />
-                </Route>
+                <Route path="/tab/:name?" element={<TabsView setGlobalOnKeyDown={setGlobalOnKeyDown} />} />
                 <Route path="/preferences" element={<Preferences />} />
             </Route>
         </Routes>

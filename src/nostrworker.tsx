@@ -4,7 +4,7 @@ import { UnsignedEvent, finishEvent } from "nostr-tools";
 import { FC, PropsWithChildren, createContext, useContext } from "react";
 import { DeletableEvent, EventMessageFromRelay, FilledEventMessagesFromRelay, FilledFilters, Kinds, Post } from "./types";
 import invariant from "tiny-invariant";
-import { postindex, postupsertindex } from "./util";
+import { getmk, postindex, postupsertindex } from "./util";
 
 export type MuxRelayEvent = {
     mux: Mux;
@@ -445,10 +445,7 @@ export class NostrWorker {
                     //                         diff sig: treat as bad. (same id can have other sig though...)
                     if (event.sig === dev.deleteevent.event.sig) {
                         dev.deleteevent.receivedfrom.add(relay);
-                        // no need to "okrecv" we already done.
-                        // TODO: we also do okrecv if we want to update UI on "received from" changed
-
-                        // FIXME: this prohibits event update on multiple tab except first!!
+                        okrecv.set(dev.id, dev); // update my tab too
                     }
                     continue;
                 }
@@ -514,8 +511,7 @@ export class NostrWorker {
                     //                         diff sig: treat as bad. (same id can have other sig though...)
                     if (event.sig === dev.event.event.sig) {
                         dev.event.receivedfrom.add(relay);
-                        // no need to "okrecv" we already done.
-                        // TODO: we also do okrecv if we want to update UI on "received from" changed
+                        okrecv.set(event.id, dev); // update my tab too
                     }
                     continue;
                 }
@@ -572,10 +568,9 @@ export class NostrWorker {
                         // simple check and trust: they send the same event (incl. sig) to many relays.
                         //                         same sig: treat other properties also same, use VERIFIED event.
                         //                         diff sig: treat as bad. (same id can have other sig though...)
-                        if (event.sig === sdev.event.event.sig) {
+                        if (subevent.sig === sdev.event.event.sig) {
                             sdev.event.receivedfrom.add(relay);
-                            // no need to "okrecv" we already done.
-                            // TODO: we also do okrecv if we want to update UI on "received from" changed
+                            okrecv.set(subevent.id, sdev); // update my tab too
                         }
                         continue;
                     }
@@ -599,7 +594,7 @@ export class NostrWorker {
                     };
                     stdev.event.receivedfrom.add(relay); // ?
 
-                    if (stdev.deleteevent && stdev.deleteevent.event.pubkey !== event.pubkey) {
+                    if (stdev.deleteevent && stdev.deleteevent.event.pubkey !== subevent.pubkey) {
                         // reject liar on first receive. nullify the delete event.
                         // FIXME: NIP-26 (as of 2023-04-13) states that delegator has a power to delete delegatee event.
                         //        this logic also prohibit that... but treating it needs more complex...
@@ -630,14 +625,14 @@ export class NostrWorker {
                 // sad
                 continue;
             }
-            const post = this.posts.get(pid) || {
+
+            const post = getmk(this.posts, pid, () => ({
                 id: pid,
                 event: null,
                 reposttarget: null,
                 myreaction: null,
                 hasread: false,
-            };
-            this.posts.set(pid, post);
+            }));
 
             posted = true;
             const wasempty = !post.event;
