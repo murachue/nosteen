@@ -11,6 +11,8 @@ import state from "../state";
 import { Post } from "../types";
 import { getmk } from "../util";
 import VList from "react-virtualized-listview";
+import { encodeBech32ID } from "nostr-mux/dist/core/utils";
+import { nip19 } from "nostr-tools";
 
 const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -222,7 +224,8 @@ class PostStreamWrapper {
 
 const Tabsview: FC<{
     setGlobalOnKeyDown: React.Dispatch<React.SetStateAction<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>>;
-}> = ({ setGlobalOnKeyDown }) => {
+    setGlobalOnPointerDown: React.Dispatch<React.SetStateAction<React.DOMAttributes<HTMLDivElement>["onPointerDown"]>>;
+}> = ({ setGlobalOnKeyDown, setGlobalOnPointerDown }) => {
     const navigate = useNavigate();
     const data = useParams();
     const name = data.name || "";
@@ -244,6 +247,8 @@ const Tabsview: FC<{
     const lastref = useRef<HTMLDivElement>(null);
     const textref = useRef<HTMLDivElement>(null);
     const [scrollto, setScrollto] = useState<{ ref: "" | "sel" | "last", t: number; }>({ ref: "", t: 0 }); // just another object instance is enough, but easier for eyeball debugging.
+    const [evinfopopping, setEvinfopopping] = useState(false);
+    const evinfopopref = useRef<HTMLDivElement>(null);
 
     const [status, setStatus] = useState("status...");
 
@@ -295,6 +300,7 @@ const Tabsview: FC<{
             tab.selected = i;
         }));
         setScrollto({ ref: "sel", t: Date.now() });
+        textref.current?.scrollTo(0, 0);
     }, [tap, noswk]);
     useEffect(() => {
         switch (scrollto.ref) {
@@ -328,7 +334,7 @@ const Tabsview: FC<{
         }
     }, [scrollto]);
     useEffect(() => {
-        setGlobalOnKeyDown((x: React.DOMAttributes<HTMLDivElement>["onKeyDown"]) => (e: React.KeyboardEvent<HTMLDivElement>) => {
+        setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
             if (tagName === "input" || tagName === "textarea" || tagName === "button") {
                 return;
@@ -378,7 +384,6 @@ const Tabsview: FC<{
                             break;
                         }
                     }
-                    break;
                     break;
                 }
                 case "l": {
@@ -492,6 +497,15 @@ const Tabsview: FC<{
         });
         return () => setGlobalOnKeyDown(undefined);
     }, [tabs, tab, tap, onselect]);
+    useEffect(() => {
+        setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
+            const inside = evinfopopref.current?.contains(e.nativeEvent.target as any);
+            if (!inside) {
+                setEvinfopopping(false);
+            }
+        });
+        return () => setGlobalOnPointerDown(undefined);
+    }, []);
     return <>
         <Helmet>
             <title>{name} - nosteen</title>
@@ -541,11 +555,54 @@ const Tabsview: FC<{
                                     : selev.event!.event.pubkey
                             )}
                         </div>
-                        <div>{!selev ? "time..." : (() => {
-                            const t = selrpev ? selrpev.event!.event.created_at : selev.event!.event.created_at;
-                            const d = new Date(t * 1000);
-                            return timefmt(d, "YYYY-MM-DD hh:mm:ss");
-                        })()}</div>
+                        <div style={{ position: "relative" }}>
+                            <div style={{ cursor: "pointer" }} onClick={e => setEvinfopopping(s => !s)}>
+                                {!selev ? "time..." : (() => {
+                                    const t = selrpev ? selrpev.event!.event.created_at : selev.event!.event.created_at;
+                                    const d = new Date(t * 1000);
+                                    return timefmt(d, "YYYY-MM-DD hh:mm:ss");
+                                })()}
+                            </div>
+                            {(() => {
+                                if (!selpost) return undefined;
+
+                                const rev = selpost.event!.event!;
+                                const froms = [...rev.receivedfrom.values()].map(r => r.url);
+                                const ev = rev.event;
+                                return <div
+                                    ref={evinfopopref}
+                                    style={{
+                                        display: evinfopopping ? "grid" : "none",
+                                        position: "absolute",
+                                        bottom: "100%",
+                                        right: "0px",
+                                        padding: "5px",
+                                        minWidth: "10em",
+                                        border: "2px outset",
+                                        background: coloruibg,
+                                        color: coloruitext,
+                                        gridTemplateColumns: "max-content 20em",
+                                        columnGap: "0.5em",
+                                    }}
+                                >
+                                    <div style={{ textAlign: "right" }}>received from:</div><div>
+                                        {[...rev.receivedfrom.values()].map(r => (<div>{r.url}</div>))}
+                                    </div>
+                                    <div style={{ textAlign: "right" }}>note id:</div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ev.id}</div>
+                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{encodeBech32ID("note", ev.id)}</div>
+                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: froms })}</div>
+                                    <div style={{ textAlign: "right" }}>json:</div><div style={{ height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{[
+                                        selpost.event!.event!.event,
+                                        selpost.event?.deleteevent?.event,
+                                        selpost.reposttarget?.event?.event,
+                                        selpost.reposttarget?.deleteevent?.event,
+                                        selpost.myreaction?.event?.event,
+                                        selpost.myreaction?.deleteevent?.event,
+                                    ].filter(e => e).map(e => <>{`${JSON.stringify(e)}`}<br /></>)}</div>
+
+                                </div>;
+                            })()}
+                        </div>
                     </div>
                     <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
                         <div>{!selev ? "text..." : ((selrpev || selev)?.event?.event?.content)}</div>

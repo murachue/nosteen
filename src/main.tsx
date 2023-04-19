@@ -22,6 +22,7 @@ const App = () => {
     const [mux] = useAtom(state.relaymux);
     const [tabs] = useAtom(state.tabs);
     const [globalOnKeyDown, setGlobalOnKeyDown] = useState<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>(undefined);
+    const [globalOnPointerDown, setGlobalOnPointerDown] = useState<React.DOMAttributes<HTMLDivElement>["onPointerDown"]>(undefined);
     const noswk = useNostrWorker();
 
     // TODO: unsub on unload, but useEffect.return is overkill
@@ -65,9 +66,12 @@ const App = () => {
 
     return <HashRouter>
         <Routes>
-            <Route element={<Global onKeyDown={globalOnKeyDown} />} errorElement={<ErrorPage />}>
+            <Route element={<Global onKeyDown={globalOnKeyDown} onPointerDown={globalOnPointerDown} />} errorElement={<ErrorPage />}>
                 <Route path="/" element={<Root />} />
-                <Route path="/tab/:name?" element={<TabsView setGlobalOnKeyDown={setGlobalOnKeyDown} />} />
+                <Route path="/tab/:name?" element={<TabsView
+                    setGlobalOnKeyDown={setGlobalOnKeyDown}
+                    setGlobalOnPointerDown={setGlobalOnPointerDown}
+                />} />
                 <Route path="/preferences" element={<Preferences />} />
             </Route>
         </Routes>
