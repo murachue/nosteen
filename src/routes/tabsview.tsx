@@ -242,6 +242,7 @@ const Tabsview: FC<{
     const listref = useRef<HTMLDivElement>(null);
     const selref = useRef<HTMLDivElement>(null);
     const lastref = useRef<HTMLDivElement>(null);
+    const textref = useRef<HTMLDivElement>(null);
     const [scrollto, setScrollto] = useState<{ ref: "" | "sel" | "last", t: number; }>({ ref: "", t: 0 }); // just another object instance is enough, but easier for eyeball debugging.
 
     const [status, setStatus] = useState("status...");
@@ -393,6 +394,14 @@ const Tabsview: FC<{
                     }
                     break;
                 }
+                case "J": {
+                    textref.current?.scrollBy(0, 10);
+                    break;
+                }
+                case "K": {
+                    textref.current?.scrollBy(0, -10);
+                    break;
+                }
                 case "p": {
                     break;
                 }
@@ -538,7 +547,7 @@ const Tabsview: FC<{
                             return timefmt(d, "YYYY-MM-DD hh:mm:ss");
                         })()}</div>
                     </div>
-                    <div style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
+                    <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
                         <div>{!selev ? "text..." : ((selrpev || selev)?.event?.event?.content)}</div>
                         {!selev
                             ? null
@@ -558,7 +567,7 @@ const Tabsview: FC<{
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
             </div>
             <div style={{ display: "flex", alignItems: "center", background: coloruibg }}>
-                <input ref={posteditor} type="text" style={{ flex: "1", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} />
+                <input ref={posteditor} type="text" style={{ flex: "1", border: "2px inset", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} />
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
