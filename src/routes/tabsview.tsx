@@ -204,14 +204,34 @@ class PostStreamWrapper {
         this.noswk.addListener(name, listener);
     }
     removeListener(name: string, onChange: (msg: NostrWorkerListenerMessage) => void) {
-        const listener = this.listeners.get(name)?.get(onChange);
+        const listenersforname = this.listeners.get(name);
+        if (!listenersforname) {
+            return;
+        }
+        const listener = listenersforname.get(onChange);
         if (!listener) {
             return;
         }
         this.noswk.removeListener(name, listener);
+        listenersforname.delete(onChange);
+        if (listenersforname.size === 0) {
+            this.streams.delete(name);
+        }
     }
-    getPostStream(name: string) {
-        return this.streams.get(name);
+    getPostStream(name: string): ReturnType<typeof NostrWorker.prototype.getPostStream> {
+        const istream = this.streams.get(name);
+        if (istream) {
+            return istream;
+        }
+        const stream = this.noswk.getPostStream(name);
+        if (!stream) {
+            return { posts: [], nunreads: 0 };
+        }
+        const newistream = { posts: [...stream.posts], nunreads: stream.nunreads };
+        if (0 < (this.listeners.get(name)?.size || 0)) {
+            this.streams.set(name, newistream);
+        }
+        return newistream;
     }
     getAllPosts() {
         // TODO: make immutable and listenable that needs noswk support
