@@ -186,6 +186,7 @@ const timefmt = (date: Date, fmt: string) => {
 class PostStreamWrapper {
     private readonly listeners = new Map<string, Map<(msg: NostrWorkerListenerMessage) => void, (msg: NostrWorkerListenerMessage) => void>>();
     private readonly streams = new Map<string, ReturnType<typeof NostrWorker.prototype.getPostStream>>();
+    private readonly emptystream = { posts: [], nunreads: 0 }; // fixed reference is important
     constructor(private readonly noswk: NostrWorker) { }
     addListener(name: string, onChange: (msg: NostrWorkerListenerMessage) => void) {
         const listener = (msg: NostrWorkerListenerMessage): void => {
@@ -225,7 +226,7 @@ class PostStreamWrapper {
         }
         const stream = this.noswk.getPostStream(name);
         if (!stream) {
-            return { posts: [], nunreads: 0 };
+            return this.emptystream;
         }
         const newistream = { posts: [...stream.posts], nunreads: stream.nunreads };
         if (0 < (this.listeners.get(name)?.size || 0)) {
@@ -606,7 +607,7 @@ const Tabsview: FC<{
                                     }}
                                 >
                                     <div style={{ textAlign: "right" }}>received from:</div><div>
-                                        {[...rev.receivedfrom.values()].map(r => (<div>{r.url}</div>))}
+                                        {[...rev.receivedfrom.values()].map(r => (<div key={r.url}>{r.url}</div>))}
                                     </div>
                                     <div style={{ textAlign: "right" }}>note id:</div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ev.id}</div>
                                     <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{encodeBech32ID("note", ev.id)}</div>
