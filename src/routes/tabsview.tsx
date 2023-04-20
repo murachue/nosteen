@@ -1,7 +1,9 @@
 import Identicon from "identicon.js";
 import produce from "immer";
 import { useAtom } from "jotai";
-import { FC, Ref, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { encodeBech32ID } from "nostr-mux/dist/core/utils";
+import { nip19 } from "nostr-tools";
+import { FC, Ref, RefObject, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
@@ -10,9 +12,6 @@ import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nost
 import state from "../state";
 import { Post } from "../types";
 import { getmk } from "../util";
-import VList from "react-virtualized-listview";
-import { encodeBech32ID } from "nostr-mux/dist/core/utils";
-import { nip19 } from "nostr-tools";
 
 const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -112,10 +111,32 @@ const TheList = forwardRef<HTMLDivElement, {
     const [fontui] = useAtom(state.preferences.fonts.ui);
     const lasti = posts.length - 1;
 
+    const listref = ref || useRef<HTMLDivElement>(null);
+    const headref = useRef<HTMLDivElement>(null);
+    const itemsref = useRef<HTMLDivElement>(null);
+    const rowref = useRef<HTMLDivElement>(null);
+    const rowh = rowref.current?.offsetHeight;
+    const listh = (rowh || 0) * posts.length;
+    const [scrollTop, setScrollTop] = useState(0);
+    const [clientHeight, setClientHeight] = useState(0);
+    useEffect(() => {
+        const listel = (listref as RefObject<HTMLDivElement>).current;  // copy current to avoid mutation on cleanup
+        if (!listel) return;
+        setClientHeight(listel.clientHeight);
+        const ro = new ResizeObserver(es => setClientHeight(es[0].target.clientHeight));
+        ro.observe(listel);
+        return () => { ro.unobserve(listel); };
+    }, []);
+
     return <div style={{ flex: "1 0 0px", height: "0" }}>
         <ListView>
-            <div ref={ref} tabIndex={0} style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}>
-                <div style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg }}>
+            <div
+                ref={listref}
+                tabIndex={0}
+                style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}
+                onScroll={e => setScrollTop((e.nativeEvent.target as HTMLDivElement).scrollTop)}
+            >
+                <div ref={headref} style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg, zIndex: 1 /* ugh */ }}>
                     <TH>
                         <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>m</div></TD>
                         <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>u</div></TD>
@@ -124,14 +145,29 @@ const TheList = forwardRef<HTMLDivElement, {
                         <TD width="600px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>text</div></TD>
                     </TH>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+                <div ref={itemsref} style={{ display: "flex", flexDirection: "column", width: "100%", height: `${listh}px`, position: "relative" }}>
+                    {!posts[0] ? null : <div style={{ visibility: "hidden", position: "absolute" }}>
+                        <TheRow ref={rowref} post={posts[0]} mypubkey={mypubkey} selected={selection} />
+                    </div>}
                     <TBody>
-                        {posts.map((p, i) => {
+                        {/* {posts.map((p, i) => {
                             const evid = p.event!.event!.event.id;
                             return <div
                                 key={evid}
                                 ref={i === lasti ? lastref : p === selection ? selref : undefined} // TODO: react-merge-refs?
                                 onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}>
+                                <TheRow post={p} mypubkey={mypubkey} selected={selection} />
+                            </div>;
+                        })} */}
+                        {posts.map((p, i) => {
+                            if (!rowh || rowh * (i + 1) < scrollTop || scrollTop + clientHeight < rowh * i) return null;
+                            const evid = p.event!.event!.event.id;
+                            return <div
+                                key={evid}
+                                ref={i === lasti ? lastref : p === selection ? selref : undefined} // TODO: react-merge-refs?
+                                onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}
+                                style={{ position: "absolute", top: `${rowh * i}px` }}
+                            >
                                 <TheRow post={p} mypubkey={mypubkey} selected={selection} />
                             </div>;
                         })}
