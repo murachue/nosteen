@@ -671,9 +671,11 @@ const Tabsview: FC<{
                                     borderColor: colornormal,
                                     borderRadius: "2px",
                                 }}>
-                                    <span style={{ padding: "0 0.3em", background: colornormal, color: colorbase }}>{t[0]}</span>
-                                    <span style={{ padding: "0 0.3em" }}>{t[1]}</span>
-                                    {t.length <= 2 ? null : <span style={{ padding: "0 0.3em", borderLeft: "1px solid", borderLeftColor: colornormal }}>{JSON.stringify(t.slice(2))}</span>}
+                                    <div style={{ display: "flex", flexDirection: "row" }}>
+                                        <div style={{ padding: "0 0.3em", background: colornormal, color: colorbase }}>{t[0]}</div>
+                                        <div style={{ padding: "0 0.3em" }}>{t[1]}</div>
+                                        {t.length <= 2 ? null : <div style={{ padding: "0 0.3em", borderLeft: "1px solid", borderLeftColor: colornormal }}>{JSON.stringify(t.slice(2))}</div>}
+                                    </div>
                                 </div>)}
                             </div>}
                     </div>
