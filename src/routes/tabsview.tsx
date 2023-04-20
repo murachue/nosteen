@@ -662,7 +662,29 @@ const Tabsview: FC<{
                         </div>
                     </div>
                     <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
-                        <div>{!selev ? "text..." : ((selrpev || selev)?.event?.event?.content)}</div>
+                        <div>{!selev ? "text..." : (() => {
+                            const tx = (selrpev || selev).event!.event.content;
+                            const ixs = new Set([0]);
+                            for (const m of tx.matchAll(/\bhttps?:\/\/\S+|#\S+|\b(nostr:)?(note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+/g)) {
+                                ixs.add(m.index!);
+                                ixs.add(m.index! + m[0].length);
+                            }
+                            ixs.add(tx.length);
+                            const ixa = [...ixs.values()];
+                            return Array(ixs.size - 1).fill(0).map((_, i) => tx.slice(ixa[i], ixa[i + 1])).map(t => {
+                                if (t.match(/^https?:\/\/\S+/)) return <a href={t} style={{ color: "#88f" }}>{t}</a>;
+                                const m = t.match(/^#\[(\d+)\]/);
+                                const tag = m && (selrpev || selev).event!.event.tags[Number(m[1])];
+                                if (tag) {
+                                    if (tag[0] === "p") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.npubEncode(tag[1])}</span>;
+                                    if (tag[0] === "e") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.noteEncode(tag[1])}</span>;
+                                    return <span style={{ border: "1px solid white" }}>{tag}</span>; // TODO nice display
+                                }
+                                // TODO hashtag (with verify)
+                                // TODO nostr:? idents (with verify?)
+                                return <span style={{}}>{t}</span>;
+                            });
+                        })()}</div>
                         {!selev
                             ? null
                             : <div style={{ margin: "0.5em", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px" }}>
