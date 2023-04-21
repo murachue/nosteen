@@ -11,7 +11,7 @@ import Tab from "../components/tab";
 import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { Post } from "../types";
-import { getmk, postindex } from "../util";
+import { bsearchi, getmk, postindex } from "../util";
 
 const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -462,15 +462,17 @@ const Tabsview: FC<{
                     if (tab.selected === null) break;
                     const selpost = tap.posts[tab.selected];
                     if (!selpost) break;  //!?
+                    const ev = selpost.reposttarget || selpost.event!;
                     // really last?
-                    const laste = selpost.event!.event!.event.tags.reduce<string | undefined>((p, c) => c[0] === "e" ? c[1] : p, undefined);
+                    const laste = ev.event!.event.tags.reduce<string | undefined>((p, c) => c[0] === "e" ? c[1] : p, undefined);
                     if (!laste) break;
                     const lp = noswk!.getPost(laste);
                     if (!lp) break;
 
                     let rp = [...tab.replypath];
-                    if (tab.replypath.indexOf(selpost.id) === -1) {
-                        rp = [selpost.id];
+                    const oevid = selpost.event!.id;  // on repost, replypath holds repost itself
+                    if (tab.replypath.indexOf(oevid) === -1) {
+                        rp = [oevid];
                     }
                     if (rp.indexOf(laste) === -1) {
                         rp.unshift(laste);
@@ -487,6 +489,61 @@ const Tabsview: FC<{
                     break;
                 }
                 case "]": {
+                    if (!tap) break;
+                    if (tab.selected === null) break;
+                    const selpost = tap.posts[tab.selected];
+                    if (!selpost) break;  //!?
+
+                    const lid = (() => {
+                        const rp = [...tab.replypath];
+
+                        // potentially repost itself have priority
+                        const i1 = rp.indexOf(selpost.event!.id);
+                        if (i1 !== -1) {
+                            const id1 = rp[i1 + 1];
+                            if (id1) return id1;
+                        }
+
+                        const rtid = selpost.reposttarget?.id;
+                        const i2 = !rtid ? -1 : rp.indexOf(rtid);
+                        if (i2 !== -1) {
+                            const id2 = rp[i2 + 1];
+                            if (id2) return id2;
+                        }
+
+                        // find next referencing... but sometimes created_at swaps. offset.
+                        // note1m4dx8m2tmp3nvpa7s4uav4m7p9h8pxyelxvn3y5j4peemsymvy5svusdte
+                        const st = selpost.event!.event!.event.created_at - 60;
+                        const si = bsearchi(tap.posts, p => st < p.event!.event!.event.created_at);
+                        const l = tap.posts.length;
+                        const id = selpost.id;
+                        for (let i = si; i < l; i++) {
+                            const p = tap.posts[i];
+                            if (p.event!.event!.event.tags.find(t => t[0] === "e" && t[1] === id)) {
+                                const nrp = (i1 === -1 && i2 === -1) ? [] : rp;
+                                nrp.push(p.id);
+                                setTabs(produce(draft => {
+                                    draft.forEach(t => {
+                                        if (t.name !== tab.name) return;
+                                        t.replypath = nrp;
+                                    });
+                                }));
+                                return p.id;
+                            }
+                        }
+
+                        return null;
+                    })();
+                    if (!lid) {
+                        // not found
+                        break;
+                    }
+
+                    const lp = noswk!.getPost(lid);
+                    if (!lp) break;
+                    const ei = postindex(tap.posts, lp.event!.event!.event);
+                    if (ei === null) break;  // TODO: may move tab? what if already closed?
+                    onselect(ei);
                     break;
                 }
                 case "J": {
