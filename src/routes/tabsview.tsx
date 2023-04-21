@@ -291,6 +291,7 @@ const Tabsview: FC<{
     const [colorbase] = useAtom(state.preferences.colors.base);
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorrepost] = useAtom(state.preferences.colors.repost);
+    const [colorlinktext] = useAtom(state.preferences.colors.linktext);
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
@@ -675,7 +676,7 @@ const Tabsview: FC<{
                                 const murl = t.match(/^https?:\/\/\S+/);
                                 if (murl) {
                                     const tag = (selrpev || selev).event!.event.tags.find(t => t[0] === "r" && t[1] === murl[0]);
-                                    return <a href={t} style={{ color: "#88f", textDecoration: tag ? "underline" : "underline dotted" }} tabIndex={-1}>{t}</a>;
+                                    return <a href={t} style={{ color: colorlinktext, textDecoration: tag ? "underline" : "underline dotted" }} tabIndex={-1}>{t}</a>;
                                 };
                                 const mref = t.match(/^#\[(\d+)\]/);
                                 if (mref) {

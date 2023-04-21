@@ -23,6 +23,7 @@ export default () => {
     const [prefColorReplytome, setPrefColorReplytome] = useAtom(state.preferences.colors.replytome);
     const [prefColorThempost, setPrefColorThempost] = useAtom(state.preferences.colors.thempost);
     const [prefColorThemreplyto, setPrefColorThemreplyto] = useAtom(state.preferences.colors.themreplyto);
+    const [prefColorLinkText, setPrefColorLinkText] = useAtom(state.preferences.colors.linktext);
     const [prefColorUiText, setPrefColorUiText] = useAtom(state.preferences.colors.uitext);
     const [prefColorUiBg, setPrefColorUiBg] = useAtom(state.preferences.colors.uibg);
     const [prefFontText, setPrefFontText] = useAtom(state.preferences.fonts.text);
@@ -57,6 +58,7 @@ export default () => {
     const [colorReplytome, setColorReplytome] = useState(prefColorReplytome);
     const [colorThempost, setColorThempost] = useState(prefColorThempost);
     const [colorThemreplyto, setColorThemreplyto] = useState(prefColorThemreplyto);
+    const [colorLinkText, setColorLinkText] = useState(prefColorLinkText);
     const [colorUiText, setColorUiText] = useState(prefColorUiText);
     const [colorUiBg, setColorUiBg] = useState(prefColorUiBg);
     const [fontText, setFontText] = useState(prefFontText);
@@ -216,6 +218,7 @@ export default () => {
             <li>reply to me: <input type="text" value={colorReplytome} style={{ background: colorReplytome, color: colorNormal }} onChange={e => setColorReplytome(e.target.value)} /></li>
             <li>their post: <input type="text" value={colorThempost} style={{ background: colorThempost, color: colorNormal }} onChange={e => setColorThempost(e.target.value)} /></li>
             <li>their reply target: <input type="text" value={colorThemreplyto} style={{ background: colorThemreplyto, color: colorNormal }} onChange={e => setColorThemreplyto(e.target.value)} /></li>
+            <li>link text: <input type="text" value={colorLinkText} style={{ background: colorBase, color: colorLinkText }} onChange={e => setColorLinkText(e.target.value)} /></li>
             <li>UI text: <input type="text" value={colorUiText} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiText(e.target.value)} /></li>
             <li>UI bg: <input type="text" value={colorUiBg} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiBg(e.target.value)} /></li>
             <li>selected text: <input type="text" value={colorSelectedText} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedText(e.target.value)} /></li>
@@ -231,6 +234,7 @@ export default () => {
                 setPrefColorReplytome(colorReplytome);
                 setPrefColorThempost(colorThempost);
                 setPrefColorThemreplyto(colorThemreplyto);
+                setPrefColorLinkText(colorLinkText);
                 setPrefColorUiText(colorUiText);
                 setPrefColorUiBg(colorUiBg);
                 setPrefColorSelectedText(colorSelectedText);
@@ -245,6 +249,7 @@ export default () => {
                 setColorReplytome(prefColorReplytome);
                 setColorThempost(prefColorThempost);
                 setColorThemreplyto(prefColorThemreplyto);
+                setColorLinkText(prefColorLinkText);
                 setColorUiText(prefColorUiText);
                 setColorUiBg(prefColorUiBg);
                 setColorSelectedText(prefColorSelectedText);

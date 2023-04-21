@@ -57,6 +57,7 @@ export default {
             replytome: atomWithStorage("preferences.colors.replytome", "#420"),
             thempost: atomWithStorage("preferences.colors.thempost", "#040"),
             themreplyto: atomWithStorage("preferences.colors.themreplyto", "#400"),
+            linktext: atomWithStorage("preferences.colors.linktext", "#77f"),
             uitext: atomWithStorage("preferences.colors.uitext", "#000"),
             uibg: atomWithStorage("preferences.colors.uibg", "#ccc"),
             selectedtext: atomWithStorage("preferences.colors.selectedtext", "selecteditemtext"),
