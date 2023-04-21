@@ -12,6 +12,8 @@ import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nost
 import state from "../state";
 import { Post } from "../types";
 import { bsearchi, getmk, postindex } from "../util";
+import { ForwardedRef } from "react";
+import { MutableRefObject } from "react";
 
 const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -98,20 +100,30 @@ const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | 
     </div>;
 }));
 
+const setref = function <T>(ref: ForwardedRef<T>, value: T) {
+    if (ref === null) return;
+    if (typeof ref === "function") {
+        ref(value);
+        return;
+    }
+    ref.current = value;
+};
+
 const TheList = forwardRef<HTMLDivElement, {
     posts: Post[];
     mypubkey: string | undefined;
     selection: Post | null;
     onSelect?: (i: number) => void;
-    selref?: Ref<HTMLDivElement>;
-    lastref?: Ref<HTMLDivElement>;
-}>(({ posts, mypubkey, selection, onSelect, selref, lastref }, ref) => {
+    onScroll?: React.DOMAttributes<HTMLDivElement>["onScroll"];
+    selref?: ForwardedRef<HTMLDivElement>;
+    lastref?: ForwardedRef<HTMLDivElement>;
+}>(({ posts, mypubkey, selection, onSelect, onScroll, selref, lastref }, ref) => {
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontui] = useAtom(state.preferences.fonts.ui);
     const lasti = posts.length - 1;
 
-    const listref = ref || useRef<HTMLDivElement>(null);
+    const listref = useRef<HTMLDivElement | null>(null);
     const headref = useRef<HTMLDivElement>(null);
     const itemsref = useRef<HTMLDivElement>(null);
     const rowref = useRef<HTMLDivElement>(null);
@@ -120,7 +132,7 @@ const TheList = forwardRef<HTMLDivElement, {
     const [scrollTop, setScrollTop] = useState(0);
     const [clientHeight, setClientHeight] = useState(0);
     useEffect(() => {
-        const listel = (listref as RefObject<HTMLDivElement>).current;  // copy current to avoid mutation on cleanup
+        const listel = listref.current;  // copy current to avoid mutation on cleanup
         if (!listel) return;
         setClientHeight(listel.clientHeight);
         const ro = new ResizeObserver(es => setClientHeight(es[0].target.clientHeight));
@@ -128,13 +140,25 @@ const TheList = forwardRef<HTMLDivElement, {
         return () => { ro.unobserve(listel); };
     }, []);
 
+    // glitches on scroll. dont.
+    // useEffect(() => {
+    //     if (!listref.current) return;
+    //     if (scrollTop !== listref.current.scrollTop) {
+    //         listref.current.scrollTo(0, scrollTop);
+    //         console.log(scrollTop);
+    //     }
+    // }, [scrollTop]);
+
     return <div style={{ flex: "1 0 0px", height: "0" }}>
         <ListView>
             <div
-                ref={listref}
+                ref={r => { listref.current = r; setref(ref, r); }}
                 tabIndex={0}
                 style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}
-                onScroll={e => setScrollTop((e.nativeEvent.target as HTMLDivElement).scrollTop)}
+                onScroll={e => {
+                    setScrollTop((e.nativeEvent.target as HTMLDivElement).scrollTop);
+                    onScroll && onScroll(e);
+                }}
             >
                 <div ref={headref} style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg, zIndex: 1 /* ugh */ }}>
                     <TH>
@@ -391,6 +415,9 @@ const Tabsview: FC<{
             }
         }
     }, [scrollto]);
+    useEffect(() => {
+        listref.current?.scrollTo(0, tab.scroll);
+    }, [name]); // !!
     useEffect(() => {
         setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
@@ -659,7 +686,21 @@ const Tabsview: FC<{
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default" }}>
-                {<TheList posts={tap?.posts || []} mypubkey={account?.pubkey} selection={selpost || null} ref={listref} selref={selref} lastref={lastref} onSelect={onselect} />}
+                {<TheList
+                    posts={tap?.posts || []}
+                    mypubkey={account?.pubkey}
+                    selection={selpost || null}
+                    ref={listref}
+                    selref={selref}
+                    lastref={lastref}
+                    onSelect={onselect}
+                    onScroll={() => {
+                        setTabs(produce(draft => {
+                            const tab = draft.find(t => t.name === name)!;
+                            tab.scroll = listref.current?.scrollTop || 0; // use event arg?
+                        }));
+                    }}
+                />}
                 <div style={{
                     display: "flex",
                     alignItems: "flex-start",
