@@ -1,8 +1,13 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Mux, Relay } from "nostr-mux";
-import { DeletableEvent, Kinds, Post } from "./types";
+import { Kinds } from "./types";
 
+const tabstate = () => ({
+    selected: null,
+    scroll: 0,
+    replypath: [],
+});
 const tabinit: {
     name: string;
     filter: "recent" |
@@ -19,11 +24,13 @@ const tabinit: {
         limit: number;
     }>[];
     selected: number | null;
+    scroll: number;
+    replypath: string[];
 }[] = [
-        { name: "Recent", filter: "recent", selected: null },
-        { name: "Reply", filter: "reply", selected: null },
-        { name: "DM", filter: "dm", selected: null },
-        { name: "Favs", filter: "favs", selected: null },
+        { ...tabstate(), name: "Recent", filter: "recent" },
+        { ...tabstate(), name: "Reply", filter: "reply" },
+        { ...tabstate(), name: "DM", filter: "dm" },
+        { ...tabstate(), name: "Favs", filter: "favs" },
         // {
         //     name: "me",
         //     filter: [
@@ -32,7 +39,7 @@ const tabinit: {
         //     ],
         //     selected: "",
         // },
-        { name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }], selected: null },
+        { ...tabstate(), name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }] },
     ];
 export default {
     preferences: {
@@ -81,11 +88,11 @@ export default {
     myprofile: atom(Event),
     mycontacts: atom(Event),
     //
-    posts: atom({
-        allevents: new Map<string, DeletableEvent>(),  // to make least verifying
-        allposts: new Map<string, Post>(),  // Post events contain same Event instances of allevents
-        bytab: new Map<string, Post[]>(tabinit.map(t => [t.name, []])),  // contains same Post instance of allposts
-    }),
+    // posts: atom({
+    //     allevents: new Map<string, DeletableEvent>(),  // to make least verifying
+    //     allposts: new Map<string, Post>(),  // Post events contain same Event instances of allevents
+    //     bytab: new Map<string, Post[]>(tabinit.map(t => [t.name, []])),  // contains same Post instance of allposts
+    // }),
     tabs: atom(tabinit),
     activetab: atom(""),
 };

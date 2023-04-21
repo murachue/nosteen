@@ -11,7 +11,7 @@ import Tab from "../components/tab";
 import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { Post } from "../types";
-import { getmk } from "../util";
+import { getmk, postindex } from "../util";
 
 const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -45,7 +45,7 @@ const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | 
 
         const evpub = ev.pubkey;
         const evid = ev.id;
-        const selev = selected?.event!.event!.event;
+        const selev = !selected ? undefined : (selected.reposttarget || selected.event!).event!.event;
         const selpub = selev?.pubkey;
         if (evpub === selpub) {
             bg = colorthempost;
@@ -159,6 +159,7 @@ const TheList = forwardRef<HTMLDivElement, {
                                 <TheRow post={p} mypubkey={mypubkey} selected={selection} />
                             </div>;
                         })} */}
+                        {/* TODO: this can be sT..sT+cH not wholescan */}
                         {posts.map((p, i) => {
                             if (!rowh || rowh * (i + 1) < scrollTop || scrollTop + clientHeight < rowh * i) return null;
                             const evid = p.event!.event!.event.id;
@@ -298,7 +299,6 @@ const Tabsview: FC<{
     const [fontui] = useAtom(state.preferences.fonts.ui);
     const noswk = useNostrWorker();
     const streams = useMemo(() => noswk && new PostStreamWrapper(noswk), [noswk]);
-    const [posts, setPosts] = useAtom(state.posts);
     const [relayinfo] = useAtom(state.relayinfo);
     const listref = useRef<HTMLDivElement>(null);
     const selref = useRef<HTMLDivElement>(null);
@@ -455,6 +455,38 @@ const Tabsview: FC<{
                             break;
                         }
                     }
+                    break;
+                }
+                case "[": {
+                    if (!tap) break;
+                    if (tab.selected === null) break;
+                    const selpost = tap.posts[tab.selected];
+                    if (!selpost) break;  //!?
+                    // really last?
+                    const laste = selpost.event!.event!.event.tags.reduce<string | undefined>((p, c) => c[0] === "e" ? c[1] : p, undefined);
+                    if (!laste) break;
+                    const lp = noswk!.getPost(laste);
+                    if (!lp) break;
+
+                    let rp = [...tab.replypath];
+                    if (tab.replypath.indexOf(selpost.id) === -1) {
+                        rp = [selpost.id];
+                    }
+                    if (rp.indexOf(laste) === -1) {
+                        rp.unshift(laste);
+                    }
+                    setTabs(produce(draft => {
+                        draft.forEach(t => {
+                            if (t.name !== tab.name) return;
+                            t.replypath = rp;
+                        });
+                    }));
+                    const ei = postindex(tap.posts, lp.event!.event!.event);
+                    if (ei === null) break;  // TODO: may move tab? what if already closed?
+                    onselect(ei);
+                    break;
+                }
+                case "]": {
                     break;
                 }
                 case "J": {
@@ -687,7 +719,8 @@ const Tabsview: FC<{
                                 }
                                 const mhash = t.match(/^#(\S+)/);
                                 if (mhash) {
-                                    const tag = (selrpev || selev).event!.event.tags.find(t => t[0] === "t" && t[1] === mhash[1]);
+                                    // hashtag t-tag may be normalized to smallcase
+                                    const tag = (selrpev || selev).event!.event.tags.find(t => t[0] === "t" && t[1].localeCompare(mhash[1]) === 0);
                                     return <span style={{ textDecoration: tag ? "underline" : "underline dotted" }}>#{mhash[1]}</span>;
                                 }
                                 const mnostr = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
