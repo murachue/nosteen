@@ -672,17 +672,58 @@ const Tabsview: FC<{
                             ixs.add(tx.length);
                             const ixa = [...ixs.values()];
                             return Array(ixs.size - 1).fill(0).map((_, i) => tx.slice(ixa[i], ixa[i + 1])).map(t => {
-                                if (t.match(/^https?:\/\/\S+/)) return <a href={t} style={{ color: "#88f" }}>{t}</a>;
-                                const m = t.match(/^#\[(\d+)\]/);
-                                const tag = m && (selrpev || selev).event!.event.tags[Number(m[1])];
-                                if (tag) {
+                                if (t.match(/^https?:\/\/\S+/)) return <a href={t} style={{ color: "#88f" }} tabIndex={-1}>{t}</a>;
+                                const m1 = t.match(/^#\[(\d+)\]/);
+                                if (m1) {
+                                    const tag = (selrpev || selev).event!.event.tags[Number(m1[1])];
                                     if (tag[0] === "p") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.npubEncode(tag[1])}</span>;
                                     if (tag[0] === "e") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.noteEncode(tag[1])}</span>;
-                                    return <span style={{ border: "1px solid white" }}>{tag}</span>; // TODO nice display
+                                    return <span style={{ background: "#f002" }}>{tag}</span>; // TODO nice display
                                 }
-                                // TODO hashtag (with verify)
-                                // TODO nostr:? idents (with verify?)
-                                return <span style={{}}>{t}</span>;
+                                const m2 = t.match(/^#(\S+)/);
+                                if (m2) {
+                                    const tag = (selrpev || selev).event!.event.tags.find(t => t[0] === "t" && t[1] === m2[1]);
+                                    return <span style={{ textDecoration: tag ? "underline" : "dotted" }}>{m2[1]}</span>;
+                                }
+                                const m3 = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
+                                if (m3) {
+                                    const d = (() => { try { return nip19.decode(m3[1]); } catch { return undefined; } })();
+                                    const tt = ((): (((t: string[]) => boolean) | undefined) => {
+                                        if (!d) return undefined;
+                                        switch (d.type) {
+                                            case "nprofile": {
+                                                return t => t[0] === "p" && t[1] === d.data.pubkey;
+                                            }
+                                            case "nevent": {
+                                                return t => t[0] === "e" && t[1] === d.data.id;
+                                            }
+                                            case "naddr": {
+                                                return; // TODO
+                                            }
+                                            case "nsec": {
+                                                return; // TODO
+                                            }
+                                            case "npub": {
+                                                return t => t[0] === "p" && t[1] === d.data;
+                                            }
+                                            case "note": {
+                                                return t => t[0] === "e" && t[1] === d.data;
+                                            }
+                                        }
+                                        return undefined;
+                                    })();
+                                    const tag = tt && (selrpev || selev).event!.event.tags.find(tt);
+                                    return <span style={{
+                                        display: "inline-block",
+                                        textDecoration: tag ? "underline" : "line-through",
+                                        width: "8em",
+                                        height: "1em",
+                                        overflow: "hidden",
+                                        whiteSpace: "nowrap",
+                                        textOverflow: "ellipsis",
+                                    }}>{m3[1]}</span>;
+                                }
+                                return t;
                             });
                         })()}</div>
                         {!selev
