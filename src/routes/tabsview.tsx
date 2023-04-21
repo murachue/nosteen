@@ -672,22 +672,26 @@ const Tabsview: FC<{
                             ixs.add(tx.length);
                             const ixa = [...ixs.values()];
                             return Array(ixs.size - 1).fill(0).map((_, i) => tx.slice(ixa[i], ixa[i + 1])).map(t => {
-                                if (t.match(/^https?:\/\/\S+/)) return <a href={t} style={{ color: "#88f" }} tabIndex={-1}>{t}</a>;
-                                const m1 = t.match(/^#\[(\d+)\]/);
-                                if (m1) {
-                                    const tag = (selrpev || selev).event!.event.tags[Number(m1[1])];
-                                    if (tag[0] === "p") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.npubEncode(tag[1])}</span>;
-                                    if (tag[0] === "e") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.noteEncode(tag[1])}</span>;
-                                    return <span style={{ background: "#f002" }}>{tag}</span>; // TODO nice display
+                                const murl = t.match(/^https?:\/\/\S+/);
+                                if (murl) {
+                                    const tag = (selrpev || selev).event!.event.tags.find(t => t[0] === "r" && t[1] === murl[0]);
+                                    return <a href={t} style={{ color: "#88f", textDecoration: tag ? "underline" : "underline dotted" }} tabIndex={-1}>{t}</a>;
+                                };
+                                const mref = t.match(/^#\[(\d+)\]/);
+                                if (mref) {
+                                    const tag = (selrpev || selev).event!.event.tags[Number(mref[1])];
+                                    if (tag[0] === "p") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", verticalAlign: "text-bottom" }}>{nip19.npubEncode(tag[1])}</span>;
+                                    if (tag[0] === "e") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", verticalAlign: "text-bottom" }}>{nip19.noteEncode(tag[1])}</span>;
+                                    return <span style={{ textDecoration: "underline dotted" }}>{tag}</span>; // TODO nice display
                                 }
-                                const m2 = t.match(/^#(\S+)/);
-                                if (m2) {
-                                    const tag = (selrpev || selev).event!.event.tags.find(t => t[0] === "t" && t[1] === m2[1]);
-                                    return <span style={{ textDecoration: tag ? "underline" : "dotted" }}>{m2[1]}</span>;
+                                const mhash = t.match(/^#(\S+)/);
+                                if (mhash) {
+                                    const tag = (selrpev || selev).event!.event.tags.find(t => t[0] === "t" && t[1] === mhash[1]);
+                                    return <span style={{ textDecoration: tag ? "underline" : "underline dotted" }}>#{mhash[1]}</span>;
                                 }
-                                const m3 = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
-                                if (m3) {
-                                    const d = (() => { try { return nip19.decode(m3[1]); } catch { return undefined; } })();
+                                const mnostr = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
+                                if (mnostr) {
+                                    const d = (() => { try { return nip19.decode(mnostr[1]); } catch { return undefined; } })();
                                     const tt = ((): (((t: string[]) => boolean) | undefined) => {
                                         if (!d) return undefined;
                                         switch (d.type) {
@@ -715,13 +719,14 @@ const Tabsview: FC<{
                                     const tag = tt && (selrpev || selev).event!.event.tags.find(tt);
                                     return <span style={{
                                         display: "inline-block",
-                                        textDecoration: tag ? "underline" : "line-through",
+                                        textDecoration: tag ? "underline" : "underline dotted",
                                         width: "8em",
                                         height: "1em",
                                         overflow: "hidden",
                                         whiteSpace: "nowrap",
                                         textOverflow: "ellipsis",
-                                    }}>{m3[1]}</span>;
+                                        verticalAlign: "text-bottom",
+                                    }}>{mnostr[1]}</span>;
                                 }
                                 return t;
                             });
