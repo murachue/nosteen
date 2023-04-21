@@ -100,8 +100,8 @@ const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | 
     </div>;
 }));
 
-const setref = function <T>(ref: ForwardedRef<T>, value: T) {
-    if (ref === null) return;
+const setref = function <T>(ref: ForwardedRef<T> | undefined, value: T | null) {
+    if (!ref) return;
     if (typeof ref === "function") {
         ref(value);
         return;
@@ -152,7 +152,7 @@ const TheList = forwardRef<HTMLDivElement, {
     return <div style={{ flex: "1 0 0px", height: "0" }}>
         <ListView>
             <div
-                ref={r => { listref.current = r; setref(ref, r); }}
+                ref={el => { listref.current = el; setref(ref, el); }}
                 tabIndex={0}
                 style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}
                 onScroll={e => {
@@ -189,7 +189,10 @@ const TheList = forwardRef<HTMLDivElement, {
                             const evid = p.event!.event!.event.id;
                             return <div
                                 key={evid}
-                                ref={i === lasti ? lastref : p === selection ? selref : undefined} // TODO: react-merge-refs?
+                                ref={el => {
+                                    if (i === lasti) setref(lastref, el);
+                                    if (p === selection) setref(selref, el);
+                                }}
                                 onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}
                                 style={{ position: "absolute", top: `${rowh * i}px` }}
                             >
@@ -388,7 +391,7 @@ const Tabsview: FC<{
         switch (scrollto.ref) {
             case "sel": {
                 // scrollIntoViewIfNeeded(false) is not supported by Firefox 114 yet
-                const sel = selref.current || lastref.current;
+                const sel = selref.current;
                 if (!sel) {
                     break;
                 }
