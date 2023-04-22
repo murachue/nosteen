@@ -3,7 +3,7 @@ import produce from "immer";
 import { useAtom } from "jotai";
 import { encodeBech32ID } from "nostr-mux/dist/core/utils";
 import { nip19 } from "nostr-tools";
-import { FC, Ref, RefObject, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { FC, ForwardedRef, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
@@ -12,8 +12,6 @@ import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nost
 import state from "../state";
 import { Post } from "../types";
 import { bsearchi, getmk, postindex } from "../util";
-import { ForwardedRef } from "react";
-import { MutableRefObject } from "react";
 
 const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -160,9 +158,10 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
             // listref.current?.scrollTo(0, scrollTo.index * (rowref.current?.offsetHeight || 0));
 
             const lel = listref.current;
-            if (!lel) {
-                return;
-            }
+            if (!lel) return;
+            const iel = itemsref.current;
+            if (!iel) return;
+
             const ix = scrollTo.index;
             // we can't use scrollIntoView/scrollIntoViewIfNeeded(!Fx114)
             if (ix * rowh! < lel.scrollTop) {
@@ -173,7 +172,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
             const listScrollBottom = lel.scrollTop + lel.clientHeight;
             const selOffsetBottom = (ix + 1) * rowh!;
             if (listScrollBottom < selOffsetBottom) {
-                lel.scrollTo(0, selOffsetBottom - lel.clientHeight);
+                lel.scrollTo(0, selOffsetBottom - lel.clientHeight + iel.offsetTop);
                 return;
             }
         }
