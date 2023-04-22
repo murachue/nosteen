@@ -109,18 +109,22 @@ const setref = function <T>(ref: ForwardedRef<T> | undefined, value: T | null) {
     ref.current = value;
 };
 
-const TheList = forwardRef<HTMLDivElement, {
+// XXX: vscode 1.77.2 highlighting fails if inlined
+type TheListProps = {
     posts: Post[];
     mypubkey: string | undefined;
-    selection: Post | null;
+    selection: number | null;
     onSelect?: (i: number) => void;
     onScroll?: React.DOMAttributes<HTMLDivElement>["onScroll"];
     selref?: ForwardedRef<HTMLDivElement>;
     lastref?: ForwardedRef<HTMLDivElement>;
-}>(({ posts, mypubkey, selection, onSelect, onScroll, selref, lastref }, ref) => {
+    scrollTo?: { pixel: number; } | { index: number; } | { lastIfVisible: boolean; };
+};
+const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, selection, onSelect, onScroll, selref, lastref, scrollTo }, ref) => {
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontui] = useAtom(state.preferences.fonts.ui);
+    const selpost = selection !== null ? posts[selection] : null;
     const lasti = posts.length - 1;
 
     const listref = useRef<HTMLDivElement | null>(null);
@@ -149,6 +153,52 @@ const TheList = forwardRef<HTMLDivElement, {
     //     }
     // }, [scrollTop]);
 
+    useEffect(() => {
+        if (!scrollTo) return;
+        if ("pixel" in scrollTo) listref.current?.scrollTo(0, scrollTo.pixel);
+        if ("index" in scrollTo) {
+            // listref.current?.scrollTo(0, scrollTo.index * (rowref.current?.offsetHeight || 0));
+
+            const lel = listref.current;
+            if (!lel) {
+                return;
+            }
+            const ix = scrollTo.index;
+            // we can't use scrollIntoView/scrollIntoViewIfNeeded(!Fx114)
+            if (ix * rowh! < lel.scrollTop) {
+                // TODO: don't overlap with sticky listview header
+                lel.scrollTo(0, ix * rowh!);
+                return;
+            }
+            const listScrollBottom = lel.scrollTop + lel.clientHeight;
+            const selOffsetBottom = (ix + 1) * rowh!;
+            if (listScrollBottom < selOffsetBottom) {
+                lel.scrollTo(0, selOffsetBottom - lel.clientHeight);
+                return;
+            }
+        }
+        if ("lastIfVisible" in scrollTo) {
+            const lel = listref.current;
+            if (!lel) {
+                return;
+            }
+            if (posts.length < 1) {
+                return;
+            }
+            if (posts.length < 2) {
+                // all may visible, but scroll to the one
+                lel.scrollTo(0, 0);
+                return;
+            }
+            const listScrollBottom = lel.scrollTop + lel.clientHeight;
+            const SecondLastOffsetTop = (posts.length - 1) * rowh!;
+            if (SecondLastOffsetTop < listScrollBottom) {
+                lel.scrollTo(0, lel.scrollHeight);
+                return;
+            }
+        }
+    }, [scrollTo]);
+
     return <div style={{ flex: "1 0 0px", height: "0" }}>
         <ListView>
             <div
@@ -171,16 +221,16 @@ const TheList = forwardRef<HTMLDivElement, {
                 </div>
                 <div ref={itemsref} style={{ display: "flex", flexDirection: "column", width: "100%", height: `${listh}px`, position: "relative" }}>
                     {!posts[0] ? null : <div style={{ visibility: "hidden", position: "absolute" }}>
-                        <TheRow ref={rowref} post={posts[0]} mypubkey={mypubkey} selected={selection} />
+                        <TheRow ref={rowref} post={posts[0]} mypubkey={mypubkey} selected={null} />
                     </div>}
                     <TBody>
                         {/* {posts.map((p, i) => {
                             const evid = p.event!.event!.event.id;
                             return <div
                                 key={evid}
-                                ref={i === lasti ? lastref : p === selection ? selref : undefined} // TODO: react-merge-refs?
+                                ref={i === lasti ? lastref : p === selpost ? selref : undefined} // TODO: react-merge-refs?
                                 onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}>
-                                <TheRow post={p} mypubkey={mypubkey} selected={selection} />
+                                <TheRow post={p} mypubkey={mypubkey} selected={selpost} />
                             </div>;
                         })} */}
                         {/* TODO: this can be sT..sT+cH not wholescan */}
@@ -191,12 +241,12 @@ const TheList = forwardRef<HTMLDivElement, {
                                 key={evid}
                                 ref={el => {
                                     if (i === lasti) setref(lastref, el);
-                                    if (p === selection) setref(selref, el);
+                                    if (p === selpost) setref(selref, el);
                                 }}
                                 onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}
                                 style={{ position: "absolute", top: `${rowh * i}px` }}
                             >
-                                <TheRow post={p} mypubkey={mypubkey} selected={selection} />
+                                <TheRow post={p} mypubkey={mypubkey} selected={selpost} />
                             </div>;
                         })}
                     </TBody>
@@ -331,7 +381,8 @@ const Tabsview: FC<{
     const selref = useRef<HTMLDivElement>(null);
     const lastref = useRef<HTMLDivElement>(null);
     const textref = useRef<HTMLDivElement>(null);
-    const [scrollto, setScrollto] = useState<{ ref: "" | "sel" | "last", t: number; }>({ ref: "", t: 0 }); // just another object instance is enough, but easier for eyeball debugging.
+    // const [scrollto, setScrollto] = useState<{ ref: "" | "last", t: number; } | { ref: "sel", i: number, t: number; }>({ ref: "", t: 0 });
+    const [listscrollto, setListscrollto] = useState<Parameters<typeof TheList>[0]["scrollTo"]>(undefined);
     const [evinfopopping, setEvinfopopping] = useState(false);
     const evinfopopref = useRef<HTMLDivElement>(null);
 
@@ -361,14 +412,16 @@ const Tabsview: FC<{
         const onChange = (msg: NostrWorkerListenerMessage) => {
             if (msg.type !== "event") return;
             if (msg.name !== name) return;
-            const list = listref.current;
-            if (!list) return;
-            const last = lastref.current;
-            if (!last) return;
-            const scrollBottom = list.scrollTop + list.clientHeight;
-            if (last.offsetTop < scrollBottom) {
-                setScrollto({ ref: "last", t: Date.now() });
-            }
+            // const list = listref.current;
+            // if (!list) return;
+            // const last = lastref.current;
+            // if (!last) return;
+            // const scrollBottom = list.scrollTop + list.clientHeight;
+            // if (last.offsetTop < scrollBottom) {
+            //     setScrollto({ ref: "last", t: Date.now() });
+            // }
+
+            setListscrollto({ lastIfVisible: true });
         };
         streams!.addListener(name, onChange);
         return () => streams!.removeListener(name, onChange);
@@ -384,42 +437,26 @@ const Tabsview: FC<{
             const tab = draft.find(t => t.name === name)!;
             tab.selected = i;
         }));
-        setScrollto({ ref: "sel", t: Date.now() });
+        setListscrollto({ index: i });
         textref.current?.scrollTo(0, 0);
     }, [tap, noswk]);
+    // useEffect(() => {
+    //     switch (scrollto.ref) {
+    //         case "sel": {
+    //             setListscrollto({ index: tab.selected || 0 });
+    //             break;
+    //         }
+    //         case "last": {
+    //             const lel = listref.current;
+    //             if (!lel) break;
+    //             lel.scrollTo(0, lel.scrollHeight - lel.clientHeight);
+    //             break;
+    //         }
+    //     }
+    // }, [scrollto]);
     useEffect(() => {
-        switch (scrollto.ref) {
-            case "sel": {
-                // scrollIntoViewIfNeeded(false) is not supported by Firefox 114 yet
-                const sel = selref.current;
-                if (!sel) {
-                    break;
-                }
-                const list = listref.current;
-                if (!list) {
-                    break;
-                }
-                if (sel.offsetTop < list.scrollTop) {
-                    sel.scrollIntoView(true);
-                    // TODO: don't overlap with sticky listview header
-                    break;
-                }
-                const listScrollBottom = list.scrollTop + list.clientHeight;
-                const selOffsetBottom = sel.offsetTop + sel.offsetHeight;
-                if (listScrollBottom < selOffsetBottom) {
-                    sel.scrollIntoView(false);
-                    break;
-                }
-                break;
-            }
-            case "last": {
-                lastref.current?.scrollIntoView();
-                break;
-            }
-        }
-    }, [scrollto]);
-    useEffect(() => {
-        listref.current?.scrollTo(0, tab.scroll);
+        // listref.current?.scrollTo(0, tab.scroll);
+        setListscrollto({ pixel: tab.scroll });
     }, [name]); // !!
     useEffect(() => {
         setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -494,6 +531,7 @@ const Tabsview: FC<{
                     if (!selpost) break;  //!?
                     const ev = selpost.reposttarget || selpost.event!;
                     // really last?
+                    // 2nd? 2/3?? note18h28wvds25vsd8dlujt7p9cu3q5rnwgl47jrmmumhcmw2pxys63q7zee4e
                     const laste = ev.event!.event.tags.reduce<string | undefined>((p, c) => c[0] === "e" ? c[1] : p, undefined);
                     if (!laste) break;
                     const lp = noswk!.getPost(laste);
@@ -692,7 +730,7 @@ const Tabsview: FC<{
                 {<TheList
                     posts={tap?.posts || []}
                     mypubkey={account?.pubkey}
-                    selection={selpost || null}
+                    selection={tab.selected}
                     ref={listref}
                     selref={selref}
                     lastref={lastref}
@@ -703,6 +741,7 @@ const Tabsview: FC<{
                             tab.scroll = listref.current?.scrollTop || 0; // use event arg?
                         }));
                     }}
+                    scrollTo={listscrollto}
                 />}
                 <div style={{
                     display: "flex",
@@ -799,6 +838,7 @@ const Tabsview: FC<{
                         <div>{!selev ? "text..." : (() => {
                             const tx = (selrpev || selev).event!.event.content;
                             const ixs = new Set([0]);
+                            // TODO: handle domain names? note1asvxwepy2v83mrvfet9yyq0klc4hwsucdn3dlzuvaa9szltw6gqqf5w8p0
                             for (const m of tx.matchAll(/\bhttps?:\/\/\S+|#\S+|\b(nostr:)?(note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+/g)) {
                                 ixs.add(m.index!);
                                 ixs.add(m.index! + m[0].length);
