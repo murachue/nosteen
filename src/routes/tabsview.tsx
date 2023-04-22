@@ -114,11 +114,9 @@ type TheListProps = {
     selection: number | null;
     onSelect?: (i: number) => void;
     onScroll?: React.DOMAttributes<HTMLDivElement>["onScroll"];
-    selref?: ForwardedRef<HTMLDivElement>;
-    lastref?: ForwardedRef<HTMLDivElement>;
     scrollTo?: { pixel: number; } | { index: number; } | { lastIfVisible: boolean; };
 };
-const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, selection, onSelect, onScroll, selref, lastref, scrollTo }, ref) => {
+const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, selection, onSelect, onScroll, scrollTo }, ref) => {
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontui] = useAtom(state.preferences.fonts.ui);
@@ -141,31 +139,17 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
         ro.observe(listel);
         return () => { ro.unobserve(listel); };
     }, []);
-
-    // glitches on scroll. dont.
-    // useEffect(() => {
-    //     if (!listref.current) return;
-    //     if (scrollTop !== listref.current.scrollTop) {
-    //         listref.current.scrollTo(0, scrollTop);
-    //         console.log(scrollTop);
-    //     }
-    // }, [scrollTop]);
-
     useEffect(() => {
         if (!scrollTo) return;
         if ("pixel" in scrollTo) listref.current?.scrollTo(0, scrollTo.pixel);
         if ("index" in scrollTo) {
-            // listref.current?.scrollTo(0, scrollTo.index * (rowref.current?.offsetHeight || 0));
-
             const lel = listref.current;
             if (!lel) return;
             const iel = itemsref.current;
             if (!iel) return;
 
             const ix = scrollTo.index;
-            // we can't use scrollIntoView/scrollIntoViewIfNeeded(!Fx114)
             if (ix * rowh! < lel.scrollTop) {
-                // TODO: don't overlap with sticky listview header
                 lel.scrollTo(0, ix * rowh!);
                 return;
             }
@@ -182,11 +166,6 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                 return;
             }
             if (posts.length < 1) {
-                return;
-            }
-            if (posts.length < 2) {
-                // all may visible, but scroll to the one
-                lel.scrollTo(0, 0);
                 return;
             }
             const listScrollBottom = lel.scrollTop + lel.clientHeight;
@@ -223,25 +202,12 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                         <TheRow ref={rowref} post={posts[0]} mypubkey={mypubkey} selected={null} />
                     </div>}
                     <TBody>
-                        {/* {posts.map((p, i) => {
-                            const evid = p.event!.event!.event.id;
-                            return <div
-                                key={evid}
-                                ref={i === lasti ? lastref : p === selpost ? selref : undefined} // TODO: react-merge-refs?
-                                onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}>
-                                <TheRow post={p} mypubkey={mypubkey} selected={selpost} />
-                            </div>;
-                        })} */}
                         {/* TODO: this can be sT..sT+cH not wholescan */}
                         {posts.map((p, i) => {
                             if (!rowh || rowh * (i + 1) < scrollTop || scrollTop + clientHeight < rowh * i) return null;
                             const evid = p.event!.event!.event.id;
                             return <div
                                 key={evid}
-                                ref={el => {
-                                    if (i === lasti) setref(lastref, el);
-                                    if (p === selpost) setref(selref, el);
-                                }}
                                 onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}
                                 style={{ position: "absolute", top: `${rowh * i}px` }}
                             >
@@ -377,10 +343,7 @@ const Tabsview: FC<{
     const streams = useMemo(() => noswk && new PostStreamWrapper(noswk), [noswk]);
     const [relayinfo] = useAtom(state.relayinfo);
     const listref = useRef<HTMLDivElement>(null);
-    const selref = useRef<HTMLDivElement>(null);
-    const lastref = useRef<HTMLDivElement>(null);
     const textref = useRef<HTMLDivElement>(null);
-    // const [scrollto, setScrollto] = useState<{ ref: "" | "last", t: number; } | { ref: "sel", i: number, t: number; }>({ ref: "", t: 0 });
     const [listscrollto, setListscrollto] = useState<Parameters<typeof TheList>[0]["scrollTo"]>(undefined);
     const [evinfopopping, setEvinfopopping] = useState(false);
     const evinfopopref = useRef<HTMLDivElement>(null);
@@ -396,7 +359,6 @@ const Tabsview: FC<{
     const [postdraft, setPostdraft] = useState("");
     const posteditor = useRef<HTMLInputElement>(null);
 
-    // const tap = posts.bytab.get(name)!;
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
             const onChange = (msg: NostrWorkerListenerMessage) => { msg.type !== "eose" && msg.name === name && onStoreChange(); };
@@ -411,15 +373,6 @@ const Tabsview: FC<{
         const onChange = (msg: NostrWorkerListenerMessage) => {
             if (msg.type !== "event") return;
             if (msg.name !== name) return;
-            // const list = listref.current;
-            // if (!list) return;
-            // const last = lastref.current;
-            // if (!last) return;
-            // const scrollBottom = list.scrollTop + list.clientHeight;
-            // if (last.offsetTop < scrollBottom) {
-            //     setScrollto({ ref: "last", t: Date.now() });
-            // }
-
             setListscrollto({ lastIfVisible: true });
         };
         streams!.addListener(name, onChange);
@@ -439,22 +392,7 @@ const Tabsview: FC<{
         setListscrollto({ index: i });
         textref.current?.scrollTo(0, 0);
     }, [tap, noswk]);
-    // useEffect(() => {
-    //     switch (scrollto.ref) {
-    //         case "sel": {
-    //             setListscrollto({ index: tab.selected || 0 });
-    //             break;
-    //         }
-    //         case "last": {
-    //             const lel = listref.current;
-    //             if (!lel) break;
-    //             lel.scrollTo(0, lel.scrollHeight - lel.clientHeight);
-    //             break;
-    //         }
-    //     }
-    // }, [scrollto]);
     useEffect(() => {
-        // listref.current?.scrollTo(0, tab.scroll);
         setListscrollto({ pixel: tab.scroll });
     }, [name]); // !!
     useEffect(() => {
@@ -529,7 +467,7 @@ const Tabsview: FC<{
                     const selpost = tap.posts[tab.selected];
                     if (!selpost) break;  //!?
                     const ev = selpost.reposttarget || selpost.event!;
-                    // really last?
+                    // really last? NIP-10 states (we fails marker yet) but...
                     // 2nd? 2/3?? note18h28wvds25vsd8dlujt7p9cu3q5rnwgl47jrmmumhcmw2pxys63q7zee4e
                     const laste = ev.event!.event.tags.reduce<string | undefined>((p, c) => c[0] === "e" ? c[1] : p, undefined);
                     if (!laste) break;
@@ -731,8 +669,6 @@ const Tabsview: FC<{
                     mypubkey={account?.pubkey}
                     selection={tab.selected}
                     ref={listref}
-                    selref={selref}
-                    lastref={lastref}
                     onSelect={onselect}
                     onScroll={() => {
                         setTabs(produce(draft => {
