@@ -2,6 +2,7 @@ import { WritableDraft } from "immer/dist/internal";
 import { Event } from "nostr-mux";
 import { Ref } from "react";
 import { Post } from "./types";
+import { nip19 } from "nostr-tools";
 
 export const bsearchi = <T>(arr: T[], comp: (x: T) => boolean): number => {
     let left = 0;
@@ -62,4 +63,13 @@ export const getmk = <K, V>(map: Map<K, V>, key: K, make: () => V) => {
     map.set(key, newval);
 
     return newval;
+};
+
+export const expectn = (s: string, tag: ReturnType<typeof nip19.decode>["type"]) => {
+    try {
+        const d = nip19.decode(s);
+        return d.type === tag;
+    } catch {
+        return false;
+    }
 };

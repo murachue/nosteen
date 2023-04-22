@@ -76,9 +76,10 @@ export default {
         },
         // should be "list" not special "mute"
         mute: {
-            public: atomWithStorage("preferences.mute.public", []),
-            private: atomWithStorage("preferences.mute.private", []),
-            local: atomWithStorage("preferences.mute.local", []),
+            userpublic: atomWithStorage<string[]>("preferences.mute.userpublic", []),
+            userprivate: atomWithStorage<string[]>("preferences.mute.userprivate", []),
+            userlocal: atomWithStorage<string[]>("preferences.mute.userlocal", []),
+            regexlocal: atomWithStorage<string[]>("preferences.mute.regexlocal", []),
         },
     },
     relays: atom(new Map<string, Relay>()),
