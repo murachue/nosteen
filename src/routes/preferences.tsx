@@ -86,25 +86,23 @@ export default () => {
     return <div style={{ height: "100%", overflowY: "auto" }}>
         <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>Preferences</h1>
         <h2>Relays:</h2>
-        <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "max-content max-content max-content max-content max-content", columnGap: "0.5em" }}>
+        <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "max-content max-content", columnGap: "0.5em" }}>
             {relays.map((rly, i) => <>
-                <div key={`url:${rly.url}`} style={{ textDecoration: rly.removed ? "line-through" : undefined, fontStyle: rly.added ? "italic" : undefined }}>{rly.url}</div>
-                <div key={`r:${rly.url}`} style={{ marginLeft: "1em" }}><label><input type="checkbox" checked={rly.read} onChange={e => setRelays(produce(draft => { draft[i].read = e.target.checked; }))} />read</label></div>
-                <div key={`w:${rly.url}`}><label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label></div>
-                <div key={`p:${rly.url}`}><label><input type="checkbox" checked={rly.public} onChange={e => setRelays(produce(draft => { draft[i].public = e.target.checked; }))} />publish?</label></div>
-                <button key={`b:${rly.url}`} disabled={rly.removed} onClick={e => {
-                    if (prefrelayurls.has(rly.url)) {
-                        setRelays(produce(draft => {
-                            const r = draft.find(r => r.url === rly.url);
-                            invariant(r, "inconsistent relays");
-                            r.removed = true;
-                        }));
-                    } else {
-                        setRelays(relays => relays.filter(r => r.url !== rly.url));
-                    }
-                }}>Remove</button>
+                <div key={`l:${rly.url}`} style={{ display: "flex", gap: "0.5em" }}>
+                    <div style={{ ...(rly.removed ? { textDecoration: "line-through" } : rly.added ? { fontStyle: "italic" } : {}), flex: "1", marginRight: "1em" }}>{rly.url}</div>
+                    <div><label><input type="checkbox" checked={rly.read} onChange={e => setRelays(produce(draft => { draft[i].read = e.target.checked; }))} />read</label></div>
+                    <div><label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label></div>
+                    <div><label><input type="checkbox" checked={rly.public} onChange={e => setRelays(produce(draft => { draft[i].public = e.target.checked; }))} />publish?</label></div>
+                </div>
+                <button key={`b:${rly.url}`} onClick={e => {
+                    setRelays(produce(draft => {
+                        const r = draft.find(r => r.url === rly.url);
+                        invariant(r, "inconsistent relays");
+                        r.removed = !r.removed;
+                    }));
+                }}>{rly.removed ? "Undo" : "Remove"}</button>
             </>)}
-            <div style={{ gridColumn: "1 / 5", display: "flex" }}><input type="text" placeholder="wss://..." /* pattern="^wss?://.+" */ value={url} onChange={e => setUrl(e.target.value)} style={{ flex: "1" }} /></div>
+            <div style={{ display: "flex" }}><input type="text" placeholder="wss://..." /* pattern="^wss?://.+" */ value={url} onChange={e => setUrl(e.target.value)} style={{ flex: "1" }} /></div>
             <div>
                 <button style={{ width: "100%" }} disabled={!/^wss?:\/\/.+/.exec(url)} onClick={e => {
                     setRelays(produce(draft => { draft.push({ url, read: true, write: true, public: true, added: true, removed: false }); }));
