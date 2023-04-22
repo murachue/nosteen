@@ -726,26 +726,57 @@ const Tabsview: FC<{
                     const tev = (selrpev || selev!).event!.event;
                     const ss = spans(tev);
                     const specials = ss.filter(s => s.type !== "text");
-                    if (specials.length === 0) return;
-                    setLinkpop(specials.map(s => {
+                    const ls = new Map();
+                    specials.forEach(s => {
                         switch (s.type) {
                             case "url": {
-                                return { text: s.href, auto: s.auto };
+                                const text = s.href;
+                                ls.set(text, { text, auto: s.auto });
+                                break;
                             }
                             case "ref": {
-                                return { text: s.text || s.tag?.[1] || "", auto: false };
+                                const text = s.text || s.tag?.[1] || "";
+                                ls.set(text, { text, auto: false });
+                                break;
                             }
                             case "hashtag": {
-                                return { text: s.tagtext || s.text, auto: s.auto };
+                                const text = `#${s.tagtext || s.text}`;
+                                ls.set(text, { text, auto: s.auto });
+                                break;
                             }
                             case "nip19": {
-                                return { text: s.text, auto: s.auto };
+                                const text = s.text;
+                                ls.set(text, { text, auto: s.auto });
+                                break;
                             }
                             case "text": {
-                                return { text: s.text, auto: false };
+                                const text = s.text;
+                                ls.set(text, { text, auto: false });
+                                break;
                             }
                         }
-                    }));
+                    });
+                    tev.tags.forEach(t => {
+                        switch (t[0]) {
+                            case "p": {
+                                const text = nip19.npubEncode(t[1]);
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                            case "e": {
+                                const text = nip19.noteEncode(t[1]);
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                            case "t": {
+                                const text = t[1];
+                                ls.set(t[1], { text, auto: false });
+                                break;
+                            }
+                        }
+                    });
+                    // TODO: url first? ev, pub then hashtag?
+                    setLinkpop([...ls.values()]);
                     setLinksel(0);
                     break;
                 }
