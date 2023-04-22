@@ -418,6 +418,8 @@ const Tabsview: FC<{
     const [colorlinktext] = useAtom(state.preferences.colors.linktext);
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
+    const [colorseltext] = useAtom(state.preferences.colors.selectedtext);
+    const [colorselbg] = useAtom(state.preferences.colors.selectedbg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
     const noswk = useNostrWorker();
@@ -429,7 +431,9 @@ const Tabsview: FC<{
     const [evinfopopping, setEvinfopopping] = useState(false);
     const evinfopopref = useRef<HTMLDivElement>(null);
     const [linkpop, setLinkpop] = useState<{ text: string; auto: boolean; }[]>([]);
-    const [linksel, setLinksel] = useState<number>(0);
+    const linkpopref = useRef<HTMLDivElement>(null);
+    const [linksel, setLinksel] = useState<number | null>(null);
+    const linkselref = useRef<HTMLDivElement>(null);
 
     const [status, setStatus] = useState("status...");
 
@@ -479,6 +483,11 @@ const Tabsview: FC<{
         setListscrollto({ pixel: tab.scroll });
     }, [name]); // !!
     useEffect(() => {
+        const el = linkselref.current;
+        if (!el) return;
+        el.focus();
+    }, [linksel]);
+    useEffect(() => {
         setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
             if (tagName === "input" || tagName === "textarea" || tagName === "button") {
@@ -494,6 +503,20 @@ const Tabsview: FC<{
                 switch (e.key) {
                     case "Escape": {
                         setLinkpop([]);
+                        setLinksel(null);
+                        listref.current?.focus();
+                        break;
+                    }
+                    case "j": {
+                        if (linksel !== null && linksel < linkpop.length - 1) {
+                            setLinksel(linksel + 1);
+                        }
+                        break;
+                    }
+                    case "k": {
+                        if (linksel !== null && 0 < linksel) {
+                            setLinksel(linksel - 1);
+                        }
                         break;
                     }
                 }
@@ -503,6 +526,7 @@ const Tabsview: FC<{
                 switch (e.key) {
                     case "Escape": {
                         setEvinfopopping(false);
+                        listref.current?.focus();
                         break;
                     }
                 }
@@ -776,12 +800,14 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, onselect, evinfopopping, linkpop]);
+    }, [tabs, tab, tap, onselect, evinfopopping, linkpop, linksel]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
-            const inside = evinfopopref.current?.contains(e.nativeEvent.target as any);
-            if (!inside) {
+            if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
                 setEvinfopopping(false);
+            }
+            if (!linkpopref.current?.contains(e.nativeEvent.target as any)) {
+                setLinkpop([]);
             }
         });
         return () => setGlobalOnPointerDown(undefined);
@@ -897,8 +923,10 @@ const Tabsview: FC<{
                     </div>
                     <div style={{ position: "relative" }}>
                         <div
+                            ref={linkpopref}
                             style={{
                                 display: 0 < linkpop.length ? "flex" : "none",
+                                flexDirection: "column",
                                 position: "absolute",
                                 bottom: "100%",
                                 left: "0px",
@@ -910,10 +938,30 @@ const Tabsview: FC<{
                                 color: coloruitext,
                                 font: fontui,
                                 gridTemplateColumns: "max-content 20em",
-                                columnGap: "0.5em",
+                                rowGap: "0.5em",
                             }}
                         >
-                            {linkpop.map((l, i) => <div key={i} style={{ textDecoration: l.auto ? "underline dotted" : undefined }}>{l.text}</div>)}
+                            {linkpop.map((l, i) =>
+                                <div
+                                    key={i}
+                                    ref={i === linksel ? linkselref : null}
+                                    style={{
+                                        textDecoration: l.auto ? "underline dotted" : undefined,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                        width: "100%",
+                                        color: i === linksel ? "selecteditemtext" : undefined,
+                                        background: i === linksel ? "selecteditem" : undefined,
+                                    }}
+                                    tabIndex={0}
+                                    onFocus={e => {
+                                        seleltext(e.target);
+                                        setLinksel(i);
+                                    }}
+                                >
+                                    {l.text}
+                                </div>)}
                         </div>
                         <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
                             <div>
