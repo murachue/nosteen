@@ -59,7 +59,7 @@ export default {
             normal: atomWithStorage("preferences.colors.normal", "#ccc"),
             repost: atomWithStorage("preferences.colors.repost", "#4c4"),
             reacted: atomWithStorage("preferences.colors.reacted", "#c22"),
-            base: atomWithStorage("preferences.colors.base", "#444"),
+            base: atomWithStorage("preferences.colors.base", "#004"),
             mypost: atomWithStorage("preferences.colors.mypost", "#008"),
             replytome: atomWithStorage("preferences.colors.replytome", "#420"),
             thempost: atomWithStorage("preferences.colors.thempost", "#040"),

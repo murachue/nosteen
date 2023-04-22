@@ -109,6 +109,7 @@ export default () => {
     }, [relays]);
 
     const npubok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(npub, "npub")); // it really should <secp250k1.p but ignore for simplicity.
+    const nsecvalid = (nsec === "" && npubok) || !!/^[0-9A-Fa-f]{64}$/.exec(normhex(nsec, "nsec")); // it really should <secp250k1.n but ignore for simplicity.
     const nsecok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(nsec, "nsec")); // it really should <secp250k1.n but ignore for simplicity.
 
     return <div style={{ height: "100%", overflowY: "auto" }}>
@@ -169,7 +170,7 @@ export default () => {
                 </div>
             </li>
             <li>privkey:
-                <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: nsecok ? "#0f08" : "#f008" }}>
+                <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: nsecvalid ? "#0f08" : "#f008" }}>
                     <input type={nsecmask ? "password" : "text"} placeholder="nsec1... or hex (NIP-07 extension is very recommended)" size={64} value={nsec} onChange={e => {
                         const s = e.target.value;
                         if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
@@ -186,7 +187,7 @@ export default () => {
             </li>
         </ul>
         <p style={{ display: "flex", gap: "0.5em" }}>
-            <button disabled={!((npub === "" && nsec === "") || (npubok && nsec === "") || (npubok && nsecok))} onClick={e => {
+            <button disabled={!((npub === "" && nsec === "") || (npubok && nsecvalid))} onClick={e => {
                 // TODO: NIP-07
                 setPrefaccount(
                     (npub === "" && nsec === "") ? null
