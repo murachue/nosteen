@@ -2,7 +2,7 @@ import Identicon from "identicon.js";
 import produce from "immer";
 import { useAtom } from "jotai";
 import { encodeBech32ID } from "nostr-mux/dist/core/utils";
-import { nip19 } from "nostr-tools";
+import { Event, nip19 } from "nostr-tools";
 import { FC, ForwardedRef, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -332,6 +332,77 @@ const seleltext = (el: HTMLElement) => {
     selection.addRange(range);
 };
 
+const spans = (tev: Event): (
+    { rawtext: string; type: "url"; href: string; auto: boolean; }
+    | { rawtext: string; type: "ref"; tagindex: number; tag: string[] | undefined; text?: string; }
+    | { rawtext: string; type: "hashtag"; text: string; tagtext: string | undefined; auto: boolean; }
+    | { rawtext: string; type: "nip19"; text: string; auto: boolean; }
+    | { rawtext: string; type: "text"; text: string; }
+)[] => {
+    const text = tev.content;
+    const ixs = new Set([0]);
+    // TODO: handle domain names? note1asvxwepy2v83mrvfet9yyq0klc4hwsucdn3dlzuvaa9szltw6gqqf5w8p0
+    for (const m of text.matchAll(/\bhttps?:\/\/\S+|#\S+|\b(nostr:)?(note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+/g)) {
+        ixs.add(m.index!);
+        ixs.add(m.index! + m[0].length);
+    }
+    ixs.add(text.length);
+    const ixa = [...ixs.values()].sort((a, b) => a - b);
+    const tspans = Array(ixs.size - 1).fill(0).map((_, i) => text.slice(ixa[i], ixa[i + 1]));
+    return tspans.map(t => {
+        const murl = t.match(/^https?:\/\/\S+/);
+        if (murl) {
+            const tag = tev.tags.find(t => t[0] === "r" && t[1] === murl[0]);
+            return { rawtext: t, type: "url", href: t, auto: !tag } as const;
+        };
+        const mref = t.match(/^#\[(\d+)\]/);
+        if (mref) {
+            const ti = Number(mref[1]);
+            const tag = tev.tags[ti];
+            if (tag[0] === "p") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.npubEncode(tag[1]) } as const;
+            if (tag[0] === "e") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]) } as const;
+            return { rawtext: t, type: "ref", tagindex: ti, tag } as const;
+        }
+        const mhash = t.match(/^#(\S+)/);
+        if (mhash) {
+            // hashtag t-tag may be normalized to smallcase
+            const tag = tev.tags.find(t => t[0] === "t" && t[1].localeCompare(mhash[1]) === 0);
+            return { rawtext: t, type: "hashtag", text: mhash[1], tagtext: tag?.[1], auto: !tag } as const;
+        }
+        const mnostr = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
+        if (mnostr) {
+            const tt = ((): (((t: string[]) => boolean) | undefined) => {
+                const d = (() => { try { return nip19.decode(mnostr[1]); } catch { return undefined; } })();
+                if (!d) return undefined;
+                switch (d.type) {
+                    case "nprofile": {
+                        return t => t[0] === "p" && t[1] === d.data.pubkey;
+                    }
+                    case "nevent": {
+                        return t => t[0] === "e" && t[1] === d.data.id;
+                    }
+                    case "naddr": {
+                        return; // TODO
+                    }
+                    case "nsec": {
+                        return; // TODO
+                    }
+                    case "npub": {
+                        return t => t[0] === "p" && t[1] === d.data;
+                    }
+                    case "note": {
+                        return t => t[0] === "e" && t[1] === d.data;
+                    }
+                }
+                return undefined;
+            })();
+            const tag = tt && tev.tags.find(tt);
+            return { rawtext: t, type: "nip19", text: mnostr[1], auto: !tag } as const;
+        }
+        return { rawtext: t, type: "text", text: t } as const;
+    });
+};
+
 const Tabsview: FC<{
     setGlobalOnKeyDown: React.Dispatch<React.SetStateAction<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>>;
     setGlobalOnPointerDown: React.Dispatch<React.SetStateAction<React.DOMAttributes<HTMLDivElement>["onPointerDown"]>>;
@@ -357,6 +428,8 @@ const Tabsview: FC<{
     const [listscrollto, setListscrollto] = useState<Parameters<typeof TheList>[0]["scrollTo"]>(undefined);
     const [evinfopopping, setEvinfopopping] = useState(false);
     const evinfopopref = useRef<HTMLDivElement>(null);
+    const [linkpop, setLinkpop] = useState<{ text: string; auto: boolean; }[]>([]);
+    const [linksel, setLinksel] = useState<number>(0);
 
     const [status, setStatus] = useState("status...");
 
@@ -415,6 +488,15 @@ const Tabsview: FC<{
                 return;
             }
             if (e.nativeEvent.isComposing) {
+                return;
+            }
+            if (0 < linkpop.length) {
+                switch (e.key) {
+                    case "Escape": {
+                        setLinkpop([]);
+                        break;
+                    }
+                }
                 return;
             }
             if (evinfopopping) {
@@ -615,9 +697,32 @@ const Tabsview: FC<{
                     break;
                 }
                 case "e": {
-                    break;
-                }
-                case "E": {
+                    if (!selpost) return;
+
+                    const tev = (selrpev || selev!).event!.event;
+                    const ss = spans(tev);
+                    const specials = ss.filter(s => s.type !== "text");
+                    if (specials.length === 0) return;
+                    setLinkpop(specials.map(s => {
+                        switch (s.type) {
+                            case "url": {
+                                return { text: s.href, auto: s.auto };
+                            }
+                            case "ref": {
+                                return { text: s.text || s.tag?.[1] || "", auto: false };
+                            }
+                            case "hashtag": {
+                                return { text: s.tagtext || s.text, auto: s.auto };
+                            }
+                            case "nip19": {
+                                return { text: s.text, auto: s.auto };
+                            }
+                            case "text": {
+                                return { text: s.text, auto: false };
+                            }
+                        }
+                    }));
+                    setLinksel(0);
                     break;
                 }
                 case "1":
@@ -671,7 +776,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, onselect, evinfopopping]);
+    }, [tabs, tab, tap, onselect, evinfopopping, linkpop]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             const inside = evinfopopref.current?.contains(e.nativeEvent.target as any);
@@ -790,93 +895,88 @@ const Tabsview: FC<{
                             })()}
                         </div>
                     </div>
-                    <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
-                        <div>{!selev ? "text..." : (() => {
-                            const tx = (selrpev || selev).event!.event.content;
-                            const ixs = new Set([0]);
-                            // TODO: handle domain names? note1asvxwepy2v83mrvfet9yyq0klc4hwsucdn3dlzuvaa9szltw6gqqf5w8p0
-                            for (const m of tx.matchAll(/\bhttps?:\/\/\S+|#\S+|\b(nostr:)?(note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+/g)) {
-                                ixs.add(m.index!);
-                                ixs.add(m.index! + m[0].length);
-                            }
-                            ixs.add(tx.length);
-                            const ixa = [...ixs.values()];
-                            return Array(ixs.size - 1).fill(0).map((_, i) => tx.slice(ixa[i], ixa[i + 1])).map(t => {
-                                const murl = t.match(/^https?:\/\/\S+/);
-                                if (murl) {
-                                    const tag = (selrpev || selev).event!.event.tags.find(t => t[0] === "r" && t[1] === murl[0]);
-                                    return <a href={t} style={{ color: colorlinktext, textDecoration: tag ? "underline" : "underline dotted" }} tabIndex={-1}>{t}</a>;
-                                };
-                                const mref = t.match(/^#\[(\d+)\]/);
-                                if (mref) {
-                                    const tag = (selrpev || selev).event!.event.tags[Number(mref[1])];
-                                    if (tag[0] === "p") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", verticalAlign: "text-bottom" }}>{nip19.npubEncode(tag[1])}</span>;
-                                    if (tag[0] === "e") return <span style={{ display: "inline-block", textDecoration: "underline", width: "8em", height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", verticalAlign: "text-bottom" }}>{nip19.noteEncode(tag[1])}</span>;
-                                    return <span style={{ textDecoration: "underline dotted" }}>{tag}</span>; // TODO nice display
-                                }
-                                const mhash = t.match(/^#(\S+)/);
-                                if (mhash) {
-                                    // hashtag t-tag may be normalized to smallcase
-                                    const tag = (selrpev || selev).event!.event.tags.find(t => t[0] === "t" && t[1].localeCompare(mhash[1]) === 0);
-                                    return <span style={{ textDecoration: tag ? "underline" : "underline dotted" }}>#{mhash[1]}</span>;
-                                }
-                                const mnostr = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
-                                if (mnostr) {
-                                    const d = (() => { try { return nip19.decode(mnostr[1]); } catch { return undefined; } })();
-                                    const tt = ((): (((t: string[]) => boolean) | undefined) => {
-                                        if (!d) return undefined;
-                                        switch (d.type) {
-                                            case "nprofile": {
-                                                return t => t[0] === "p" && t[1] === d.data.pubkey;
+                    <div style={{ position: "relative" }}>
+                        <div
+                            style={{
+                                display: 0 < linkpop.length ? "flex" : "none",
+                                position: "absolute",
+                                bottom: "100%",
+                                left: "0px",
+                                padding: "5px",
+                                minWidth: "10em",
+                                maxWidth: "40em",
+                                border: "2px outset",
+                                background: coloruibg,
+                                color: coloruitext,
+                                font: fontui,
+                                gridTemplateColumns: "max-content 20em",
+                                columnGap: "0.5em",
+                            }}
+                        >
+                            {linkpop.map((l, i) => <div key={i} style={{ textDecoration: l.auto ? "underline dotted" : undefined }}>{l.text}</div>)}
+                        </div>
+                        <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
+                            <div>
+                                {!selev ? "text..." : (() => {
+                                    return spans((selrpev || selev).event!.event).map(s => {
+                                        switch (s.type) {
+                                            case "url": {
+                                                return <a href={s.href} style={{ color: colorlinktext, textDecoration: s.auto ? "underline dotted" : "underline" }} tabIndex={-1}>{s.href}</a>;
                                             }
-                                            case "nevent": {
-                                                return t => t[0] === "e" && t[1] === d.data.id;
+                                            case "ref": {
+                                                if (s.text) {
+                                                    return <span style={{
+                                                        display: "inline-block",
+                                                        textDecoration: "underline",
+                                                        width: "8em",
+                                                        height: "1em",
+                                                        overflow: "hidden",
+                                                        whiteSpace: "nowrap",
+                                                        textOverflow: "ellipsis",
+                                                        verticalAlign: "text-bottom"
+                                                    }}>{s.text}</span>;
+                                                } else {
+                                                    return <span style={{ textDecoration: "underline dotted" }}>{JSON.stringify(s.tag)}</span>; // TODO nice display
+                                                }
                                             }
-                                            case "naddr": {
-                                                return; // TODO
+                                            case "hashtag": {
+                                                return <span style={{ textDecoration: s.auto ? "underline dotted" : "underline" }}>#{s.text}</span>;
                                             }
-                                            case "nsec": {
-                                                return; // TODO
+                                            case "nip19": {
+                                                return <span style={{
+                                                    display: "inline-block",
+                                                    textDecoration: s.auto ? "underline dotted" : "underline",
+                                                    width: "8em",
+                                                    height: "1em",
+                                                    overflow: "hidden",
+                                                    whiteSpace: "nowrap",
+                                                    textOverflow: "ellipsis",
+                                                    verticalAlign: "text-bottom",
+                                                }}>{s.text}</span>;
                                             }
-                                            case "npub": {
-                                                return t => t[0] === "p" && t[1] === d.data;
-                                            }
-                                            case "note": {
-                                                return t => t[0] === "e" && t[1] === d.data;
+                                            case "text": {
+                                                return s.text;
                                             }
                                         }
-                                        return undefined;
-                                    })();
-                                    const tag = tt && (selrpev || selev).event!.event.tags.find(tt);
-                                    return <span style={{
-                                        display: "inline-block",
-                                        textDecoration: tag ? "underline" : "underline dotted",
-                                        width: "8em",
-                                        height: "1em",
-                                        overflow: "hidden",
-                                        whiteSpace: "nowrap",
-                                        textOverflow: "ellipsis",
-                                        verticalAlign: "text-bottom",
-                                    }}>{mnostr[1]}</span>;
-                                }
-                                return t;
-                            });
-                        })()}</div>
-                        {!selev
-                            ? null
-                            : <div style={{ margin: "0.5em", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px" }}>
-                                {((selrpev || selev)?.event?.event?.tags || []).map((t, i) => <div key={i} style={{
-                                    border: "1px solid",
-                                    borderColor: colornormal,
-                                    borderRadius: "2px",
-                                }}>
-                                    <div style={{ display: "flex", flexDirection: "row" }}>
-                                        <div style={{ padding: "0 0.3em", background: colornormal, color: colorbase }}>{t[0]}</div>
-                                        <div style={{ padding: "0 0.3em" }}>{t[1]}</div>
-                                        {t.length <= 2 ? null : <div style={{ padding: "0 0.3em", borderLeft: "1px solid", borderLeftColor: colornormal }}>{JSON.stringify(t.slice(2))}</div>}
-                                    </div>
-                                </div>)}
-                            </div>}
+                                    });
+                                })()}
+                            </div>
+                            {!selev
+                                ? null
+                                : <div style={{ margin: "0.5em", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px" }}>
+                                    {((selrpev || selev)?.event?.event?.tags || []).map((t, i) => <div key={i} style={{
+                                        border: "1px solid",
+                                        borderColor: colornormal,
+                                        borderRadius: "2px",
+                                    }}>
+                                        <div style={{ display: "flex", flexDirection: "row" }}>
+                                            <div style={{ padding: "0 0.3em", background: colornormal, color: colorbase }}>{t[0]}</div>
+                                            <div style={{ padding: "0 0.3em" }}>{t[1]}</div>
+                                            {t.length <= 2 ? null : <div style={{ padding: "0 0.3em", borderLeft: "1px solid", borderLeftColor: colornormal }}>{JSON.stringify(t.slice(2))}</div>}
+                                        </div>
+                                    </div>)}
+                                </div>}
+                        </div>
                     </div>
                 </div>
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
