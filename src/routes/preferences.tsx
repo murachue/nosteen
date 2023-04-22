@@ -8,8 +8,11 @@ import { useCallback, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
 import state from "../state";
+import { useNostrWorker } from "../nostrworker";
 
 export default () => {
+    const mux = useNostrWorker();
+
     // TODO: open this pref page directly cause lost-load pref values
     const [prefrelays, setPrefrelays] = useAtom(state.preferences.relays);
     const [prefaccount, setPrefaccount] = useAtom(state.preferences.account);
@@ -44,8 +47,6 @@ export default () => {
         return encodeBech32ID(tag, s);
     };
 
-    const [relayinsts, setRelayinsts] = useImmerAtom(state.relays);
-    const [relaymux] = useAtom(state.relaymux);
     const prefrelayurls = new Set(prefrelays.map(r => r.url));
     const [relays, setRelays] = useState(prefrelays.map(r => ({ ...r, added: false, removed: false })));
     const [colorNormal, setColorNormal] = useState(prefColorNormal);
@@ -64,9 +65,6 @@ export default () => {
     const [fontText, setFontText] = useState(prefFontText);
     const [fontUi, setFontUi] = useState(prefFontUi);
     const [url, setUrl] = useState("");
-    const [read, setRead] = useState(true);
-    const [write, setWrite] = useState(true);
-    const [ispublic, setPublic] = useState(true);
     const [npub, setNpub] = useState(normb32(prefaccount?.pubkey || "", "npub") || "");
     const [nsec, setNsec] = useState(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec") || "");
     const [nsecmask, setNsecmask] = useState(true);
@@ -74,39 +72,12 @@ export default () => {
     const navigate = useNavigate();
 
     const saverelays = useCallback(() => {
-        const newmap = new Map(relays.map(r => [r.url, r]));
+        const filteredRelays = relays.filter(r => !r.removed);
+        mux!.setRelays(filteredRelays.map(r => ({ url: r.url, read: r.read, write: r.write })));
 
-        // add
-        for (const [url, r] of newmap.entries()) {
-            if (prefrelayurls.has(url)) continue;
-
-            const relay = new Relay(url, { read: r.read, write: r.write });
-            setRelayinsts(draft => draft.set(url, relay));
-            relaymux.addRelay(relay);
-        }
-
-        // update
-        for (const [url, r] of newmap.entries()) {
-            if (!prefrelayurls.has(url)) continue;
-
-            const ri = relayinsts.get(url);
-            invariant(ri, `relay instance not found for ${url}`);
-            ri.updatePermission({ read: r.read, write: r.write });
-        }
-
-        // remove
-        for (const r of prefrelays) {
-            if (newmap.has(r.url)) continue;
-
-            const ri = relayinsts.get(r.url);
-            invariant(ri, `relay instance not found for ${r.url}`);
-            setRelayinsts(is => is.delete(r.url));
-            relaymux.removeRelay(r.url);
-        }
-
-        setPrefrelays(relays.filter(r => !r.removed).map(({ url, read, write, public: ispublic }) => ({ url, read, write, public: ispublic })));
-        setRelays(relays => relays.filter(r => !r.removed).map(r => ({ ...r, added: false })));
-    }, [relays]);
+        setPrefrelays(filteredRelays.map(({ url, read, write, public: ispublic }) => ({ url, read, write, public: ispublic })));
+        setRelays(filteredRelays.map(r => ({ ...r, added: false })));
+    }, [relays, prefrelayurls]);
 
     const npubok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(npub, "npub")); // it really should <secp250k1.p but ignore for simplicity.
     const nsecvalid = (nsec === "" && npubok) || !!/^[0-9A-Fa-f]{64}$/.exec(normhex(nsec, "nsec")); // it really should <secp250k1.n but ignore for simplicity.
@@ -115,40 +86,32 @@ export default () => {
     return <div style={{ height: "100%", overflowY: "auto" }}>
         <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>Preferences</h1>
         <h2>Relays:</h2>
-        <ul>
-            {relays.map((rly, i) => <li key={rly.url}>
-                <span style={{ textDecoration: rly.removed ? "line-through" : undefined, fontStyle: rly.added ? "italic" : undefined }}>{rly.url}</span>
-                <span style={{ marginLeft: "1em" }}>
-                    <label><input type="checkbox" checked={rly.read} onChange={e => setRelays(produce(draft => { draft[i].read = e.target.checked; }))} />read</label>
-                    <label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label>
-                    <label><input type="checkbox" checked={rly.public} onChange={e => setRelays(produce(draft => { draft[i].public = e.target.checked; }))} />publish?</label>
-                    <button disabled={rly.removed} onClick={e => {
-                        if (prefrelayurls.has(rly.url)) {
-                            setRelays(produce(draft => {
-                                const r = draft.find(r => r.url === rly.url);
-                                invariant(r, "inconsistent relays");
-                                r.removed = true;
-                            }));
-                        } else {
-                            setRelays(relays => relays.filter(r => r.url !== rly.url));
-                        }
-                    }}>Remove</button>
-                </span>
-            </li>)}
-            <li>
-                <input type="text" placeholder="wss://..." /* pattern="^wss?://.+" */ value={url} onChange={e => setUrl(e.target.value)} />
-                <label><input type="checkbox" checked={read} onChange={e => setRead(e.target.checked)} />read</label>
-                <label><input type="checkbox" checked={write} onChange={e => setWrite(e.target.checked)} />write</label>
-                <label><input type="checkbox" checked={ispublic} onChange={e => setPublic(e.target.checked)} />publish?</label>
-                <button disabled={!/^wss?:\/\/.+/.exec(url)} onClick={e => {
-                    setRelays(produce(draft => { draft.push({ url, read, write, public: ispublic, added: true, removed: false }); }));
+        <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "max-content max-content max-content max-content max-content", columnGap: "0.5em" }}>
+            {relays.map((rly, i) => <>
+                <div key={`url:${rly.url}`} style={{ textDecoration: rly.removed ? "line-through" : undefined, fontStyle: rly.added ? "italic" : undefined }}>{rly.url}</div>
+                <div key={`r:${rly.url}`} style={{ marginLeft: "1em" }}><label><input type="checkbox" checked={rly.read} onChange={e => setRelays(produce(draft => { draft[i].read = e.target.checked; }))} />read</label></div>
+                <div key={`w:${rly.url}`}><label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label></div>
+                <div key={`p:${rly.url}`}><label><input type="checkbox" checked={rly.public} onChange={e => setRelays(produce(draft => { draft[i].public = e.target.checked; }))} />publish?</label></div>
+                <button key={`b:${rly.url}`} disabled={rly.removed} onClick={e => {
+                    if (prefrelayurls.has(rly.url)) {
+                        setRelays(produce(draft => {
+                            const r = draft.find(r => r.url === rly.url);
+                            invariant(r, "inconsistent relays");
+                            r.removed = true;
+                        }));
+                    } else {
+                        setRelays(relays => relays.filter(r => r.url !== rly.url));
+                    }
+                }}>Remove</button>
+            </>)}
+            <div style={{ gridColumn: "1 / 5", display: "flex" }}><input type="text" placeholder="wss://..." /* pattern="^wss?://.+" */ value={url} onChange={e => setUrl(e.target.value)} style={{ flex: "1" }} /></div>
+            <div>
+                <button style={{ width: "100%" }} disabled={!/^wss?:\/\/.+/.exec(url)} onClick={e => {
+                    setRelays(produce(draft => { draft.push({ url, read: true, write: true, public: true, added: true, removed: false }); }));
                     setUrl("");
-                    setRead(true);
-                    setWrite(true);
-                    setPublic(true);
                 }}>Add</button>
-            </li>
-        </ul>
+            </div>
+        </div>
         <p style={{ display: "flex", gap: "0.5em" }}>
             <button onClick={() => { saverelays(); }}>Save</button>
             <button onClick={() => { saverelays(); /* TODO publish */ }}>Save & Publish</button>
@@ -158,7 +121,7 @@ export default () => {
         <ul>
             <li>pubkey:
                 <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: npubok ? "#0f08" : "#f008" }}>
-                    <input type="text" placeholder="npub1... or hex (auto-filled when correct privkey is set)" size={64} disabled={nsecok} value={npub} onChange={e => {
+                    <input type="text" placeholder="npub1... or hex (auto-filled when correct privkey is set)" size={64} disabled={nsecok} value={npub} style={{ fontFamily: "monospace" }} onChange={e => {
                         const s = e.target.value;
                         if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
                             setNpub(encodeBech32ID("npub", s) || "");
@@ -171,7 +134,7 @@ export default () => {
             </li>
             <li>privkey:
                 <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: nsecvalid ? "#0f08" : "#f008" }}>
-                    <input type={nsecmask ? "password" : "text"} placeholder="nsec1... or hex (NIP-07 extension is very recommended)" size={64} value={nsec} onChange={e => {
+                    <input type={nsecmask ? "password" : "text"} placeholder="nsec1... or hex (NIP-07 extension is very recommended)" size={64} value={nsec} style={{ fontFamily: "monospace" }} onChange={e => {
                         const s = e.target.value;
                         if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
                             setNsec(encodeBech32ID("nsec", s) || "");

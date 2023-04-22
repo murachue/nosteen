@@ -161,6 +161,9 @@ export class NostrWorker {
     addq: { name: string, messages: EventMessageFromRelay[]; }[] = [];
     fetchq: { filter: Filter, onComplete: (receives: EventMessageFromRelay) => void; }[] = [];
 
+    getRelays() {
+        return [...this.relays.values()].map(r => ({ url: r.url, read: r.isReadable, write: r.isWritable }));
+    }
     setRelays(newrelays: { url: string, read: boolean, write: boolean; }[]) {
         const pre = new Map(this.relays); // taking a (shallow) copy for direct modify
         const cur = new Map(newrelays.map(r => [r.url, r]));
@@ -656,6 +659,7 @@ export class NostrWorker {
                     }
                 }
             } else {
+                // TODO: treat just ref'ing note as repost? note1qqqq9q6dm3z2swss94ul9qxxsysf3c4qemfwwlck8fyr4dqf4pyq2gzsxj
                 post.event = recv;
             }
 
