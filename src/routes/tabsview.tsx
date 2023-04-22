@@ -322,6 +322,16 @@ class PostStreamWrapper {
     }
 }
 
+const seleltext = (el: HTMLElement) => {
+    // https://stackoverflow.com/a/987376
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    selection.removeAllRanges();
+    selection.addRange(range);
+};
+
 const Tabsview: FC<{
     setGlobalOnKeyDown: React.Dispatch<React.SetStateAction<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>>;
     setGlobalOnPointerDown: React.Dispatch<React.SetStateAction<React.DOMAttributes<HTMLDivElement>["onPointerDown"]>>;
@@ -406,6 +416,15 @@ const Tabsview: FC<{
             }
             if (e.nativeEvent.isComposing) {
                 return;
+            }
+            if (evinfopopping) {
+                switch (e.key) {
+                    case "Escape": {
+                        setEvinfopopping(false);
+                        break;
+                    }
+                }
+                // return;
             }
             switch (e.key) {
                 case "a": {
@@ -635,6 +654,10 @@ const Tabsview: FC<{
                     }
                     break;
                 }
+                case "m": {
+                    setEvinfopopping(true);
+                    break;
+                }
                 case ",": {
                     navigate("/preferences");
                     break;
@@ -648,7 +671,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, onselect]);
+    }, [tabs, tab, tap, onselect, evinfopopping]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             const inside = evinfopopref.current?.contains(e.nativeEvent.target as any);
@@ -688,9 +711,7 @@ const Tabsview: FC<{
                     padding: "0 0 0 2px",
                 }}>
                     <div style={{ flex: "1", display: "flex", alignItems: "flex-start", overflow: "visible" }}>
-                        {/* <TabBar> */}
                         {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
-                        {/* </TabBar> */}
                     </div>
                     <div>
                         <Link to="/preferences" style={{
@@ -753,10 +774,10 @@ const Tabsview: FC<{
                                     <div style={{ textAlign: "right" }}>received from:</div><div>
                                         {[...rev.receivedfrom.values()].map(r => (<div key={r.url}>{r.url}</div>))}
                                     </div>
-                                    <div style={{ textAlign: "right" }}>note id:</div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ev.id}</div>
-                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{encodeBech32ID("note", ev.id)}</div>
-                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: froms })}</div>
-                                    <div style={{ textAlign: "right" }}>json:</div><div style={{ height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{[
+                                    <div style={{ textAlign: "right" }}>note id:</div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{ev.id}</div>
+                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{encodeBech32ID("note", ev.id)}</div>
+                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: froms })}</div>
+                                    <div style={{ textAlign: "right" }}>json:</div><div style={{ height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{[
                                         selpost.event!.event!.event,
                                         selpost.event?.deleteevent?.event,
                                         selpost.reposttarget?.event?.event,
