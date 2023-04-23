@@ -480,6 +480,7 @@ const Tabsview: FC<{
         textref.current?.scrollTo(0, 0);
     }, [tap, noswk]);
     useEffect(() => {
+        // TODO: when fonttext changes?
         setListscrollto({ pixel: tab.scroll });
     }, [name]); // !!
     useEffect(() => {
@@ -517,6 +518,10 @@ const Tabsview: FC<{
                         if (linksel !== null && 0 < linksel) {
                             setLinksel(linksel - 1);
                         }
+                        break;
+                    }
+                    case "Enter": {
+                        // TODO
                         break;
                     }
                 }
@@ -769,8 +774,8 @@ const Tabsview: FC<{
                                 break;
                             }
                             case "t": {
-                                const text = t[1];
-                                ls.set(t[1], { text, auto: false });
+                                const text = `#${t[1]}`;
+                                ls.set(text, { text, auto: false });
                                 break;
                             }
                         }
@@ -984,6 +989,7 @@ const Tabsview: FC<{
                                         width: "100%",
                                         color: i === linksel ? "selecteditemtext" : undefined,
                                         background: i === linksel ? "selecteditem" : undefined,
+                                        padding: "0 0 2px 2px",
                                     }}
                                     tabIndex={0}
                                     onFocus={e => {
