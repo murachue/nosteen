@@ -114,7 +114,7 @@ type TheListProps = {
     selection: number | null;
     onSelect?: (i: number) => void;
     onScroll?: React.DOMAttributes<HTMLDivElement>["onScroll"];
-    scrollTo?: { pixel: number; } | { index: number; } | { lastIfVisible: boolean; };
+    scrollTo?: { pixel: number; } | { index: number; toTop?: boolean; } | { lastIfVisible: boolean; };
 };
 const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, selection, onSelect, onScroll, scrollTo }, ref) => {
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
@@ -156,7 +156,11 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
             const listScrollBottom = lel.scrollTop + lel.clientHeight;
             const selOffsetBottom = (ix + 1) * rowh!;
             if (listScrollBottom < selOffsetBottom) {
-                lel.scrollTo(0, selOffsetBottom - lel.clientHeight + iel.offsetTop);
+                if (scrollTo.toTop) {
+                    lel.scrollTo(0, ix * rowh!);
+                } else {
+                    lel.scrollTo(0, selOffsetBottom - lel.clientHeight + iel.offsetTop);
+                }
                 return;
             }
         }
@@ -468,7 +472,7 @@ const Tabsview: FC<{
     const selpost = tab.selected === null ? undefined : tap?.posts[tab.selected];
     const selev = selpost?.event;
     const selrpev = selpost?.reposttarget;
-    const onselect = useCallback((i: number) => {
+    const onselect = useCallback((i: number, toTop?: boolean) => {
         if (tap) {
             noswk!.setHasread(tap.posts[i].id, true);
         }
@@ -476,7 +480,7 @@ const Tabsview: FC<{
             const tab = draft.find(t => t.name === name)!;
             tab.selected = i;
         }));
-        setListscrollto({ index: i });
+        setListscrollto({ index: i, toTop });
         textref.current?.scrollTo(0, 0);
     }, [tap, noswk]);
     useEffect(() => {
@@ -814,7 +818,7 @@ const Tabsview: FC<{
                         }
                     }
                     if (i < tapl) {
-                        onselect(i); // TODO: scroll to top
+                        onselect(i, true);
                         e.preventDefault();
                     }
                     break;
