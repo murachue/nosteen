@@ -440,8 +440,6 @@ const Tabsview: FC<{
     const [colorlinktext] = useAtom(state.preferences.colors.linktext);
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
-    const [colorseltext] = useAtom(state.preferences.colors.selectedtext);
-    const [colorselbg] = useAtom(state.preferences.colors.selectedbg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
     const noswk = useNostrWorker();
@@ -1009,8 +1007,8 @@ const Tabsview: FC<{
                                         textOverflow: "ellipsis",
                                         whiteSpace: "nowrap",
                                         width: "100%",
-                                        color: i === linksel ? "selecteditemtext" : undefined,
-                                        background: i === linksel ? "selecteditem" : undefined,
+                                        color: i === linksel ? "highlighttext" : undefined,
+                                        background: i === linksel ? "highlight" : undefined,
                                         padding: "0 0 2px 2px",
                                     }}
                                     tabIndex={0}
