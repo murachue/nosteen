@@ -139,16 +139,15 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontui] = useAtom(state.preferences.fonts.ui);
     const selpost = selection !== null ? posts[selection] : null;
-    const lasti = posts.length - 1;
 
     const listref = useRef<HTMLDivElement | null>(null);
-    const headref = useRef<HTMLDivElement>(null);
     const itemsref = useRef<HTMLDivElement>(null);
     const rowref = useRef<HTMLDivElement>(null);
-    const rowh = rowref.current?.offsetHeight;
-    const listh = (rowh || 0) * posts.length;
+    const rowh = rowref.current!.offsetHeight;
+    const listh = rowh * posts.length;
     const [scrollTop, setScrollTop] = useState(0);
     const [clientHeight, setClientHeight] = useState(0);
+
     useEffect(() => {
         const listel = listref.current;  // copy current to avoid mutation on cleanup
         if (!listel) return;
@@ -167,17 +166,17 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
             if (!iel) return;
 
             const ix = scrollTo.index;
-            if (ix * rowh! < lel.scrollTop) {
-                lel.scrollTo(0, ix * rowh!);
+            if (ix * rowh < lel.scrollTop) {
+                lel.scrollTo(0, ix * rowh);
                 return;
             }
             const listScrollBottom = lel.scrollTop + lel.clientHeight;
-            const selOffsetBottom = (ix + 1) * rowh!;
+            const selOffsetBottom = (ix + 1) * rowh + iel.offsetTop;
             if (listScrollBottom < selOffsetBottom) {
                 if (scrollTo.toTop) {
-                    lel.scrollTo(0, ix * rowh!);
+                    lel.scrollTo(0, ix * rowh);
                 } else {
-                    lel.scrollTo(0, selOffsetBottom - lel.clientHeight + iel.offsetTop);
+                    lel.scrollTo(0, selOffsetBottom - lel.clientHeight);
                 }
                 return;
             }
@@ -187,11 +186,8 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
             if (!lel) {
                 return;
             }
-            if (posts.length < 1) {
-                return;
-            }
             const listScrollBottom = lel.scrollTop + lel.clientHeight;
-            const SecondLastOffsetTop = (posts.length - 1) * rowh!;
+            const SecondLastOffsetTop = (posts.length - 1) * rowh;
             if (SecondLastOffsetTop < listScrollBottom) {
                 lel.scrollTo(0, lel.scrollHeight);
                 return;
@@ -210,7 +206,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                     onScroll && onScroll(e);
                 }}
             >
-                <div ref={headref} style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg, zIndex: 1 /* ugh */ }}>
+                <div style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg, zIndex: 1 /* ugh */ }}>
                     <TH>
                         <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>m</div></TD>
                         <TD width="20px"><div style={{ overflow: "hidden", padding: "2px", borderRight: "1px solid transparent", borderRightColor: coloruitext, boxSizing: "border-box", color: coloruitext, font: fontui }}>u</div></TD>
@@ -226,7 +222,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                     <TBody>
                         {/* TODO: this can be sT..sT+cH not wholescan */}
                         {posts.map((p, i) => {
-                            if (!rowh || rowh * (i + 1) < scrollTop || scrollTop + clientHeight < rowh * i) return null;
+                            if (rowh * (i + 1) < scrollTop || scrollTop + clientHeight < rowh * i) return null;
                             const evid = p.event!.event!.event.id;
                             return <div
                                 key={evid}
