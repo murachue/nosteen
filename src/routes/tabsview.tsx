@@ -26,6 +26,7 @@ const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | 
     const [fonttext] = useAtom(state.preferences.fonts.text);
 
     const ev = post.event!.event!.event;
+    const derefev = post.reposttarget || post.event!;
 
     const [bg, text] = (() => {
         if (post === selected) {
@@ -80,7 +81,7 @@ const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | 
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {<img style={{ maxWidth: "16px" }} src={`data:image/png;base64,${new Identicon(
-                        post.reposttarget?.event?.event.pubkey || ev.pubkey,
+                        derefev.event!.event.pubkey,
                         { background: [0, 0, 0, 0] }).toString()}`} />}
                 </div>
             </TD>
@@ -90,8 +91,14 @@ const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | 
                 </div>
             </TD>
             <TD>
-                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {post.reposttarget?.event?.event.content || ev.content}
+                <div style={{ position: "relative" }}>
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {derefev.event!.event.content}
+                    </div>
+                    {(() => {
+                        const cw = derefev.event!.event.tags.find(t => t[0] === "content-warning");
+                        return !cw ? null : <div style={{ position: "absolute", top: "0", left: "0", width: "100%", backdropFilter: "blur(0.3em)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cw[1]}</div>;
+                    })()}
                 </div>
             </TD>
         </TR>
