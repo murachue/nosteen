@@ -90,16 +90,27 @@ const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | 
                     {post.reposttarget ? `${post.reposttarget.event!.event.pubkey} (RT: ${ev.pubkey})` : ev.pubkey}
                 </div>
             </TD>
-            <TD>
-                <div style={{ position: "relative" }}>
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {derefev.event!.event.content}
-                    </div>
-                    {(() => {
-                        const cw = derefev.event!.event.tags.find(t => t[0] === "content-warning");
-                        return !cw ? null : <div style={{ position: "absolute", top: "0", left: "0", width: "100%", backdropFilter: "blur(0.3em)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cw[1]}</div>;
-                    })()}
+            <TD renderNode={(width, children) => <div style={{ width, position: "relative", alignSelf: "stretch", display: "flex", alignItems: "center" }}>{children}</div>}>
+                {/* <div style={{ position: "relative" }}> */}
+                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {derefev.event!.event.content}
                 </div>
+                {(() => {
+                    const cw = derefev.event!.event.tags.find(t => t[0] === "content-warning");
+                    return !cw ? null : <div style={{
+                        position: "absolute",
+                        top: "0",
+                        left: "0",
+                        right: "0",
+                        bottom: "0",
+                        backdropFilter: "blur(0.3em)",
+                        display: "flex",
+                        alignItems: "center",
+                    }}>
+                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cw[1]}</div>
+                    </div>;
+                })()}
+                {/* </div> */}
             </TD>
         </TR>
     </div>;
