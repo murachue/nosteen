@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore 
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
-import { NostrWorkerProvider, useNostrWorker } from './nostrworker';
+import { NostrWorkerListenerMessage, NostrWorkerProvider, useNostrWorker } from './nostrworker';
 import ErrorPage from './routes/errorpage';
 import Global from './routes/global';
 import Preferences from './routes/preferences';

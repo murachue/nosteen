@@ -833,7 +833,7 @@ const Tabsview: FC<{
                     break;
                 }
                 case "m": {
-                    setEvinfopopping(true);
+                    setEvinfopopping(s => !s);
                     break;
                 }
                 case "b": {
@@ -867,6 +867,7 @@ const Tabsview: FC<{
             }
             if (!linkpopref.current?.contains(e.nativeEvent.target as any)) {
                 setLinkpop([]);
+                setLinksel(null);
             }
         });
         return () => setGlobalOnPointerDown(undefined);
@@ -1018,6 +1019,13 @@ const Tabsview: FC<{
                                     onFocus={e => {
                                         seleltext(e.target);
                                         setLinksel(i);
+                                    }}
+                                    onCopy={e => {
+                                        // ugh. dismissing make fail to copy. copy it here...
+                                        navigator.clipboard.writeText(l.text);
+                                        setLinkpop([]);
+                                        setLinksel(null);
+                                        listref.current?.focus();
                                     }}
                                 >
                                     {l.text}
