@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore 
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
-import { NostrWorkerListenerMessage, NostrWorkerProvider, useNostrWorker } from './nostrworker';
+import { NostrWorkerProvider, useNostrWorker } from './nostrworker';
 import ErrorPage from './routes/errorpage';
 import Global from './routes/global';
 import Preferences from './routes/preferences';
@@ -23,18 +23,20 @@ const App = () => {
     const [tabs] = useAtom(state.tabs);
     const [globalOnKeyDown, setGlobalOnKeyDown] = useState<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>(undefined);
     const [globalOnPointerDown, setGlobalOnPointerDown] = useState<React.DOMAttributes<HTMLDivElement>["onPointerDown"]>(undefined);
+    const [mycontacts, setMycontacts] = useState(null);
     const noswk = useNostrWorker();
 
     // TODO: unsub on unload, but useEffect.return is overkill
     useEffect(() => {
-        noswk!.setIdentity(prefaccount?.pubkey || null);
+        const pk = prefaccount?.pubkey;
+        noswk!.setIdentity(pk || null);
         noswk!.setSubscribes(new Map(tabs
             .map<[string, FilledFilters | null]>(e => [
                 e.name,
                 typeof e.filter === "string" ? (noswk!.getFilter(e.filter) || null) : (e.filter as FilledFilters)
             ])
             .filter((e): e is [string, FilledFilters] => !!e[1])));
-    }, [tabs, prefaccount]);
+    }, [tabs, prefaccount, mycontacts]);
     useEffect(() => {
         noswk!.setRelays(prefrelays);
     }, [prefrelays]);

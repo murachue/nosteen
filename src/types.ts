@@ -13,6 +13,7 @@ import { Event, EventMessage, Filter, Relay, RelayMessageEvent } from "nostr-mux
 export type ReceivedEvent = {
     event: Event;
     receivedfrom: Set<Relay>;
+    lastreceivedat: number;
 };
 
 export type DeletableEvent = {
@@ -42,4 +43,5 @@ export const Kinds = {
     delete: 5,
     repost: 6,
     reaction: 7,
+    relays: 10002,
 };

@@ -54,6 +54,10 @@ export default {
             read: boolean;
             write: boolean;
             public: boolean;
+            // following: boolean;
+            // dm: boolean;
+            // publicchat: boolean;
+            // global: boolean;
         }[]>("preferences.relays", []),
         colors: {
             normal: atomWithStorage("preferences.colors.normal", "#ccc"),
@@ -82,7 +86,7 @@ export default {
             regexlocal: atomWithStorage<string[]>("preferences.mute.regexlocal", []),
         },
     },
-    relays: atom(new Map<string, Relay>()),
+    // relays: atom(new Map<string, Relay>()),
     relaymux: atom(new Mux()),
     relayinfo: atom({ all: 0, healthy: 0 }),
     // uh?

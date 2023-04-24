@@ -2,7 +2,7 @@ import { Emitter, Event, EventMessage, Filter, Mux, Relay, RelayMessageEvent, va
 import { SimpleEmitter } from "nostr-mux/dist/core/emitter"; // ugh
 import { UnsignedEvent, finishEvent } from "nostr-tools";
 import { FC, PropsWithChildren, createContext, useContext } from "react";
-import { DeletableEvent, EventMessageFromRelay, FilledEventMessagesFromRelay, FilledFilters, Kinds, Post } from "./types";
+import { DeletableEvent, EventMessageFromRelay, FilledEventMessagesFromRelay, FilledFilters, Kinds, Post, ReceivedEvent } from "./types";
 import invariant from "tiny-invariant";
 import { getmk, postindex, postupsertindex } from "./util";
 
@@ -25,6 +25,7 @@ const filtereq = (a: FilledFilters, b: FilledFilters): boolean => {
     for (let i = 0; i < len; i++) {
         const af = a[i];
         const bf = b[i];
+        // ks = af.keys | bf.keys
         const ks = new Set(Object.keys(af));
         for (const k of Object.keys(bf)) {
             ks.add(k);
@@ -131,6 +132,12 @@ const getPostId = (e: Event): string | null => {
             // delete is another layer; no originate event.
             return null;
         }
+        case Kinds.profile:
+        case Kinds.contacts:
+        case Kinds.relays: {
+            // I think they are not a post.
+            return null;
+        }
         default: {
             // post, dm, repost or unknown... itself is a post.
             return e.id;
@@ -147,6 +154,12 @@ export type NostrWorkerListenerMessage = {
 
 const isFilledEventMessagesFromRelay = (ms: EventMessageFromRelay[]): ms is FilledEventMessagesFromRelay => 0 < ms.length;
 
+type ProfileEvents = {
+    profile: DeletableEvent | null;
+    contacts: DeletableEvent | null;
+    relays: DeletableEvent | null;
+};
+
 export class NostrWorker {
     mux = new Mux();
     relays = new Map<string, Relay>();
@@ -157,8 +170,10 @@ export class NostrWorker {
     nunreads = 0;
     postStreams = new Map<string, { posts: Post[], nunreads: number; }>(); // order by created_at TODO: also received_at for LRU considering fetching older post that is mentioned?
     pubkey: string | null = null;
-    profiles = new Map<string, { profile: Event | null, contacts: Event | null; relays: Event | null; }>();
+    profiles = new Map<string, ProfileEvents>();
+    profsid: string | null = null;
     onHealthy = new SimpleEmitter<MuxRelayEvent>();
+    onMyContacts = new SimpleEmitter<DeletableEvent>();
     receiveEmitter = new Map<string, Emitter<NostrWorkerListenerMessage>>();
     addq: { name: string, messages: EventMessageFromRelay[]; }[] = [];
     fetchq: { filter: Filter, onComplete: (receives: EventMessageFromRelay) => void; }[] = [];
@@ -193,10 +208,41 @@ export class NostrWorker {
         }
     }
     setIdentity(pubkey: string | null) {
+        const pkchanged = this.pubkey !== pubkey;
+
+        if (pkchanged && this.profsid) {
+            this.mux.unSubscribe(this.profsid);
+            this.profsid = null;
+        }
+
         this.pubkey = pubkey;
+        if (pkchanged && pubkey) {
+            let first = true;
+            this.profsid = this.mux.subscribe({
+                filters: [{ authors: [pubkey], kinds: [Kinds.contacts] }],
+                enableBuffer: { flushInterval: 500 },
+                onEvent: async res => {
+                    // FIXME: use the single queue to avoid race...
+                    const okrecv = await this.msgsToDelableEvent(res);
+                    for (const dev of okrecv.values()) {
+                        const newer = this.putProfile(dev);
+                        if (!newer) continue;
+                        const ev = dev.event?.event;
+                        if (!ev) continue;
+                        if (!first) continue;
+                        first = false;
+                        if (ev.pubkey !== pubkey || ev.kind !== Kinds.contacts) {
+                            // !?
+                            continue;
+                        }
+                        this.onMyContacts.emit(dev);
+                    }
+                },
+            });
+            this.getProfile(pubkey, Kinds.contacts).catch(console.error);
+        }
         // TODO: myaction should be wiped
         // TODO: recent, reply, etc. should be wiped
-        // TODO: fetch?
     }
     // must return arrays in predictable order to easier deep-compare.
     getFilter(type: "recent" | "reply" | "dm" | "favs"): FilledFilters | null {
@@ -205,7 +251,7 @@ export class NostrWorker {
                 if (!this.pubkey) {
                     return null;
                 }
-                const followingpks = this.profiles.get(this.pubkey)?.contacts?.tags?.filter(t => t[0] === "p")?.map(t => t[1]) || [];
+                const followingpks = this.profiles.get(this.pubkey)?.contacts?.event?.event?.tags?.filter(t => t[0] === "p")?.map(t => t[1]) || [];
                 return [
                     // my events and following events
                     // following events but we don't need their reactions
@@ -332,9 +378,9 @@ export class NostrWorker {
         }
         emitter.stop(fn);
     }
-    enqueueFetchEventFor(filter: Filter, onComplete: (e: EventMessageFromRelay) => void) {
+    enqueueFetchEventFor(fetches: { filter: Filter, onComplete: (e: EventMessageFromRelay) => void; }[]) {
         const first = this.fetchq.length === 0;
-        this.fetchq.push({ filter, onComplete });
+        this.fetchq.push(...fetches);
         if (first) {
             this.fetchEvent().catch(e => {
                 console.error(e);
@@ -405,6 +451,29 @@ export class NostrWorker {
             }
         }
     }
+    async getProfile(pk: string, kind: typeof Kinds[keyof typeof Kinds]) {
+        return this.profiles.get(pk);
+    }
+
+    private putProfile(event: DeletableEvent): boolean {
+        if (!event.event) return false;
+        const ev = event.event.event;
+        const pf = getmk(this.profiles, ev.pubkey, () => ({ profile: null, contacts: null, relays: null }));
+        const k = this.profkey(ev);
+        const knownev = pf[k]?.event?.event;
+        if (knownev && ev.created_at <= knownev.created_at) return false;
+        pf[k] = event;
+        return true;
+    }
+
+    private profkey(event: Event): keyof ProfileEvents {
+        switch (event.kind) {
+            case Kinds.profile: return "profile";
+            case Kinds.contacts: return "contacts";
+            case Kinds.relays: return "relays";
+            default: throw new Error(`profkey with unknown kind ${event.kind}`);
+        }
+    }
 
     private async fetchEvent() {
         while (this.fetchq.length) {
@@ -428,10 +497,18 @@ export class NostrWorker {
             }
 
             if (0 < fetchs.length) {
-                // this.mux.subscribe({
+                let sid: string;
+                // sid = this.mux.subscribe({
                 //     filters: fetchs.map(e => e.filter) as FilledFilters,
-                //     onEvent:,
-                //     onEose:,
+                //     onEvent: evs => {
+                //         for (const ev of evs) {
+                //             ev.received.
+                //         }
+                //     },
+                //     onEose: () => {
+                //         // TODO send empty for remaining
+                //         this.mux.unSubscribe(sid);
+                //     },
                 //     enableBuffer: { flushInterval: 100 },
                 //     eoseTimeout: 3000,
                 // });
@@ -469,185 +546,7 @@ export class NostrWorker {
         // TODO: we may can use batch schnorr verify (if library supports) but bothered if some fail.
 
         // first, event (with deletion) layer.
-        const okrecv = new Map<string, DeletableEvent>;
-        for (const { received: { event }, relay } of messages) {
-            if (event.kind === 5) {
-                // delete: verify only if it's new and some are unknown
-
-                // this maps any DeletableEvent (almost last #e but not limited to)
-                // XXX: this fails when we got some kind5s for the same event and older kind5 arrives...
-                //      but it only cause extra verify.
-                const dev = this.events.get(event.id);
-                if (dev?.deleteevent) {
-                    // we already know valid/treated that event...
-                    // simple check and trust: they send the same event (incl. sig) to many relays.
-                    //                         same sig: treat other properties also same, use VERIFIED event.
-                    //                         diff sig: treat as bad. (same id can have other sig though...)
-                    if (event.sig === dev.deleteevent.event.sig) {
-                        dev.deleteevent.receivedfrom.add(relay);
-                        okrecv.set(dev.id, dev); // update my tab too
-                    }
-                    continue;
-                }
-
-                const dels: string[] = [];
-                for (const tag of event.tags) {
-                    if (tag[0] !== "e") {
-                        // !? ignore
-                        continue;
-                    }
-                    const evid = tag[1];
-                    const tdev = this.events.get(evid);
-                    if (!tdev || !tdev.deleteevent) {
-                        dels.push(evid);
-                    }
-                }
-                if (dels.length === 0) {
-                    // all are known; skip
-                    // TODO: remember to events and make fastpath-able?
-                    continue;
-                }
-
-                const r = await verifyEvent(event);
-                if (typeof r === "string") {
-                    // TODO: invalid sig!?
-                    continue;
-                }
-
-                for (const did of dels) {
-                    const tdev = this.events.get(did) || {
-                        id: did,
-                        event: null,
-                        deleteevent: null,
-                    };
-                    this.events.set(did, tdev);
-
-                    if (tdev.event && tdev.event.event.pubkey !== event.pubkey) {
-                        // reject liar on first receive. ignore this delete event.
-                        // FIXME: NIP-26 (as of 2023-04-13) states that delegator has a power to delete delegatee event.
-                        //        this logic also prohibit that... but treating it needs more complex...
-                        // TODO: should log before null?
-                        this.events.delete(event.id);
-                        continue;
-                    }
-
-                    this.events.set(event.id, tdev); // delete->dev map
-
-                    tdev.deleteevent = {
-                        event,
-                        receivedfrom: new Set(),
-                    };
-                    tdev.deleteevent.receivedfrom.add(relay);
-                    okrecv.set(did, tdev);
-                }
-            } else {
-                // others
-
-                const dev = this.events.get(event.id);
-                if (dev?.event) {
-                    // we already know valid/treated that event...
-                    // simple check and trust: they send the same event (incl. sig) to many relays.
-                    //                         same sig: treat other properties also same, use VERIFIED event.
-                    //                         diff sig: treat as bad. (same id can have other sig though...)
-                    if (event.sig === dev.event.event.sig) {
-                        dev.event.receivedfrom.add(relay);
-                        okrecv.set(event.id, dev); // update my tab too
-                    }
-                    continue;
-                }
-
-                const r = await verifyEvent(event);
-                if (typeof r === "string") {
-                    // TODO: invalid sig!?
-                    continue;
-                }
-
-                const tdev = dev || {
-                    id: event.id,
-                    event: null,
-                    deleteevent: null,
-                };
-                this.events.set(event.id, tdev);
-
-                tdev.event = {
-                    event,
-                    receivedfrom: new Set(),
-                };
-                tdev.event.receivedfrom.add(relay);
-
-                if (tdev.deleteevent && tdev.deleteevent.event.pubkey !== event.pubkey) {
-                    // reject liar on first receive. nullify the delete event.
-                    // FIXME: NIP-26 (as of 2023-04-13) states that delegator has a power to delete delegatee event.
-                    //        this logic also prohibit that... but treating it needs more complex...
-                    // TODO: should log before null?
-                    this.events.delete(tdev.deleteevent.event.id);
-                    tdev.deleteevent = null;
-                    // fallthrough
-                }
-
-                okrecv.set(event.id, tdev);
-
-                // hack: repost.
-                //       verify and remember as events but not okrecv to not pop up as originated (not reposted)
-                if (event.kind === 6) {
-                    const cobj = (() => { try { return JSON.parse(event.content); } catch { return undefined; } })();
-                    if (!cobj) {
-                        continue;
-                    }
-
-                    const subevent = validateEvent(cobj);
-                    if (typeof subevent === "string") {
-                        // does not form of an Event...
-                        continue;
-                    }
-
-                    const sdev = this.events.get(subevent.id);
-                    // expects not kind5
-                    if (sdev?.event) {
-                        // we already know valid/treated that event...
-                        // simple check and trust: they send the same event (incl. sig) to many relays.
-                        //                         same sig: treat other properties also same, use VERIFIED event.
-                        //                         diff sig: treat as bad. (same id can have other sig though...)
-                        if (subevent.sig === sdev.event.event.sig) {
-                            sdev.event.receivedfrom.add(relay);
-                            okrecv.set(subevent.id, sdev); // update my tab too
-                        }
-                        continue;
-                    }
-
-                    const sr = await verifyEvent(subevent);
-                    if (typeof sr === "string") {
-                        // TODO: invalid sig...
-                        continue;
-                    }
-
-                    const stdev = sdev || {
-                        id: subevent.id,
-                        event: null,
-                        deleteevent: null,
-                    };
-                    this.events.set(subevent.id, stdev);
-
-                    stdev.event = {
-                        event: subevent,
-                        receivedfrom: new Set(),
-                    };
-                    stdev.event.receivedfrom.add(relay); // ?
-
-                    if (stdev.deleteevent && stdev.deleteevent.event.pubkey !== subevent.pubkey) {
-                        // reject liar on first receive. nullify the delete event.
-                        // FIXME: NIP-26 (as of 2023-04-13) states that delegator has a power to delete delegatee event.
-                        //        this logic also prohibit that... but treating it needs more complex...
-                        // TODO: should log before null?
-                        this.events.delete(stdev.deleteevent.event.id);
-                        stdev.deleteevent = null;
-                        // fallthrough
-                    }
-
-                    // but no okrecv.
-                }
-            }
-        }
+        const okrecv = await this.msgsToDelableEvent(messages);
 
         // then post layer.
         const tap = this.postStreams.get(name);
@@ -717,6 +616,194 @@ export class NostrWorker {
         if (0 < okevs.length) {
             this.receiveEmitter.get(name)?.emit({ name, type: "event", events: okevs, posts: posted });
         }
+    }
+
+    private async msgsToDelableEvent(messages: FilledEventMessagesFromRelay) {
+        const now = Date.now();
+        const okrecv = new Map<string, DeletableEvent>;
+        for (const { received: { event }, relay } of messages) {
+            // TODO: unify these del,post,repost.
+            if (event.kind === 5) {
+                // delete: verify only if it's new and some are unknown
+                // this maps any DeletableEvent (almost last #e but not limited to)
+                // XXX: this fails when we got some kind5s for the same event and older kind5 arrives...
+                //      but it only cause extra verify.
+                const dev = this.events.get(event.id);
+                if (dev?.deleteevent) {
+                    // we already know valid/treated that event...
+                    // simple check and trust: they send the same event (incl. sig) to many relays.
+                    //                         same sig: treat other properties also same, use VERIFIED event.
+                    //                         diff sig: treat as bad. (same id can have other sig though...)
+                    if (event.sig === dev.deleteevent.event.sig) {
+                        dev.deleteevent.receivedfrom.add(relay);
+                        okrecv.set(dev.id, dev); // update my tab too
+                    }
+                    continue;
+                }
+
+                const dels: string[] = [];
+                for (const tag of event.tags) {
+                    if (tag[0] !== "e") {
+                        // !? ignore
+                        continue;
+                    }
+                    const evid = tag[1];
+                    const tdev = this.events.get(evid);
+                    if (!tdev || !tdev.deleteevent) {
+                        dels.push(evid);
+                    }
+                }
+                if (dels.length === 0) {
+                    // all are known (1:N delete event?); skip
+                    // TODO: remember to events and make fastpath-able?
+                    continue;
+                }
+
+                const r = await verifyEvent(event);
+                if (typeof r === "string") {
+                    // TODO: invalid sig!?
+                    continue;
+                }
+
+                for (const did of dels) {
+                    const tdev = getmk(this.events, did, () => ({
+                        id: did,
+                        event: null,
+                        deleteevent: null,
+                    }));
+
+                    if (tdev.event && tdev.event.event.pubkey !== event.pubkey) {
+                        // reject liar on first receive. ignore this delete event.
+                        // FIXME: NIP-26 (as of 2023-04-13) states that delegator has a power to delete delegatee event.
+                        //        this logic also prohibit that... but treating it needs more complex...
+                        // TODO: should log before null?
+                        this.events.delete(event.id);
+                        continue;
+                    }
+
+                    this.events.set(event.id, tdev); // delete->dev map
+
+                    tdev.deleteevent ||= {
+                        event,
+                        receivedfrom: new Set(),
+                        lastreceivedat: 0,
+                    };
+                    tdev.deleteevent.receivedfrom.add(relay);
+                    tdev.deleteevent.lastreceivedat = now;
+                    okrecv.set(did, tdev);
+                }
+            } else {
+                // others
+                const dev = this.events.get(event.id);
+                if (dev?.event) {
+                    // we already know valid/treated that event...
+                    // simple check and trust: they send the same event (incl. sig) to many relays.
+                    //                         same sig: treat other properties also same, use VERIFIED event.
+                    //                         diff sig: treat as bad. (same id can have other sig though...)
+                    if (event.sig === dev.event.event.sig) {
+                        dev.event.receivedfrom.add(relay);
+                        okrecv.set(event.id, dev); // update my tab too
+                    }
+                    continue;
+                }
+
+                const r = await verifyEvent(event);
+                if (typeof r === "string") {
+                    // TODO: invalid sig!?
+                    continue;
+                }
+
+                const tdev = dev || {
+                    id: event.id,
+                    event: null,
+                    deleteevent: null,
+                };
+                this.events.set(event.id, tdev);
+
+                tdev.event ||= {
+                    event,
+                    receivedfrom: new Set(),
+                    lastreceivedat: 0,
+                };
+                tdev.event.receivedfrom.add(relay);
+                tdev.event.lastreceivedat = now;
+
+                if (tdev.deleteevent && tdev.deleteevent.event.pubkey !== event.pubkey) {
+                    // reject liar on first receive. nullify the delete event.
+                    // FIXME: NIP-26 (as of 2023-04-13) states that delegator has a power to delete delegatee event.
+                    //        this logic also prohibit that... but treating it needs more complex...
+                    // TODO: should log before null?
+                    this.events.delete(tdev.deleteevent.event.id);
+                    tdev.deleteevent = null;
+                    // fallthrough
+                }
+
+                okrecv.set(event.id, tdev);
+
+                // hack: repost.
+                //       verify and remember as events but not okrecv to not pop up as originated (not reposted)
+                if (event.kind === 6) {
+                    const cobj = (() => { try { return JSON.parse(event.content); } catch { return undefined; } })();
+                    if (!cobj) {
+                        continue;
+                    }
+
+                    const subevent = validateEvent(cobj);
+                    if (typeof subevent === "string") {
+                        // does not form of an Event...
+                        continue;
+                    }
+
+                    const sdev = this.events.get(subevent.id);
+                    // expects not kind5
+                    if (sdev?.event) {
+                        // we already know valid/treated that event...
+                        // simple check and trust: they send the same event (incl. sig) to many relays.
+                        //                         same sig: treat other properties also same, use VERIFIED event.
+                        //                         diff sig: treat as bad. (same id can have other sig though...)
+                        if (subevent.sig === sdev.event.event.sig) {
+                            sdev.event.receivedfrom.add(relay);
+                            okrecv.set(subevent.id, sdev); // update my tab too
+                        }
+                        continue;
+                    }
+
+                    const sr = await verifyEvent(subevent);
+                    if (typeof sr === "string") {
+                        // TODO: invalid sig...
+                        continue;
+                    }
+
+                    const stdev = sdev || {
+                        id: subevent.id,
+                        event: null,
+                        deleteevent: null,
+                    };
+                    this.events.set(subevent.id, stdev);
+
+                    stdev.event ||= {
+                        event: subevent,
+                        receivedfrom: new Set(),
+                        lastreceivedat: 0,
+                    };
+                    stdev.event.receivedfrom.add(relay); // ?
+                    stdev.event.lastreceivedat = now;
+
+                    if (stdev.deleteevent && stdev.deleteevent.event.pubkey !== subevent.pubkey) {
+                        // reject liar on first receive. nullify the delete event.
+                        // FIXME: NIP-26 (as of 2023-04-13) states that delegator has a power to delete delegatee event.
+                        //        this logic also prohibit that... but treating it needs more complex...
+                        // TODO: should log before null?
+                        this.events.delete(stdev.deleteevent.event.id);
+                        stdev.deleteevent = null;
+                        // fallthrough
+                    }
+
+                    // but no okrecv.
+                }
+            }
+        }
+        return okrecv;
     }
 }
 

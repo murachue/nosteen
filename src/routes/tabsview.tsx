@@ -928,7 +928,7 @@ const Tabsview: FC<{
                         <div style={{ flex: "1", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {!selev ? "name..." : (
                                 selpost.reposttarget
-                                    ? `${selpost.reposttarget.event!.event.pubkey} (RT: ${selev.event!.event.pubkey})`
+                                    ? `${selpost.reposttarget.event!.event.pubkey} (RP: ${selev.event!.event.pubkey})`
                                     : selev.event!.event.pubkey
                             )}
                         </div>
