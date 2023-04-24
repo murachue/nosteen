@@ -1,14 +1,12 @@
 import { produce } from "immer";
 import { useAtom } from "jotai";
-import { useImmerAtom } from "jotai-immer";
-import { Relay } from "nostr-mux";
 import { decodeBech32ID, encodeBech32ID } from "nostr-mux/dist/core/utils";
 import { generatePrivateKey, getPublicKey, nip19 } from "nostr-tools";
 import { useCallback, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
-import state from "../state";
 import { useNostrWorker } from "../nostrworker";
+import state from "../state";
 import { expectn } from "../util";
 
 export default () => {
@@ -323,6 +321,7 @@ export default () => {
                 setMuteRegexlocal(muteRegexlocal.filter(r => !r.removed).map(r => ({ pattern: r.pattern, added: false, removed: false })));
 
                 // TODO: publish
+                // TODO: flush noswk streams
             }}>Save</button>
             <button onClick={() => {
                 setMuteUsers([

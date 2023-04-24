@@ -13,7 +13,7 @@ import state from "../state";
 import { Post } from "../types";
 import { bsearchi, getmk, postindex } from "../util";
 
-const TheRow = memo(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
+const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorrepost] = useAtom(state.preferences.colors.repost);
     const [colorreacted] = useAtom(state.preferences.colors.reacted);
@@ -143,7 +143,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
     const listref = useRef<HTMLDivElement | null>(null);
     const itemsref = useRef<HTMLDivElement>(null);
     const rowref = useRef<HTMLDivElement>(null);
-    const rowh = rowref.current!.offsetHeight;
+    const rowh = rowref.current?.offsetHeight || 0;
     const listh = rowh * posts.length;
     const [scrollTop, setScrollTop] = useState(0);
     const [clientHeight, setClientHeight] = useState(0);
@@ -325,10 +325,7 @@ class PostStreamWrapper {
         if (!stream) {
             return this.emptystream;
         }
-        const newistream = { posts: [...stream.posts], nunreads: stream.nunreads };
-        if (0 < (this.listeners.get(name)?.size || 0)) {
-            this.streams.set(name, newistream);
-        }
+        const newistream = getmk(this.streams, name, () => ({ posts: [...stream.posts], nunreads: stream.nunreads }));
         return newistream;
     }
     getAllPosts() {
@@ -486,7 +483,7 @@ const Tabsview: FC<{
     const selrpev = selpost?.reposttarget;
     const onselect = useCallback((i: number, toTop?: boolean) => {
         if (tap) {
-            noswk!.setHasread(tap.posts[i].id, true);
+            noswk!.setHasread({ id: tap.posts[i].id }, true);
         }
         setTabs(produce(draft => {
             const tab = draft.find(t => t.name === name)!;
@@ -837,6 +834,16 @@ const Tabsview: FC<{
                 }
                 case "m": {
                     setEvinfopopping(true);
+                    break;
+                }
+                case "b": {
+                    if (tab.selected === null) return;
+                    noswk!.setHasread({ stream: name, afterIndex: tab.selected }, false);
+                    break;
+                }
+                case "B": {
+                    if (tab.selected === null) return;
+                    noswk!.setHasread({ stream: name, beforeIndex: tab.selected }, true);
                     break;
                 }
                 case ",": {

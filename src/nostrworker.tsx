@@ -141,6 +141,8 @@ const getPostId = (e: Event): string | null => {
 export type NostrWorkerListenerMessage = {
     name: string;
     type: "event" | "eose" | "hasread";
+    events: DeletableEvent[];
+    posts: Post[];
 };
 
 const isFilledEventMessagesFromRelay = (ms: EventMessageFromRelay[]): ms is FilledEventMessagesFromRelay => 0 < ms.length;
@@ -343,29 +345,64 @@ export class NostrWorker {
     getPost(id: string) {
         return this.posts.get(id);
     }
-    setHasread(id: string, hasRead: boolean) {
-        const post = this.posts.get(id);
-        if (!post) {
-            return undefined;
-        }
-        if (post.hasread === hasRead) {
-            return post;
-        }
-        const ev = post.event?.event?.event;
-        if (!ev) {
-            return undefined;
-        }
-
-        post.hasread = hasRead;
-        this.nunreads += hasRead ? -1 : 1;
-
-        for (const [name, tab] of this.postStreams.entries()) {
-            const cursor = postindex(tab.posts, ev);
-            if (cursor === null) {
-                continue;
+    setHasread(spec: { id: string; } | { stream: string; beforeIndex: number; } | { stream: string; afterIndex: number; }, hasRead: boolean) {
+        const dhr = hasRead ? -1 : 1;
+        if ("id" in spec) {
+            const post = this.posts.get(spec.id);
+            if (!post) {
+                return undefined;
             }
-            tab.nunreads += hasRead ? -1 : 1;
-            this.receiveEmitter.get(name)?.emit({ name, type: "hasread" });
+            if (post.hasread === hasRead) {
+                return post;
+            }
+            const ev = post.event?.event?.event;
+            if (!ev) {
+                return undefined;
+            }
+
+            post.hasread = hasRead;
+            this.nunreads += dhr;
+
+            for (const [name, tab] of this.postStreams.entries()) {
+                const cursor = postindex(tab.posts, ev);
+                if (cursor === null) {
+                    continue;
+                }
+                tab.nunreads += dhr;
+                this.receiveEmitter.get(name)?.emit({ name, type: "hasread", events: [], posts: [post] });
+            }
+            return;
+        }
+        if ("stream" in spec) {
+            const strm = this.postStreams.get(spec.stream);
+            if (!strm) return undefined;
+            const posts = strm.posts;
+            let i: number;
+            let e: number;
+            const l = posts.length;
+            if ("beforeIndex" in spec) { i = 0; e = Math.min(spec.beforeIndex, l); }
+            else { i = spec.afterIndex + 1; e = l; }
+            const changed = [];
+            // TODO: unread other streams is N*M
+            for (; i < e; i++) {
+                if (posts[i].hasread === hasRead) continue;
+                posts[i].hasread = hasRead;
+                strm.nunreads += dhr;
+                this.nunreads += dhr;
+                changed.push(posts[i]);
+            }
+            if (0 < changed.length) {
+                this.receiveEmitter.get(spec.stream)?.emit({ name: spec.stream, type: "hasread", events: [], posts: changed });
+            }
+            for (const [name, s] of this.postStreams.entries()) {
+                if (name === spec.stream) continue;
+                const nunrs = s.posts.reduce((p, c) => p + (c.hasread ? 0 : 1), 0);
+                if (s.nunreads !== nunrs) {
+                    s.nunreads = nunrs;
+                    // FIXME: posts is empty...
+                    this.receiveEmitter.get(name)?.emit({ name, type: "hasread", events: [], posts: [] });
+                }
+            }
         }
     }
 
@@ -420,7 +457,7 @@ export class NostrWorker {
             if (isFilledEventMessagesFromRelay(messages)) {
                 await this.receiveOneProc(name, messages);
             } else {
-                this.receiveEmitter.get(name)?.emit({ name, type: "eose" });
+                this.receiveEmitter.get(name)?.emit({ name, type: "eose", events: [], posts: [] });
             }
 
             this.addq.splice(0, 1);
@@ -615,7 +652,7 @@ export class NostrWorker {
         // then post layer.
         const tap = this.postStreams.get(name);
         invariant(tap, `no postStream for ${name}`);
-        let posted = false;
+        const posted = [];
         for (const recv of okrecv.values()) {
             if (!recv.event) {
                 // we cannot update stream without the event...
@@ -637,7 +674,7 @@ export class NostrWorker {
                 hasread: false,
             }));
 
-            posted = true;
+            posted.push(post);
             const wasempty = !post.event;
 
             if (recv.event.event.kind === Kinds.repost) {
@@ -675,8 +712,10 @@ export class NostrWorker {
             }
         }
 
-        if (posted) {
-            this.receiveEmitter.get(name)?.emit({ name, type: "event" });
+        // XXX: ignore only-delevs, is it ok?
+        const okevs = [...okrecv.values()].filter(e => e.event);
+        if (0 < okevs.length) {
+            this.receiveEmitter.get(name)?.emit({ name, type: "event", events: okevs, posts: posted });
         }
     }
 }
