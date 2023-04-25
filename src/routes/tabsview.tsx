@@ -968,15 +968,14 @@ const Tabsview: FC<{
                                     <div style={{ textAlign: "right" }}>note id:</div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{ev.id}</div>
                                     <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{encodeBech32ID("note", ev.id)}</div>
                                     <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: froms })}</div>
-                                    <div style={{ textAlign: "right" }}>json:</div><div style={{ height: "1em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{[
+                                    <div style={{ textAlign: "right" }}>json:</div><div style={{ overflow: "hidden", whiteSpace: "pre", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{[
                                         selpost.event!.event!.event,
                                         selpost.event?.deleteevent?.event,
                                         selpost.reposttarget?.event?.event,
                                         selpost.reposttarget?.deleteevent?.event,
                                         selpost.myreaction?.event?.event,
                                         selpost.myreaction?.deleteevent?.event,
-                                    ].filter(e => e).map(e => <>{`${JSON.stringify(e)}`}<br /></>)}</div>
-
+                                    ].filter(e => e).map(e => `${JSON.stringify(e)}\n`)}</div>
                                 </div>;
                             })()}
                         </div>
