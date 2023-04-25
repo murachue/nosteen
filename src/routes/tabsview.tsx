@@ -571,6 +571,11 @@ const Tabsview: FC<{
                         if (linksel === null) {
                             break;
                         }
+
+                        setLinkpop([]);
+                        setLinksel(null);
+                        listref.current?.focus();
+
                         const text = linkpop[linksel].text;
                         if (text.match(/^(npub|nprofile)1/)) {
                             const d = (() => { try { return nip19.decode(text); } catch { return undefined; } })();
