@@ -68,9 +68,9 @@ export default () => {
     const [fontText, setFontText] = useState(prefFontText);
     const [fontUi, setFontUi] = useState(prefFontUi);
     const [muteUsers, setMuteUsers] = useState<{ pk: string; scope: "public" | "private" | "local" | "remove"; added: boolean; }[]>([
-        ...(prefMuteUserpublic.map(pk => ({ pk, scope: "public" as const, added: false }))),
-        ...(prefMuteUserprivate.map(pk => ({ pk, scope: "private" as const, added: false }))),
-        ...(prefMuteUserlocal.map(pk => ({ pk, scope: "local" as const, added: false }))),
+        ...(prefMuteUserpublic.map(u => ({ pk: nip19.npubEncode(u), scope: "public" as const, added: false }))),
+        ...(prefMuteUserprivate.map(u => ({ pk: nip19.npubEncode(u), scope: "private" as const, added: false }))),
+        ...(prefMuteUserlocal.map(u => ({ pk: nip19.npubEncode(u), scope: "local" as const, added: false }))),
     ]);
     const [muteRegexlocal, setMuteRegexlocal] = useState(prefMuteRegexlocal.map(pattern => ({ pattern, added: false, removed: false })));
 
@@ -286,7 +286,12 @@ export default () => {
                         type="text"
                         value={m.pattern}
                         style={{ ...(m.removed ? { textDecoration: "line-through" } : m.added ? { fontStyle: "italic" } : {}), fontFamily: "monospace" }}
-                        onChange={e => setMuteRegexlocal(produce(draft => { draft[i].pattern = e.target.value; }))}
+                        onChange={e => {
+                            const value = e.target.value;
+                            if (muteRegexlocal[i].pattern !== value) {
+                                setMuteRegexlocal(produce(draft => { draft[i].pattern = value; }));
+                            }
+                        }}
                     />
                 </div>
                 <div key={`b:${i}`} style={{ marginLeft: "1em", display: "flex" }}>
@@ -308,9 +313,9 @@ export default () => {
         </div>
         <p style={{ display: "flex", gap: "0.5em" }}>
             <button onClick={() => {
-                setPrefMuteUserpublic(muteUsers.filter(u => u.scope === "public").map(u => u.pk));
-                setPrefMuteUserprivate(muteUsers.filter(u => u.scope === "private").map(u => u.pk));
-                setPrefMuteUserlocal(muteUsers.filter(u => u.scope === "local").map(u => u.pk));
+                setPrefMuteUserpublic(muteUsers.filter(u => u.scope === "public").map(u => nip19.decode(u.pk).data as string));
+                setPrefMuteUserprivate(muteUsers.filter(u => u.scope === "private").map(u => nip19.decode(u.pk).data as string));
+                setPrefMuteUserlocal(muteUsers.filter(u => u.scope === "local").map(u => nip19.decode(u.pk).data as string));
                 setPrefMuteRegexlocal(muteRegexlocal.filter(r => !r.removed).map(r => r.pattern));
 
                 setMuteUsers([
@@ -325,12 +330,12 @@ export default () => {
             }}>Save</button>
             <button onClick={() => {
                 setMuteUsers([
-                    ...(prefMuteUserpublic.map(pk => ({ pk, scope: "public" as const, added: false }))),
-                    ...(prefMuteUserprivate.map(pk => ({ pk, scope: "private" as const, added: false }))),
-                    ...(prefMuteUserlocal.map(pk => ({ pk, scope: "local" as const, added: false }))),
+                    ...(prefMuteUserpublic.map(pk => ({ pk: nip19.npubEncode(pk), scope: "public" as const, added: false }))),
+                    ...(prefMuteUserprivate.map(pk => ({ pk: nip19.npubEncode(pk), scope: "private" as const, added: false }))),
+                    ...(prefMuteUserlocal.map(pk => ({ pk: nip19.npubEncode(pk), scope: "local" as const, added: false }))),
                 ]);
                 setMuteRegexlocal(prefMuteRegexlocal.map(pattern => ({ pattern, added: false, removed: false })));
             }}>Reset</button>
         </p>
-    </div >;
+    </div>;
 };
