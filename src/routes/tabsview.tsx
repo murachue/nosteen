@@ -11,7 +11,7 @@ import Tab from "../components/tab";
 import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { Post } from "../types";
-import { bsearchi, getmk, postindex } from "../util";
+import { NeverMatch, bsearchi, getmk, postindex } from "../util";
 
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -284,6 +284,8 @@ class PostStreamWrapper {
     private readonly listeners = new Map<string, Map<(msg: NostrWorkerListenerMessage) => void, (msg: NostrWorkerListenerMessage) => void>>();
     private readonly streams = new Map<string, ReturnType<typeof NostrWorker.prototype.getPostStream>>();
     private readonly emptystream = { posts: [], nunreads: 0 }; // fixed reference is important
+    private muteusers: RegExp = NeverMatch;
+    private mutepatterns: RegExp = NeverMatch;
     constructor(private readonly noswk: NostrWorker) { }
     addListener(name: string, onChange: (msg: NostrWorkerListenerMessage) => void) {
         const listener = (msg: NostrWorkerListenerMessage): void => {
@@ -325,7 +327,12 @@ class PostStreamWrapper {
         if (!stream) {
             return this.emptystream;
         }
-        const newistream = getmk(this.streams, name, () => ({ posts: [...stream.posts], nunreads: stream.nunreads }));
+        const newistream = getmk(this.streams, name, () => ({
+            posts: [...stream.posts.filter(p => {
+                const ev = p.event!.event!.event;
+                return !this.muteusers.test(ev.pubkey) && !this.mutepatterns.test(ev.content);
+            })], nunreads: stream.nunreads // TODO: minus mute?
+        }));
         return newistream;
     }
     getAllPosts() {
@@ -334,6 +341,11 @@ class PostStreamWrapper {
     }
     getNunreads() {
         return this.noswk.nunreads;
+    }
+    setMutes({ users, regexs }: { users: string[], regexs: string[]; }) {
+        // https://stackoverflow.com/a/9213411
+        this.muteusers = users.length === 0 ? NeverMatch : new RegExp(users.map(e => `(${e})`).join("|"));
+        this.mutepatterns = regexs.length === 0 ? NeverMatch : new RegExp(regexs.map(e => `(${e})`).join("|"));
     }
 }
 
@@ -435,6 +447,10 @@ const Tabsview: FC<{
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
+    const [muteuserpublic] = useAtom(state.preferences.mute.userpublic);
+    const [muteuserprivate] = useAtom(state.preferences.mute.userprivate);
+    const [muteuserlocal] = useAtom(state.preferences.mute.userlocal);
+    const [muteregexlocal] = useAtom(state.preferences.mute.regexlocal);
     const noswk = useNostrWorker();
     const streams = useMemo(() => noswk && new PostStreamWrapper(noswk), [noswk]);
     const [relayinfo] = useAtom(state.relayinfo);
@@ -478,6 +494,9 @@ const Tabsview: FC<{
         streams!.addListener(name, onChange);
         return () => streams!.removeListener(name, onChange);
     }, [name, streams]);
+    useEffect(() => {
+        streams!.setMutes({ users: [...muteuserpublic, ...muteuserprivate, ...muteuserlocal], regexs: muteregexlocal });
+    }, [streams, muteuserpublic, muteuserprivate, muteuserlocal, muteregexlocal]);
     const selpost = tab.selected === null ? undefined : tap?.posts[tab.selected];
     const selev = selpost?.event;
     const selrpev = selpost?.reposttarget;
