@@ -291,12 +291,7 @@ class PostStreamWrapper {
         const listener = (msg: NostrWorkerListenerMessage): void => {
             const { name, type } = msg;
             if (type !== "eose") {
-                const stream = this.noswk.getPostStream(name);
-                if (stream) {
-                    // shallow copy to notify immutable change
-                    // FIXME: each element mutates, and that post may not re-rendered
-                    this.streams.set(name, { posts: [...stream.posts], nunreads: stream.nunreads });
-                }
+                this.refreshPosts(name);
             }
             onChange(msg);
         };
@@ -319,21 +314,13 @@ class PostStreamWrapper {
         }
     }
     getPostStream(name: string): ReturnType<typeof NostrWorker.prototype.getPostStream> {
+        // return cached
         const istream = this.streams.get(name);
         if (istream) {
             return istream;
         }
-        const stream = this.noswk.getPostStream(name);
-        if (!stream) {
-            return this.emptystream;
-        }
-        const newistream = getmk(this.streams, name, () => ({
-            posts: [...stream.posts.filter(p => {
-                const ev = p.event!.event!.event;
-                return !this.muteusers.test(ev.pubkey) && !this.mutepatterns.test(ev.content);
-            })], nunreads: stream.nunreads // TODO: minus mute?
-        }));
-        return newistream;
+
+        return this.refreshPosts(name);
     }
     getAllPosts() {
         // TODO: make immutable and listenable that needs noswk support
@@ -346,6 +333,31 @@ class PostStreamWrapper {
         // https://stackoverflow.com/a/9213411
         this.muteusers = users.length === 0 ? NeverMatch : new RegExp(users.map(e => `(${e})`).join("|"));
         this.mutepatterns = regexs.length === 0 ? NeverMatch : new RegExp(regexs.map(e => `(${e})`).join("|"));
+    }
+
+    private refreshPosts(name: string) {
+        const stream = this.noswk.getPostStream(name);
+        if (!stream) {
+            return this.emptystream;
+        }
+        // shallow copy "posts" to notify immutable change
+        // FIXME: each element mutates, and that post may not re-rendered
+        const news = {
+            posts: stream.posts.filter(p => {
+                const ev = p.event!.event!.event;
+                if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) {
+                    return false;
+                }
+                const rpev = p.reposttarget?.event?.event;
+                if (rpev && (this.muteusers.test(rpev.pubkey) || this.mutepatterns.test(rpev.content))) {
+                    return false;
+                }
+                return true;
+            }),
+            nunreads: stream.nunreads, // TODO: minus mute?
+        };
+        this.streams.set(name, news);
+        return news;
     }
 }
 
