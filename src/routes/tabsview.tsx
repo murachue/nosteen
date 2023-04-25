@@ -10,7 +10,7 @@ import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
-import { Post } from "../types";
+import { Kinds, Post } from "../types";
 import { NeverMatch, bsearchi, getmk, postindex } from "../util";
 
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
@@ -567,7 +567,25 @@ const Tabsview: FC<{
                         break;
                     }
                     case "Enter": {
-                        // TODO
+                        // TODO: full support
+                        if (linksel === null) {
+                            break;
+                        }
+                        const text = linkpop[linksel].text;
+                        if (text.match(/^(npub|nprofile)1/)) {
+                            const d = (() => { try { return nip19.decode(text); } catch { return undefined; } })();
+                            if (!d) { break; }
+                            const pk = typeof d.data === "string" ? d.data : (d.data as nip19.ProfilePointer).pubkey;
+                            const name = pk.slice(0, 8);
+                            setTabs([...tabs, {
+                                name,
+                                filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
+                                scroll: 0,
+                                selected: null,
+                                replypath: [],
+                            }]);
+                            navigate(`/tab/${name}`);
+                        }
                         break;
                     }
                 }
@@ -871,12 +889,30 @@ const Tabsview: FC<{
                 }
                 case "b": {
                     if (tab.selected === null) return;
+                    // TODO: bug with mute
                     noswk!.setHasread({ stream: name, afterIndex: tab.selected }, false);
                     break;
                 }
                 case "B": {
                     if (tab.selected === null) return;
+                    // TODO: bug with mute
                     noswk!.setHasread({ stream: name, beforeIndex: tab.selected }, true);
+                    break;
+                }
+                case "U": {
+                    if (!tap) break;
+                    if (tab.selected === null) break;
+                    const post = tap.posts[tab.selected];
+                    const pk = (post.reposttarget || post.event!).event!.event.pubkey;
+                    const name = pk.slice(0, 8);
+                    setTabs([...tabs, {
+                        name,
+                        filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
+                        scroll: 0,
+                        selected: null,
+                        replypath: [],
+                    }]);
+                    navigate(`/tab/${name}`);
                     break;
                 }
                 case "W": {
