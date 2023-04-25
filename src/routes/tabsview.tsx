@@ -475,6 +475,8 @@ const Tabsview: FC<{
     const linkpopref = useRef<HTMLDivElement>(null);
     const [linksel, setLinksel] = useState<number | null>(null);
     const linkselref = useRef<HTMLDivElement>(null);
+    const [flash, setFlash] = useState<{ msg: string, bang: boolean; } | null>(null);
+    const [tryclosetab, setTryclosetab] = useState({ name: "", time: 0 });
 
     const [status, setStatus] = useState("status...");
 
@@ -877,6 +879,23 @@ const Tabsview: FC<{
                     noswk!.setHasread({ stream: name, beforeIndex: tab.selected }, true);
                     break;
                 }
+                case "W": {
+                    if (typeof tab.filter === "string") {
+                        setFlash({ msg: "Cannot close system tabs", bang: true });
+                    } else {
+                        if (tryclosetab.name === tab.name && Date.now() < tryclosetab.time + 700) {
+                            const ti = tabs.findIndex(t => t.name === tab.name);
+                            setTabs(tabs.filter(t => t.name !== tab.name));
+                            // normally next but previous if last
+                            const nti = tabs.length - 1 <= ti ? ti - 1 : ti;
+                            navigate(`/tab/${tabs[nti].name}`);
+                        } else {
+                            setTryclosetab({ name: tab.name, time: Date.now() });
+                            setFlash({ msg: "One more to close the tab", bang: true });
+                        }
+                    }
+                    break;
+                }
                 case ",": {
                     navigate("/preferences");
                     break;
@@ -890,7 +909,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, onselect, evinfopopping, linkpop, linksel]);
+    }, [tabs, tab, tap, onselect, evinfopopping, linkpop, linksel, tryclosetab]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -903,6 +922,12 @@ const Tabsview: FC<{
         });
         return () => setGlobalOnPointerDown(undefined);
     }, []);
+    useEffect(() => {
+        // set opacity/transition after a moment
+        if (flash?.bang) {
+            setFlash({ ...flash, bang: false });
+        }
+    }, [flash]);
     return <>
         <Helmet>
             <title>{name} - nosteen</title>
@@ -1145,6 +1170,34 @@ const Tabsview: FC<{
                             <input type="text" value="" placeholder="hashtag" style={{ flex: "1", boxSizing: "border-box", font: fontui }} onChange={e => { }} />
                         </div>
                     </div>
+                </div>
+            </div>
+            <div
+                style={{
+                    display: flash ? "flex" : "none",
+                    position: "absolute",
+                    top: "0",
+                    left: "0",
+                    bottom: "0",
+                    right: "0",
+                    background: "#0004",
+                    backdropFilter: "blur(2px)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: flash?.bang ? "1" : "0",
+                    transition: flash?.bang ? undefined : "opacity 0.6s linear 0.2s",
+                }}
+                onTransitionEnd={e => setFlash(null)}
+            >
+                <div style={{
+                    background: "#000",
+                    color: "#fff",
+                    borderRadius: "1em",
+                    padding: "1em",
+                    minWidth: "10em",
+                    textAlign: "center",
+                }}>
+                    {flash?.msg}
                 </div>
             </div>
         </div>
