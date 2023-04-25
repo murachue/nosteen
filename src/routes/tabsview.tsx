@@ -1052,14 +1052,14 @@ const Tabsview: FC<{
                         <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
                             <div>
                                 {!selev ? "text..." : (() => {
-                                    return spans((selrpev || selev).event!.event).map(s => {
+                                    return spans((selrpev || selev).event!.event).map((s, i) => {
                                         switch (s.type) {
                                             case "url": {
-                                                return <a href={s.href} style={{ color: colorlinktext, textDecoration: s.auto ? "underline dotted" : "underline" }} tabIndex={-1}>{s.href}</a>;
+                                                return <a key={i} href={s.href} style={{ color: colorlinktext, textDecoration: s.auto ? "underline dotted" : "underline" }} tabIndex={-1}>{s.href}</a>;
                                             }
                                             case "ref": {
                                                 if (s.text) {
-                                                    return <span style={{
+                                                    return <span key={i} style={{
                                                         display: "inline-block",
                                                         textDecoration: "underline",
                                                         width: "8em",
@@ -1070,14 +1070,14 @@ const Tabsview: FC<{
                                                         verticalAlign: "text-bottom"
                                                     }}>{s.text}</span>;
                                                 } else {
-                                                    return <span style={{ textDecoration: "underline dotted" }}>{JSON.stringify(s.tag)}</span>; // TODO nice display
+                                                    return <span key={i} style={{ textDecoration: "underline dotted" }}>{JSON.stringify(s.tag)}</span>; // TODO nice display
                                                 }
                                             }
                                             case "hashtag": {
-                                                return <span style={{ textDecoration: s.auto ? "underline dotted" : "underline" }}>#{s.text}</span>;
+                                                return <span key={i} style={{ textDecoration: s.auto ? "underline dotted" : "underline" }}>#{s.text}</span>;
                                             }
                                             case "nip19": {
-                                                return <span style={{
+                                                return <span key={i} style={{
                                                     display: "inline-block",
                                                     textDecoration: s.auto ? "underline dotted" : "underline",
                                                     width: "8em",
