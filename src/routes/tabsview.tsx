@@ -11,7 +11,7 @@ import Tab from "../components/tab";
 import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { Kinds, Post } from "../types";
-import { NeverMatch, bsearchi, getmk, postindex } from "../util";
+import { NeverMatch, bsearchi, expectn, getmk, postindex } from "../util";
 
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -579,6 +579,7 @@ const Tabsview: FC<{
                         const text = linkpop[linksel].text;
                         if (text.match(/^(npub|nprofile)1/)) {
                             const d = (() => { try { return nip19.decode(text); } catch { return undefined; } })();
+                            // const d = expectn(text, "npub") || expectn(text, "nprofile");
                             if (!d) { break; }
                             const pk = typeof d.data === "string" ? d.data : (d.data as nip19.ProfilePointer).pubkey;
                             const name = pk.slice(0, 8);
@@ -590,6 +591,23 @@ const Tabsview: FC<{
                                 replypath: [],
                             }]);
                             navigate(`/tab/${name}`);
+                            break;
+                        }
+                        if (text.match(/^(note|nevent)1/)) {
+                            const d = (() => { try { return nip19.decode(text); } catch { return undefined; } })();
+                            // const d = expectn(text, "note") || expectn(text, "nevent");
+                            if (!d) { break; }
+                            const pk = typeof d.data === "string" ? d.data : (d.data as nip19.EventPointer).id;
+                            const name = pk.slice(0, 8);
+                            setTabs([...tabs, {
+                                name,
+                                filter: [{ ids: [pk], kinds: [Kinds.post] }],
+                                scroll: 0,
+                                selected: null,
+                                replypath: [],
+                            }]);
+                            navigate(`/tab/${name}`);
+                            break;
                         }
                         break;
                     }
@@ -1227,6 +1245,7 @@ const Tabsview: FC<{
                     justifyContent: "center",
                     opacity: flash?.bang ? "1" : "0",
                     transition: flash?.bang ? undefined : "opacity 0.6s linear 0.2s",
+                    zIndex: 1, /* ugh. without this, listview column overlaps. */
                 }}
                 onTransitionEnd={e => setFlash(null)}
             >
