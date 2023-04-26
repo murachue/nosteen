@@ -448,7 +448,7 @@ const Tabsview: FC<{
 }> = ({ setGlobalOnKeyDown, setGlobalOnPointerDown }) => {
     const navigate = useNavigate();
     const data = useParams();
-    const name = data["*"] || "";
+    const tabid = data["*"] || "";
     const [account] = useAtom(state.preferences.account);
     const [tabs, setTabs] = useAtom(state.tabs);
     const [colorbase] = useAtom(state.preferences.colors.base);
@@ -481,10 +481,10 @@ const Tabsview: FC<{
     const [status, setStatus] = useState("status...");
 
     const tab = (() => {
-        const tab = tabs.find(t => t.id === name);
+        const tab = tabs.find(t => t.id === tabid);
         if (tab) return tab;
         {
-            const mp = name.match(/^p\/((npub|nprofile)1[a-z0-9]+|[0-9A-Fa-f]{64})$/);
+            const mp = tabid.match(/^p\/((npub|nprofile)1[a-z0-9]+|[0-9A-Fa-f]{64})$/);
             if (mp) {
                 const pk = (() => {
                     if (mp[1].match(/[0-9A-Fa-f]{64}/)) {
@@ -512,7 +512,7 @@ const Tabsview: FC<{
             }
         }
         {
-            const me = name.match(/^e\/((note|nevent)1[a-z0-9]+|[0-9A-Fa-f]{64})$/);
+            const me = tabid.match(/^e\/((note|nevent)1[a-z0-9]+|[0-9A-Fa-f]{64})$/);
             if (me) {
                 const nid = (() => {
                     if (me[1].match(/[0-9A-Fa-f]{64}/)) {
@@ -551,23 +551,23 @@ const Tabsview: FC<{
 
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
-            const onChange = (msg: NostrWorkerListenerMessage) => { msg.type !== "eose" && msg.name === name && onStoreChange(); };
-            streams!.addListener(name, onChange);
-            return () => streams!.removeListener(name, onChange);
-        }, [streams, name]),
+            const onChange = (msg: NostrWorkerListenerMessage) => { msg.type !== "eose" && msg.name === tab.id && onStoreChange(); };
+            streams!.addListener(tab.id, onChange);
+            return () => streams!.removeListener(tab.id, onChange);
+        }, [streams, tab.id]),
         useCallback(() => {
-            return streams!.getPostStream(name);
-        }, [streams, name]),
+            return streams!.getPostStream(tab.id);
+        }, [streams, tab.id]),
     );
     useEffect(() => {
         const onChange = (msg: NostrWorkerListenerMessage) => {
             if (msg.type !== "event") return;
-            if (msg.name !== name) return;
+            if (msg.name !== tab.id) return;
             setListscrollto({ lastIfVisible: true });
         };
-        streams!.addListener(name, onChange);
-        return () => streams!.removeListener(name, onChange);
-    }, [name, streams]);
+        streams!.addListener(tab.id, onChange);
+        return () => streams!.removeListener(tab.id, onChange);
+    }, [streams, tab.id]);
     useEffect(() => {
         streams!.setMutes({ users: [...muteuserpublic, ...muteuserprivate, ...muteuserlocal], regexs: muteregexlocal });
     }, [streams, muteuserpublic, muteuserprivate, muteuserlocal, muteregexlocal]);
@@ -579,8 +579,8 @@ const Tabsview: FC<{
             noswk!.setHasread({ id: tap.posts[i].id }, true);
         }
         setTabs(produce(draft => {
-            const tab = draft.find(t => t.id === name)!;
-            tab.selected = i;
+            const t = draft.find(t => t.id === tab.id)!;
+            t.selected = i;
         }));
         setListscrollto({ index: i, toTop });
         textref.current?.scrollTo(0, 0);
@@ -588,7 +588,7 @@ const Tabsview: FC<{
     useEffect(() => {
         // TODO: when fonttext changes?
         setListscrollto({ pixel: tab.scroll });
-    }, [name]); // !!
+    }, [tab.id]); // !!
     useEffect(() => {
         const el = linkselref.current;
         if (!el) return;
@@ -943,13 +943,13 @@ const Tabsview: FC<{
                 case "b": {
                     if (tab.selected === null) return;
                     // TODO: bug with mute
-                    noswk!.setHasread({ stream: name, afterIndex: tab.selected }, false);
+                    noswk!.setHasread({ stream: tab.id, afterIndex: tab.selected }, false);
                     break;
                 }
                 case "B": {
                     if (tab.selected === null) return;
                     // TODO: bug with mute
-                    noswk!.setHasread({ stream: name, beforeIndex: tab.selected }, true);
+                    noswk!.setHasread({ stream: tab.id, beforeIndex: tab.selected }, true);
                     break;
                 }
                 case "U": {
@@ -1024,8 +1024,8 @@ const Tabsview: FC<{
                     onSelect={onselect}
                     onScroll={() => {
                         setTabs(produce(draft => {
-                            const tab = draft.find(t => t.id === name)!;
-                            tab.scroll = listref.current?.scrollTop || 0; // use event arg?
+                            const t = draft.find(t => t.id === tab.id)!;
+                            t.scroll = listref.current?.scrollTop || 0; // use event arg?
                         }));
                     }}
                     scrollTo={listscrollto}
@@ -1040,7 +1040,7 @@ const Tabsview: FC<{
                     padding: "0 0 0 2px",
                 }}>
                     <div style={{ flex: "1", display: "flex", alignItems: "flex-start", overflow: "visible" }}>
-                        {tabs.map(t => <Tab key={t.name} active={t.id === name} onClick={() => navigate(`/tab/${t.id}`)}>{t.name}</Tab>)}
+                        {tabs.map(t => <Tab key={t.name} active={t.id === tab.id} onClick={() => navigate(`/tab/${t.id}`)}>{t.name}</Tab>)}
                     </div>
                     <div>
                         <Link to="/preferences" style={{
