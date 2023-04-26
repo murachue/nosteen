@@ -638,37 +638,13 @@ const Tabsview: FC<{
 
                         const text = linkpop[linksel].text;
                         if (text.match(/^(npub|nprofile)1/)) {
-                            const d = (() => { try { return nip19.decode(text); } catch { return undefined; } })();
-                            // const d = expectn(text, "npub") || expectn(text, "nprofile");
-                            if (!d) { break; }
-                            const pk = typeof d.data === "string" ? d.data : (d.data as nip19.ProfilePointer).pubkey;
-                            // const name = pk.slice(0, 8);
-                            // setTabs([...tabs, {
-                            //     name,
-                            //     filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
-                            //     scroll: 0,
-                            //     selected: null,
-                            //     replypath: [],
-                            // }]);
-                            // navigate(`/tab/${name}`);
-                            navigate(`/tab/p/${pk}`);
+                            if (!expectn(text, "npub") && !expectn(text, "nprofile")) { break; }
+                            navigate(`/tab/p/${text}`);
                             break;
                         }
                         if (text.match(/^(note|nevent)1/)) {
-                            const d = (() => { try { return nip19.decode(text); } catch { return undefined; } })();
-                            // const d = expectn(text, "note") || expectn(text, "nevent");
-                            if (!d) { break; }
-                            const nid = typeof d.data === "string" ? d.data : (d.data as nip19.EventPointer).id;
-                            // const name = nid.slice(0, 8);
-                            // setTabs([...tabs, {
-                            //     name,
-                            //     filter: [{ ids: [nid], kinds: [Kinds.post] }],
-                            //     scroll: 0,
-                            //     selected: null,
-                            //     replypath: [],
-                            // }]);
-                            // navigate(`/tab/${name}`);
-                            navigate(`/tab/e/${nid}`);
+                            if (!expectn(text, "note") && !expectn(text, "nevent")) { break; }
+                            navigate(`/tab/e/${text}`);
                             break;
                         }
                         setFlash({ msg: "sorry not supported yet", bang: true });
@@ -980,15 +956,6 @@ const Tabsview: FC<{
                     if (tab.selected === null) break;
                     const post = tap.posts[tab.selected];
                     const pk = (post.reposttarget || post.event!).event!.event.pubkey;
-                    // const name = pk.slice(0, 8);
-                    // setTabs([...tabs, {
-                    //     name,
-                    //     filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
-                    //     scroll: 0,
-                    //     selected: null,
-                    //     replypath: [],
-                    // }]);
-                    // navigate(`/tab/${name}`);
                     navigate(`/tab/p/${pk}`);
                     break;
                 }
