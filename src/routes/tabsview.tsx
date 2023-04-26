@@ -723,11 +723,12 @@ const Tabsview: FC<{
                     const selpost = tap.posts[tab.selected];
                     if (!selpost) break;  //!?
                     const ev = selpost.reposttarget || selpost.event!;
-                    // really last? NIP-10 states (we fails marker yet) but...
+                    // really last? (if no "reply" marker) NIP-10 states that but...
                     // 2nd? 2/3?? note18h28wvds25vsd8dlujt7p9cu3q5rnwgl47jrmmumhcmw2pxys63q7zee4e
-                    const laste = ev.event!.event.tags.reduce<string | undefined>((p, c) => c[0] === "e" ? c[1] : p, undefined);
-                    if (!laste) break;
-                    const lp = noswk!.getPost(laste);
+                    const etag = ev.event!.event.tags.reduce<string[] | undefined>((p, c) => c[0] !== "e" ? p : p?.[3] === "reply" ? p : c, undefined);
+                    const replye = etag?.[1];
+                    if (!replye) break;
+                    const lp = noswk!.getPost(replye);
                     if (!lp) break;
 
                     let rp = [...tab.replypath];
@@ -735,8 +736,8 @@ const Tabsview: FC<{
                     if (tab.replypath.indexOf(oevid) === -1) {
                         rp = [oevid];
                     }
-                    if (rp.indexOf(laste) === -1) {
-                        rp.unshift(laste);
+                    if (rp.indexOf(replye) === -1) {
+                        rp.unshift(replye);
                     }
                     setTabs(produce(draft => { draft.find(t => t.id === tab.id)!.replypath = rp; }));
                     const ei = postindex(tap.posts, lp.event!.event!.event);
