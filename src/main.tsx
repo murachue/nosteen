@@ -32,7 +32,7 @@ const App = () => {
         noswk!.setIdentity(pk || null);
         noswk!.setSubscribes(new Map(tabs
             .map<[string, FilledFilters | null]>(e => [
-                e.name,
+                e.id,
                 typeof e.filter === "string" ? (noswk!.getFilter(e.filter) || null) : (e.filter as FilledFilters)
             ])
             .filter((e): e is [string, FilledFilters] => !!e[1])));
@@ -70,7 +70,7 @@ const App = () => {
         <Routes>
             <Route element={<Global onKeyDown={globalOnKeyDown} onPointerDown={globalOnPointerDown} />} errorElement={<ErrorPage />}>
                 <Route path="/" element={<Root />} />
-                <Route path="/tab/:name?" element={<TabsView
+                <Route path="/tab/*" element={<TabsView
                     setGlobalOnKeyDown={setGlobalOnKeyDown}
                     setGlobalOnPointerDown={setGlobalOnPointerDown}
                 />} />

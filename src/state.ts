@@ -9,6 +9,7 @@ const tabstate = () => ({
     replypath: [],
 });
 const tabinit: {
+    id: string;
     name: string;
     filter: "recent" |
     "reply" |
@@ -27,10 +28,10 @@ const tabinit: {
     scroll: number;
     replypath: string[];
 }[] = [
-        { ...tabstate(), name: "Recent", filter: "recent" },
-        { ...tabstate(), name: "Reply", filter: "reply" },
-        { ...tabstate(), name: "DM", filter: "dm" },
-        { ...tabstate(), name: "Favs", filter: "favs" },
+        { ...tabstate(), id: "recent", name: "Recent", filter: "recent" },
+        { ...tabstate(), id: "reply", name: "Reply", filter: "reply" },
+        { ...tabstate(), id: "dm", name: "DM", filter: "dm" },
+        { ...tabstate(), id: "favs", name: "Favs", filter: "favs" },
         // {
         //     name: "me",
         //     filter: [
@@ -39,7 +40,7 @@ const tabinit: {
         //     ],
         //     selected: "",
         // },
-        { ...tabstate(), name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }] },
+        { ...tabstate(), id: "global", name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }] },
     ];
 export default {
     preferences: {

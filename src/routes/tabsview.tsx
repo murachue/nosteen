@@ -448,7 +448,7 @@ const Tabsview: FC<{
 }> = ({ setGlobalOnKeyDown, setGlobalOnPointerDown }) => {
     const navigate = useNavigate();
     const data = useParams();
-    const name = data.name || "";
+    const name = data["*"] || "";
     const [account] = useAtom(state.preferences.account);
     const [tabs, setTabs] = useAtom(state.tabs);
     const [colorbase] = useAtom(state.preferences.colors.base);
@@ -476,13 +476,73 @@ const Tabsview: FC<{
     const [linksel, setLinksel] = useState<number | null>(null);
     const linkselref = useRef<HTMLDivElement>(null);
     const [flash, setFlash] = useState<{ msg: string, bang: boolean; } | null>(null);
-    const [tryclosetab, setTryclosetab] = useState({ name: "", time: 0 });
+    const [tryclosetab, setTryclosetab] = useState({ tid: "", time: 0 });
 
     const [status, setStatus] = useState("status...");
 
-    const tab = tabs.find(t => t.name === name);
+    const tab = (() => {
+        const tab = tabs.find(t => t.id === name);
+        if (tab) return tab;
+        {
+            const mp = name.match(/^p\/((npub|nprofile)1[a-z0-9]+|[0-9A-Fa-f]{64})$/);
+            if (mp) {
+                const pk = (() => {
+                    if (mp[1].match(/[0-9A-Fa-f]{64}/)) {
+                        return mp[1];
+                    }
+                    const d = (() => { try { return nip19.decode(mp[1]); } catch { return undefined; } })();
+                    if (!d) return null;
+                    if (d.type === "npub") return d.data;
+                    if (d.type === "nprofile") return d.data.pubkey;
+                    return null;
+                })();
+                if (pk) {
+                    const newt = {
+                        id: `p/${pk}`,
+                        name: pk.slice(0, 8),
+                        filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
+                        scroll: 0,
+                        selected: null,
+                        replypath: [],
+                    };
+                    setTabs([...tabs, newt]);
+                    navigate(`/tab/p/${pk}`, { replace: true });
+                    return newt;
+                }
+            }
+        }
+        {
+            const me = name.match(/^e\/((note|nevent)1[a-z0-9]+|[0-9A-Fa-f]{64})$/);
+            if (me) {
+                const nid = (() => {
+                    if (me[1].match(/[0-9A-Fa-f]{64}/)) {
+                        return me[1];
+                    }
+                    const d = (() => { try { return nip19.decode(me[1]); } catch { return undefined; } })();
+                    if (!d) return null;
+                    if (d.type === "note") return d.data;
+                    if (d.type === "nevent") return d.data.id;
+                    return null;
+                })();
+                if (nid) {
+                    const newt = {
+                        id: `e/${nid}`,
+                        name: nid.slice(0, 8),
+                        filter: [{ ids: [nid], kinds: [Kinds.post], limit: 50 }],
+                        scroll: 0,
+                        selected: null,
+                        replypath: [],
+                    };
+                    setTabs([...tabs, newt]);
+                    navigate(`/tab/e/${nid}`, { replace: true });
+                    return newt;
+                }
+            }
+        }
+    })();
     if (!tab) {
-        navigate(`/tab/${tabs[0].name}`, { replace: true });
+        // redirect to first
+        navigate(`/tab/${tabs[0].id}`, { replace: true });
         return <></>;
     }
 
@@ -519,7 +579,7 @@ const Tabsview: FC<{
             noswk!.setHasread({ id: tap.posts[i].id }, true);
         }
         setTabs(produce(draft => {
-            const tab = draft.find(t => t.name === name)!;
+            const tab = draft.find(t => t.id === name)!;
             tab.selected = i;
         }));
         setListscrollto({ index: i, toTop });
@@ -582,33 +642,36 @@ const Tabsview: FC<{
                             // const d = expectn(text, "npub") || expectn(text, "nprofile");
                             if (!d) { break; }
                             const pk = typeof d.data === "string" ? d.data : (d.data as nip19.ProfilePointer).pubkey;
-                            const name = pk.slice(0, 8);
-                            setTabs([...tabs, {
-                                name,
-                                filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
-                                scroll: 0,
-                                selected: null,
-                                replypath: [],
-                            }]);
-                            navigate(`/tab/${name}`);
+                            // const name = pk.slice(0, 8);
+                            // setTabs([...tabs, {
+                            //     name,
+                            //     filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
+                            //     scroll: 0,
+                            //     selected: null,
+                            //     replypath: [],
+                            // }]);
+                            // navigate(`/tab/${name}`);
+                            navigate(`/tab/p/${pk}`);
                             break;
                         }
                         if (text.match(/^(note|nevent)1/)) {
                             const d = (() => { try { return nip19.decode(text); } catch { return undefined; } })();
                             // const d = expectn(text, "note") || expectn(text, "nevent");
                             if (!d) { break; }
-                            const pk = typeof d.data === "string" ? d.data : (d.data as nip19.EventPointer).id;
-                            const name = pk.slice(0, 8);
-                            setTabs([...tabs, {
-                                name,
-                                filter: [{ ids: [pk], kinds: [Kinds.post] }],
-                                scroll: 0,
-                                selected: null,
-                                replypath: [],
-                            }]);
-                            navigate(`/tab/${name}`);
+                            const nid = typeof d.data === "string" ? d.data : (d.data as nip19.EventPointer).id;
+                            // const name = nid.slice(0, 8);
+                            // setTabs([...tabs, {
+                            //     name,
+                            //     filter: [{ ids: [nid], kinds: [Kinds.post] }],
+                            //     scroll: 0,
+                            //     selected: null,
+                            //     replypath: [],
+                            // }]);
+                            // navigate(`/tab/${name}`);
+                            navigate(`/tab/e/${nid}`);
                             break;
                         }
+                        setFlash({ msg: "sorry not supported yet", bang: true });
                         break;
                     }
                 }
@@ -627,13 +690,13 @@ const Tabsview: FC<{
             switch (e.key) {
                 case "a": {
                     const i = tabs.indexOf(tab);
-                    const n = tabs[i === 0 ? tabs.length - 1 : i - 1].name;
+                    const n = tabs[i === 0 ? tabs.length - 1 : i - 1].id;
                     navigate(`/tab/${n}`);
                     break;
                 }
                 case "s": {
                     const i = tabs.indexOf(tab);
-                    const n = tabs[i === tabs.length - 1 ? 0 : i + 1].name;
+                    const n = tabs[i === tabs.length - 1 ? 0 : i + 1].id;
                     navigate(`/tab/${n}`);
                     break;
                 }
@@ -699,12 +762,7 @@ const Tabsview: FC<{
                     if (rp.indexOf(laste) === -1) {
                         rp.unshift(laste);
                     }
-                    setTabs(produce(draft => {
-                        draft.forEach(t => {
-                            if (t.name !== tab.name) return;
-                            t.replypath = rp;
-                        });
-                    }));
+                    setTabs(produce(draft => { draft.find(t => t.id === tab.id)!.replypath = rp; }));
                     const ei = postindex(tap.posts, lp.event!.event!.event);
                     if (ei === null) break;  // TODO: may move tab? what if already closed?
                     onselect(ei);
@@ -744,12 +802,7 @@ const Tabsview: FC<{
                             if (p.event!.event!.event.tags.find(t => t[0] === "e" && t[1] === id)) {
                                 const nrp = (i1 === -1 && i2 === -1) ? [] : rp;
                                 nrp.push(p.id);
-                                setTabs(produce(draft => {
-                                    draft.forEach(t => {
-                                        if (t.name !== tab.name) return;
-                                        t.replypath = nrp;
-                                    });
-                                }));
+                                setTabs(produce(draft => { draft.find(t => t.id === tab.id)!.replypath = nrp; }));
                                 return p.id;
                             }
                         }
@@ -882,13 +935,13 @@ const Tabsview: FC<{
                 case "8": {
                     const t = tabs[Number(e.key) - 1];
                     if (t) {
-                        navigate(`/tab/${t.name}`);
+                        navigate(`/tab/${t.id}`);
                     }
                     break;
                 }
                 case "9": {
                     const t = tabs[tabs.length - 1];
-                    navigate(`/tab/${t.name}`);
+                    navigate(`/tab/${t.id}`);
                     break;
                 }
                 case " ": {
@@ -927,29 +980,31 @@ const Tabsview: FC<{
                     if (tab.selected === null) break;
                     const post = tap.posts[tab.selected];
                     const pk = (post.reposttarget || post.event!).event!.event.pubkey;
-                    const name = pk.slice(0, 8);
-                    setTabs([...tabs, {
-                        name,
-                        filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
-                        scroll: 0,
-                        selected: null,
-                        replypath: [],
-                    }]);
-                    navigate(`/tab/${name}`);
+                    // const name = pk.slice(0, 8);
+                    // setTabs([...tabs, {
+                    //     name,
+                    //     filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
+                    //     scroll: 0,
+                    //     selected: null,
+                    //     replypath: [],
+                    // }]);
+                    // navigate(`/tab/${name}`);
+                    navigate(`/tab/p/${pk}`);
                     break;
                 }
                 case "W": {
                     if (typeof tab.filter === "string") {
                         setFlash({ msg: "Cannot close system tabs", bang: true });
                     } else {
-                        if (tryclosetab.name === tab.name && Date.now() < tryclosetab.time + 700) {
-                            const ti = tabs.findIndex(t => t.name === tab.name);
-                            setTabs(tabs.filter(t => t.name !== tab.name));
+                        if (tryclosetab.tid === tab.id && Date.now() < tryclosetab.time + 700) {
+                            // TODO: previous selection, that needs tab activate list
+                            const ti = tabs.findIndex(t => t.id === tab.id);
+                            setTabs(tabs.filter(t => t.id !== tab.id));
                             // normally next but previous if last
                             const nti = tabs.length - 1 <= ti ? ti - 1 : ti;
-                            navigate(`/tab/${tabs[nti].name}`);
+                            navigate(`/tab/${tabs[nti].id}`);
                         } else {
-                            setTryclosetab({ name: tab.name, time: Date.now() });
+                            setTryclosetab({ tid: tab.id, time: Date.now() });
                             setFlash({ msg: "One more to close the tab", bang: true });
                         }
                     }
@@ -989,7 +1044,7 @@ const Tabsview: FC<{
     }, [flash]);
     return <>
         <Helmet>
-            <title>{name} - nosteen</title>
+            <title>{tab.name} - nosteen</title>
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default" }}>
@@ -1001,7 +1056,7 @@ const Tabsview: FC<{
                     onSelect={onselect}
                     onScroll={() => {
                         setTabs(produce(draft => {
-                            const tab = draft.find(t => t.name === name)!;
+                            const tab = draft.find(t => t.id === name)!;
                             tab.scroll = listref.current?.scrollTop || 0; // use event arg?
                         }));
                     }}
@@ -1017,7 +1072,7 @@ const Tabsview: FC<{
                     padding: "0 0 0 2px",
                 }}>
                     <div style={{ flex: "1", display: "flex", alignItems: "flex-start", overflow: "visible" }}>
-                        {tabs.map(t => <Tab key={t.name} active={t.name === name} onClick={() => navigate(`/tab/${t.name}`)}>{t.name}</Tab>)}
+                        {tabs.map(t => <Tab key={t.name} active={t.id === name} onClick={() => navigate(`/tab/${t.id}`)}>{t.name}</Tab>)}
                     </div>
                     <div>
                         <Link to="/preferences" style={{
