@@ -172,6 +172,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
             }
             const listScrollBottom = lel.scrollTop + lel.clientHeight;
             const selOffsetBottom = (ix + 1) * rowh + iel.offsetTop;
+            // TODO: if toTop, just last also scrolled to top. off-by-one.
             if (listScrollBottom < selOffsetBottom) {
                 if (scrollTo.toTop) {
                     lel.scrollTo(0, ix * rowh);
@@ -397,16 +398,16 @@ const spans = (tev: Event): (
         const mref = t.match(/^#\[(\d+)\]/);
         if (mref) {
             const ti = Number(mref[1]);
-            const tag = tev.tags[ti];
-            if (tag[0] === "p") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.npubEncode(tag[1]) } as const;
-            if (tag[0] === "e") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]) } as const;
+            const tag = tev.tags[ti] satisfies string[] as string[] | undefined;
+            if (tag && tag[0] === "p") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.npubEncode(tag[1]) } as const;
+            if (tag && tag[0] === "e") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]) } as const;
             return { rawtext: t, type: "ref", tagindex: ti, tag } as const;
         }
         const mhash = t.match(/^#(\S+)/);
         if (mhash) {
             // hashtag t-tag may be normalized to smallcase
             const tag = tev.tags.find(t => t[0] === "t" && t[1].localeCompare(mhash[1]) === 0);
-            return { rawtext: t, type: "hashtag", text: mhash[1], tagtext: tag?.[1], auto: !tag } as const;
+            return { rawtext: t, type: "hashtag", text: mhash[1], tagtext: tag?.[1] || mhash[1], auto: !tag } as const;
         }
         const mnostr = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
         if (mnostr) {
@@ -891,6 +892,7 @@ const Tabsview: FC<{
                                 break;
                             }
                             case "t": {
+                                // doubled but why? (hashtag span key is tagtext which looks good?)
                                 const text = `#${t[1]}`;
                                 ls.set(text, { text, auto: false });
                                 break;
@@ -965,7 +967,8 @@ const Tabsview: FC<{
                         setFlash({ msg: "Cannot close system tabs", bang: true });
                     } else {
                         if (tryclosetab.tid === tab.id && Date.now() < tryclosetab.time + 700) {
-                            // TODO: previous selection, that needs tab activate list
+                            // TODO: previous selection, that needs tab activate list.
+                            //       navigator.back may back to prefs, and one more back/fwd creates this tab too...
                             const ti = tabs.findIndex(t => t.id === tab.id);
                             setTabs(tabs.filter(t => t.id !== tab.id));
                             // normally next but previous if last
@@ -976,6 +979,21 @@ const Tabsview: FC<{
                             setFlash({ msg: "One more to close the tab", bang: true });
                         }
                     }
+                    break;
+                }
+                case "&": {
+                    // pickup unreads and into tab... how represent virtual? (not tied to sub?)
+                    const id = "unreads";
+                    setTabs([...tabs, {
+                        id,
+                        name: id,
+                        filter: null,
+                        scroll: 0,
+                        selected: null,
+                        replypath: [],
+                    }]);
+                    noswk!.overwritePosts(id, tap!.posts.filter(p => !p.hasread));
+                    navigate(`/tab/${id}`);
                     break;
                 }
                 case ",": {

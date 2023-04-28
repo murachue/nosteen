@@ -64,12 +64,15 @@ export const getmk = <K, V>(map: Map<K, V>, key: K, make: () => V) => {
     return newval;
 };
 
-export const expectn = (s: string, tag: ReturnType<typeof nip19.decode>["type"]) => {
+export const expectn = <T extends ReturnType<typeof nip19.decode>["type"]>(s: string, tag: T): (ReturnType<typeof nip19.decode> & { type: T; }) | null => {
     try {
         const d = nip19.decode(s);
-        return d.type === tag;
+        if (d.type !== tag) {
+            return null;
+        }
+        return d as (ReturnType<typeof nip19.decode> & { type: T; }); // cannot type...
     } catch {
-        return false;
+        return null;
     }
 };
 

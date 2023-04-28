@@ -1,9 +1,9 @@
-import { Emitter, Event, EventMessage, Filter, Mux, Relay, RelayMessageEvent, validateEvent, verifyEvent } from "nostr-mux";
+import { Emitter, Event, Filter, Mux, Relay, validateEvent, verifyEvent } from "nostr-mux";
 import { SimpleEmitter } from "nostr-mux/dist/core/emitter"; // ugh
-import { UnsignedEvent, finishEvent } from "nostr-tools";
+import { UnsignedEvent, finishEvent, matchFilter } from "nostr-tools";
 import { FC, PropsWithChildren, createContext, useContext } from "react";
-import { DeletableEvent, EventMessageFromRelay, FilledEventMessagesFromRelay, FilledFilters, Kinds, Post, ReceivedEvent } from "./types";
 import invariant from "tiny-invariant";
+import { DeletableEvent, EventMessageFromRelay, FilledEventMessagesFromRelay, FilledFilters, Kinds, Post } from "./types";
 import { getmk, postindex, postupsertindex } from "./util";
 
 export type MuxRelayEvent = {
@@ -163,7 +163,7 @@ type ProfileEvents = {
 export class NostrWorker {
     mux = new Mux();
     relays = new Map<string, Relay>();
-    subs = new Map<string, { sid: string; filters: FilledFilters; }>();
+    subs = new Map<string, { sid: string; filters: FilledFilters; } | { sid: null; filters: null; }>();
     // TODO: GC/LRUify events and posts. copy-gc from postStreams?
     events = new Map<string, DeletableEvent>();
     posts = new Map<string, Post>();
@@ -176,7 +176,7 @@ export class NostrWorker {
     onMyContacts = new SimpleEmitter<DeletableEvent>();
     receiveEmitter = new Map<string, Emitter<NostrWorkerListenerMessage>>();
     addq: { name: string, messages: EventMessageFromRelay[]; }[] = [];
-    fetchq: { filter: Filter, onComplete: (receives: EventMessageFromRelay) => void; }[] = [];
+    fetchq: { filter: Filter, onComplete: (receives: EventMessageFromRelay | null) => void; }[] = [];
 
     getRelays() {
         return [...this.relays.values()].map(r => ({ url: r.url, read: r.isReadable, write: r.isWritable }));
@@ -218,6 +218,7 @@ export class NostrWorker {
         this.pubkey = pubkey;
         if (pkchanged && pubkey) {
             let first = true;
+            // XXX: sub on here is ugly
             this.profsid = this.mux.subscribe({
                 filters: [{ authors: [pubkey], kinds: [Kinds.contacts] }],
                 enableBuffer: { flushInterval: 500 },
@@ -242,7 +243,7 @@ export class NostrWorker {
             this.getProfile(pubkey, Kinds.contacts).catch(console.error);
         }
         // TODO: myaction should be wiped
-        // TODO: recent, reply, etc. should be wiped
+        // TODO: recent, reply, etc. should be wiped, but it is callers resp?
     }
     // must return arrays in predictable order to easier deep-compare.
     getFilter(type: "recent" | "reply" | "dm" | "favs"): FilledFilters | null {
@@ -322,12 +323,14 @@ export class NostrWorker {
                 throw new Error(`invariant failed: unknown filter type ${type}`);
         }
     }
-    setSubscribes(subs: Map<string, FilledFilters>) {
+    setSubscribes(subs: Map<string, FilledFilters | null>) {
         for (const [name, sub] of this.subs.entries()) {
             if (subs.has(name)) continue;
 
             // removed
-            this.mux.unSubscribe(sub.sid);
+            if (sub.filters) {
+                this.mux.unSubscribe(sub.sid);
+            }
             this.subs.delete(name);
             this.postStreams.delete(name);
         }
@@ -335,25 +338,34 @@ export class NostrWorker {
         for (const [name, filters] of subs.entries()) {
             const sub = this.subs.get(name);
             if (sub) {
-                if (filtereq(sub.filters, filters)) continue;
+                // existing: unsub only if filters is changed. (noop, keep sub if not changed)
+                if ((!sub.filters && !filters) || (sub.filters && filters && filtereq(sub.filters, filters))) continue;
 
                 // changed; unsubscribe to override (nostr protocol supports override but nostr-mux silently rejects it)
-                this.mux.unSubscribe(sub.sid);
+                if (sub.filters) {
+                    this.mux.unSubscribe(sub.sid);
+                }
             } else {
+                // new
                 this.postStreams.set(name, { posts: [], nunreads: 0 });
             }
 
             // TODO: we should intro global async verify/add queue?
-            const sid = this.mux.subscribe({
-                filters: filters,
-                enableBuffer: { flushInterval: 50 },
-                onEvent: receives => this.onReceive(name, receives),
-                onEose: subid => this.onReceive(name, []),
-            });
-            this.subs.set(name, {
-                filters,
-                sid,
-            });
+            const su = (() => {
+                if (!filters) return { filters: null, sid: null };
+
+                const sid = this.mux.subscribe({
+                    filters: filters,
+                    enableBuffer: { flushInterval: 50 },
+                    onEvent: receives => this.onReceive(name, receives),
+                    onEose: subid => this.onReceive(name, []),
+                });
+                return {
+                    filters,
+                    sid,
+                };
+            })();
+            this.subs.set(name, su);
         }
     }
     getAllPosts() {
@@ -378,7 +390,7 @@ export class NostrWorker {
         }
         emitter.stop(fn);
     }
-    enqueueFetchEventFor(fetches: { filter: Filter, onComplete: (e: EventMessageFromRelay) => void; }[]) {
+    enqueueFetchEventFor(fetches: typeof this.fetchq) {
         const first = this.fetchq.length === 0;
         this.fetchq.push(...fetches);
         if (first) {
@@ -390,6 +402,11 @@ export class NostrWorker {
     }
     getPost(id: string) {
         return this.posts.get(id);
+    }
+    overwritePosts(name: string, posts: Post[]) {
+        const strm = getmk(this.postStreams, name, () => ({ posts: [], nunreads: 0 }));
+        strm.posts.splice(0, strm.posts.length, ...posts);
+        strm.nunreads = posts.reduce((p, c) => p + (c.hasread ? 1 : 0), 0);
     }
     setHasread(spec: { id: string; } | { stream: string; beforeIndex: number; } | { stream: string; afterIndex: number; }, hasRead: boolean) {
         const dhr = hasRead ? -1 : 1;
@@ -459,19 +476,19 @@ export class NostrWorker {
         if (!event.event) return false;
         const ev = event.event.event;
         const pf = getmk(this.profiles, ev.pubkey, () => ({ profile: null, contacts: null, relays: null }));
-        const k = this.profkey(ev);
+        const k = this.profkey(ev.kind);
         const knownev = pf[k]?.event?.event;
         if (knownev && ev.created_at <= knownev.created_at) return false;
         pf[k] = event;
         return true;
     }
 
-    private profkey(event: Event): keyof ProfileEvents {
-        switch (event.kind) {
+    private profkey(kind: number): keyof ProfileEvents {
+        switch (kind) {
             case Kinds.profile: return "profile";
             case Kinds.contacts: return "contacts";
             case Kinds.relays: return "relays";
-            default: throw new Error(`profkey with unknown kind ${event.kind}`);
+            default: throw new Error(`profkey with unknown kind ${kind}`);
         }
     }
 
@@ -479,16 +496,33 @@ export class NostrWorker {
         while (this.fetchq.length) {
             let i = 0;
             const l = this.fetchq.length;
-            const fetchs = [];
+            const fetchs: typeof this.fetchq = [];
             for (; i < l; i++) {
                 const f = this.fetchq[i];
 
                 // cached?
                 const ids = f.filter.ids;
                 if (ids) {
-                    const dev = this.events.get(ids[0])?.event;
-                    if (dev?.event) {
-                        f.onComplete({ received: { type: "EVENT", subscriptionID: "", event: dev.event }, relay: dev.receivedfrom.values().next().value });
+                    const ev = this.events.get(ids[0])?.event;
+                    if (ev) {
+                        f.onComplete({ received: { type: "EVENT", subscriptionID: "", event: ev.event }, relay: ev.receivedfrom.values().next().value });
+                        continue;
+                    }
+                    if (fetchs.find(fe => fe.filter.ids?.[0] === ids[0])) {
+                        continue;
+                    }
+                }
+                // XXX: this intros mergeability of prof/contact/relays...
+                const authors = f.filter.authors;
+                const kinds = f.filter.kinds;
+                if (authors && kinds && [Kinds.profile, Kinds.contacts, Kinds.relays].includes(kinds[0])) {
+                    const k = this.profkey(kinds[0]);
+                    const ev = this.profiles.get(authors[0])?.[k]?.event;
+                    if (ev) {
+                        f.onComplete({ received: { type: "EVENT", subscriptionID: "", event: ev.event }, relay: ev.receivedfrom.values().next().value });
+                        continue;
+                    }
+                    if (fetchs.find(fe => fe.filter.authors?.[0] === authors[0] && fe.filter.kinds?.[0] === kinds[0])) {
                         continue;
                     }
                 }
@@ -497,22 +531,38 @@ export class NostrWorker {
             }
 
             if (0 < fetchs.length) {
-                let sid: string;
-                // sid = this.mux.subscribe({
-                //     filters: fetchs.map(e => e.filter) as FilledFilters,
-                //     onEvent: evs => {
-                //         for (const ev of evs) {
-                //             ev.received.
-                //         }
-                //     },
-                //     onEose: () => {
-                //         // TODO send empty for remaining
-                //         this.mux.unSubscribe(sid);
-                //     },
-                //     enableBuffer: { flushInterval: 100 },
-                //     eoseTimeout: 3000,
-                // });
+                await new Promise<void>((resolve, reject) => {
+                    const fmap = new Map(fetchs.map(f => [f.filter, f]));
+                    let sid: string;
+                    sid = this.mux.subscribe({
+                        filters: fetchs.map(e => e.filter) as FilledFilters,
+                        onEvent: evs => {
+                            try {
+                                for (const ev of evs) {
+                                    const eve = ev.received.event;
+                                    const ms = [...fmap.values()].filter(f => matchFilter(f.filter, eve));
+                                    for (const m of ms) {
+                                        m.onComplete(ev);
+                                        fmap.delete(m.filter);
+                                    }
+                                }
+                            } catch (e) { reject(e); }
+                        },
+                        onEose: () => {
+                            try {
+                                for (const m of fmap.values()) {
+                                    m.onComplete(null);
+                                }
+                                this.mux.unSubscribe(sid);
+                                resolve();
+                            } catch (e) { reject(e); }
+                        },
+                        enableBuffer: { flushInterval: 100 },
+                        eoseTimeout: 3000,
+                    });
+                });
             }
+            this.fetchq.splice(0, i);
         }
     }
 

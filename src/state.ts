@@ -14,7 +14,8 @@ const tabinit: {
     filter: "recent" |
     "reply" |
     "dm" |
-    "favs" | Partial<{
+    "favs" |
+    Partial<{
         ids: string[];
         authors: string[];
         kinds: number[];
@@ -23,7 +24,8 @@ const tabinit: {
         since: number;
         until: number;
         limit: number;
-    }>[];
+    }>[] |
+    null;
     selected: number | null;
     scroll: number;
     replypath: string[];
@@ -80,6 +82,7 @@ export default {
             ui: atomWithStorage("preferences.fonts.ui", "1em ui-sans-serif"),
         },
         // should be "list" not special "mute"
+        // TODO: levels: just user, repost, mention
         mute: {
             userpublic: atomWithStorage<string[]>("preferences.mute.userpublic", []),
             userprivate: atomWithStorage<string[]>("preferences.mute.userprivate", []),
