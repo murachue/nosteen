@@ -221,9 +221,8 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                         <TheRow ref={rowref} post={posts[0]} mypubkey={mypubkey} selected={null} />
                     </div>}
                     <TBody>
-                        {/* TODO: this can be sT..sT+cH not wholescan */}
-                        {posts.map((p, i) => {
-                            if (rowh * (i + 1) < scrollTop || scrollTop + clientHeight < rowh * i) return null;
+                        {posts.slice(Math.floor(scrollTop / rowh), Math.floor(scrollTop + clientHeight) / rowh).map((p, ri) => {
+                            const i = ri + Math.floor(scrollTop / rowh);
                             const evid = p.event!.event!.event.id;
                             return <div
                                 key={evid}
@@ -478,6 +477,8 @@ const Tabsview: FC<{
     const linkselref = useRef<HTMLDivElement>(null);
     const [flash, setFlash] = useState<{ msg: string, bang: boolean; } | null>(null);
     const [tryclosetab, setTryclosetab] = useState({ tid: "", time: 0 });
+    const [profpopping, setProfpopping] = useState(false);
+    const profpopref = useRef<HTMLDivElement>(null);
 
     const [status, setStatus] = useState("status...");
 
@@ -501,7 +502,7 @@ const Tabsview: FC<{
                     const newt = {
                         id: `p/${pk}`,
                         name: pk.slice(0, 8),
-                        filter: [{ authors: [pk], kinds: [Kinds.post], limit: 50 }],
+                        filter: [{ authors: [pk], kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 50 }],
                         scroll: 0,
                         selected: null,
                         replypath: [],
@@ -654,12 +655,22 @@ const Tabsview: FC<{
                 }
                 return;
             }
+            if (profpopping) {
+                switch (e.key) {
+                    case "Escape": {
+                        setProfpopping(false);
+                        listref.current?.focus();
+                        return;
+                    }
+                }
+                // return;
+            }
             if (evinfopopping) {
                 switch (e.key) {
                     case "Escape": {
                         setEvinfopopping(false);
                         listref.current?.focus();
-                        break;
+                        return;
                     }
                 }
                 // return;
@@ -899,9 +910,11 @@ const Tabsview: FC<{
                             }
                         }
                     });
-                    // TODO: url first? ev, pub then hashtag?
-                    setLinkpop([...ls.values()]);
-                    setLinksel(0);
+                    if (0 < ls.size) {
+                        // TODO: url first? ev, pub then hashtag?
+                        setLinkpop([...ls.values()]);
+                        setLinksel(0);
+                    }
                     break;
                 }
                 case "1":
@@ -954,6 +967,10 @@ const Tabsview: FC<{
                     noswk!.setHasread({ stream: tab.id, beforeIndex: tab.selected }, true);
                     break;
                 }
+                case "u": {
+                    setProfpopping(s => !s);
+                    break;
+                }
                 case "U": {
                     if (!tap) break;
                     if (tab.selected === null) break;
@@ -984,7 +1001,7 @@ const Tabsview: FC<{
                 case "&": {
                     // pickup unreads and into tab... how represent virtual? (not tied to sub?)
                     const id = "unreads";
-                    setTabs([...tabs, {
+                    setTabs([...tabs.filter(t => t.id !== id), {
                         id,
                         name: id,
                         filter: null,
@@ -1009,11 +1026,14 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, onselect, evinfopopping, linkpop, linksel, tryclosetab]);
+    }, [tabs, tab, tap, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
                 setEvinfopopping(false);
+            }
+            if (!profpopref.current?.contains(e.nativeEvent.target as any)) {
+                setProfpopping(false);
             }
             if (!linkpopref.current?.contains(e.nativeEvent.target as any)) {
                 setLinkpop([]);
@@ -1033,7 +1053,7 @@ const Tabsview: FC<{
             <title>{tab.name} - nosteen</title>
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-            <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default" }}>
+            <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default", position: "relative" }}>
                 {<TheList
                     posts={tap?.posts || []}
                     mypubkey={account?.pubkey}
@@ -1071,6 +1091,15 @@ const Tabsview: FC<{
                         </Link>
                     </div>
                 </div>
+                {linksel === null && !evinfopopping && !profpopping ? null : <div style={{
+                    position: "absolute",
+                    top: "0",
+                    left: "0",
+                    right: "0",
+                    bottom: "0",
+                    background: "#0004",
+                    backdropFilter: "blur(1px)",
+                }} />}
             </div>
             <div style={{ display: "flex", flexDirection: "row", background: coloruibg }}>
                 <div>
@@ -1081,12 +1110,48 @@ const Tabsview: FC<{
                 </div>
                 <div style={{ flex: "1", minWidth: "0", /* display: "flex", flexDirection: "column" */ }}>
                     <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex" }}>
-                        <div style={{ flex: "1", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {!selev ? "name..." : (
-                                selpost.reposttarget
-                                    ? `${selpost.reposttarget.event!.event.pubkey} (RP: ${selev.event!.event.pubkey})`
-                                    : selev.event!.event.pubkey
-                            )}
+                        <div style={{ flex: "1", minWidth: "0", position: "relative" }}>
+                            <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} onClick={e => setProfpopping(s => !s)}>
+                                {!selev ? "name..." : (
+                                    selpost.reposttarget
+                                        ? `${selpost.reposttarget.event!.event.pubkey} (RP: ${selev.event!.event.pubkey})`
+                                        : selev.event!.event.pubkey
+                                )}
+                            </div>
+                            {!selev ? null : <div
+                                ref={profpopref}
+                                style={{
+                                    display: profpopping ? "flex" : "none",
+                                    flexDirection: "column",
+                                    position: "absolute",
+                                    left: "0",
+                                    bottom: "0",
+                                    padding: "5px",
+                                    minWidth: "10em",
+                                    maxWidth: "40em",
+                                    border: "2px outset",
+                                    background: coloruibg,
+                                    color: coloruitext,
+                                    font: fontui,
+                                    gridTemplateColumns: "max-content 20em",
+                                    rowGap: "0.5em",
+                                }}
+                            >
+                                <div>pk</div>
+                                <div>display_name</div>
+                                <div>last updated at (created_at)</div>
+                                <div>name</div>
+                                <div>location</div>
+                                <div>url</div>
+                                <div>nip05</div>
+                                <div>lud06/16</div>
+                                <div>following?, followed?</div>
+                                <div>follow/unfollow, show TL, block/unblock</div>
+                                <div>desc...</div>
+                                <div>recent note</div>
+                                <div>following, followers</div>
+                                <div>notes, reactions</div>
+                            </div>}
                         </div>
                         <div style={{ position: "relative" }}>
                             <div style={{ cursor: "pointer" }} onClick={e => setEvinfopopping(s => !s)}>
