@@ -48,7 +48,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
         const evid = ev.id;
         const selev = !selected ? undefined : (selected.reposttarget || selected.event!).event!.event;
         const selpub = selev?.pubkey;
-        if (evpub === selpub) {
+        if (derefev.event!.event.pubkey === selpub) {
             bg = colorthempost;
         }
         if (evpub === mypubkey) {
