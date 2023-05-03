@@ -14,6 +14,7 @@ import { Kinds, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex } from "../util";
 
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
+    const noswk = useNostrWorker();
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorrepost] = useAtom(state.preferences.colors.repost);
     const [colorreacted] = useAtom(state.preferences.colors.reacted);
@@ -24,9 +25,18 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
     const [colorselbg] = useAtom(state.preferences.colors.selectedbg);
     const [colorseltext] = useAtom(state.preferences.colors.selectedtext);
     const [fonttext] = useAtom(state.preferences.fonts.text);
+    const [author, setAuthor] = useState(null);
+    const [rpauthor, setRpauthor] = useState(null);
 
     const ev = post.event!.event!.event;
     const derefev = post.reposttarget || post.event!;
+
+    useEffect(() => {
+        noswk!.getProfile(derefev.event!.event.pubkey, Kinds.profile, ev => setAuthor(JSON.parse(ev.event!.event.content)["name"]), () => { });
+        if (post.reposttarget) {
+            noswk!.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(JSON.parse(ev.event!.event.content)["name"]), () => { });
+        }
+    }, []);
 
     const [bg, text] = (() => {
         if (post === selected) {
@@ -87,7 +97,10 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
             </TD>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {post.reposttarget ? `${post.reposttarget.event!.event.pubkey} (RT: ${ev.pubkey})` : ev.pubkey}
+                    {post.reposttarget
+                        ? `${author || post.reposttarget.event!.event.pubkey} (RP: ${rpauthor || ev.pubkey})`
+                        : (author || ev.pubkey)
+                    }
                 </div>
             </TD>
             <TD renderNode={(width, children) => <div style={{ width, position: "relative", alignSelf: "stretch", display: "flex", alignItems: "center" }}>{children}</div>}>
@@ -483,6 +496,9 @@ const Tabsview: FC<{
     const [tryclosetab, setTryclosetab] = useState({ tid: "", time: 0 });
     const [profpopping, setProfpopping] = useState(false);
     const profpopref = useRef<HTMLDivElement>(null);
+    const [author, setAuthor] = useState(null);
+    const [rpauthor, setRpauthor] = useState(null);
+    const [prof, setProf] = useState(null);
 
     const [status, setStatus] = useState("status...");
 
@@ -1047,6 +1063,14 @@ const Tabsview: FC<{
         return () => setGlobalOnPointerDown(undefined);
     }, []);
     useEffect(() => {
+        if (selev) {
+            noswk!.getProfile(selev.event!.event.pubkey, Kinds.profile, ev => setAuthor(JSON.parse(ev.event!.event.content)["name"]), () => { });
+            if (selrpev) {
+                noswk!.getProfile(selrpev.event!.event.pubkey, Kinds.profile, ev => setRpauthor(JSON.parse(ev.event!.event.content)["name"]), () => { });
+            }
+        }
+    }, [selev]);
+    useEffect(() => {
         // set opacity/transition after a moment
         if (flash?.bang) {
             setFlash({ ...flash, bang: false });
@@ -1118,8 +1142,8 @@ const Tabsview: FC<{
                             <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} onClick={e => setProfpopping(s => !s)}>
                                 {!selev ? "name..." : (
                                     selpost.reposttarget
-                                        ? `${selpost.reposttarget.event!.event.pubkey} (RP: ${selev.event!.event.pubkey})`
-                                        : selev.event!.event.pubkey
+                                        ? `${rpauthor || selpost.reposttarget.event!.event.pubkey} (RP: ${author || selev.event!.event.pubkey})`
+                                        : (author || selev.event!.event.pubkey)
                                 )}
                             </div>
                             {!selev ? null : <div
@@ -1328,7 +1352,7 @@ const Tabsview: FC<{
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
-                <div style={{ flex: "1" }}>tab {tap?.nunreads}/{tap?.posts?.length}, all {streams?.getNunreads()}/{streams?.getAllPosts()?.size} | {status}</div>
+                <div style={{ flex: "1" }}>tab {tap?.nunreads}/{tap?.posts?.length}, all {streams?.getNunreads()}/{streams?.getAllPosts()?.size} | post/fav/note /h | {status}</div>
                 <div style={{ padding: "0 0.5em" }}>{relayinfo.healthy}/{relayinfo.all}</div>
                 <div style={{ position: "relative" }}>
                     #hashtag

@@ -154,6 +154,7 @@ export type NostrWorkerListenerMessage = {
 
 const isFilledEventMessagesFromRelay = (ms: EventMessageFromRelay[]): ms is FilledEventMessagesFromRelay => 0 < ms.length;
 
+// TODO: CachedDeletableEvent (negative cache and TTL)
 type ProfileEvents = {
     profile: DeletableEvent | null;
     contacts: DeletableEvent | null;
@@ -180,7 +181,7 @@ export class FetchId extends FetchPred {
     merge(other: FetchPred) {
         if (!(other instanceof FetchId)) return null;
         const p = new FetchId(this.ids[0]);
-        p.ids = [...new Set(...this.ids, ...other.ids).values()];
+        p.ids = [...new Set([...this.ids, ...other.ids]).values()];
         return p;
     }
 }
@@ -194,7 +195,7 @@ export class FetchProfile extends FetchPred {
     merge(other: FetchPred) {
         if (!(other instanceof FetchProfile)) return null;
         const p = new FetchProfile(this.pks[0]);
-        p.pks = [...new Set(...this.pks, ...other.pks).values()];
+        p.pks = [...new Set([...this.pks, ...other.pks]).values()];
         return p;
     }
 }
@@ -208,7 +209,7 @@ export class FetchContacts extends FetchPred {
     merge(other: FetchPred) {
         if (!(other instanceof FetchContacts)) return null;
         const p = new FetchContacts(this.pks[0]);
-        p.pks = [...new Set(...this.pks, ...other.pks).values()];
+        p.pks = [...new Set([...this.pks, ...other.pks]).values()];
         return p;
     }
 }
@@ -554,8 +555,40 @@ export class NostrWorker {
             }
         }
     }
-    async getProfile(pk: string, kind: typeof Kinds[keyof typeof Kinds]) {
-        return this.profiles.get(pk);
+    tryGetProfile(pk: string, kind: typeof Kinds[keyof typeof Kinds]) {
+        return this.profiles.get(pk)?.[this.profkey(kind)];
+    }
+    getProfile(pk: string, kind: typeof Kinds[keyof typeof Kinds], onEvent: (ev: DeletableEvent) => void, onEnd: () => void) {
+        const profkey = this.profkey(kind);
+        const pcache = this.profiles.get(pk)?.[profkey];
+        if (pcache) {
+            // TODO: TTL
+            onEvent(pcache);
+            onEnd();
+            return;
+        }
+
+        const pred = (() => {
+            switch (kind) {
+                case Kinds.profile: return new FetchProfile(pk);
+                case Kinds.contacts: return new FetchContacts(pk);
+                // case Kinds.relays: return new FetchRelays(key);
+                default: throw new Error(`getprofile pred not supported ${kind}: ${pk}`);
+            }
+        })();
+        this.enqueueFetchEventFor([{
+            pred,
+            onEvent: (evs: DeletableEvent[]) => {
+                for (const ev of evs) {
+                    this.putProfile(ev);
+                }
+                const pcache = this.profiles.get(pk)?.[profkey];
+                if (pcache) {
+                    onEvent(pcache);
+                }
+            },
+            onEnd
+        }]);
     }
 
     private putProfile(event: DeletableEvent): boolean {
