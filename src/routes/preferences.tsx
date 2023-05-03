@@ -2,12 +2,58 @@ import { produce } from "immer";
 import { useAtom } from "jotai";
 import { decodeBech32ID, encodeBech32ID } from "nostr-mux/dist/core/utils";
 import { generatePrivateKey, getPublicKey, nip19 } from "nostr-tools";
-import { useCallback, useState } from "react";
+import { CSSProperties, FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
 import { useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { expectn } from "../util";
+
+// XXX: lose undo on transform...
+const TextInput: FC<{ value: string; size?: number; placeholder?: string; style?: CSSProperties; onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement | HTMLInputElement>; onChange: (s: string) => void; }> = ({ value, size, placeholder, style, onKeyDown, onChange }) => {
+    const [focus, setFocus] = useState(false);
+    const reft = useRef<HTMLTextAreaElement>(null);
+    const refi = useRef<HTMLInputElement>(null);
+    const m = useMemo(() => value.match(/\n/g), [value]);
+    useEffect(() => {
+        if (focus) {
+            (m ? reft : refi).current?.focus();
+        }
+    }, [focus, m]);
+    return m
+        ? <textarea
+            ref={reft}
+            value={value}
+            style={style}
+            cols={size}
+            rows={m.length + 1}
+            onKeyDown={onKeyDown}
+            onChange={e => onChange(e.target.value)}
+            onFocus={e => setFocus(f => true)}
+            onBlur={e => setFocus(f => false)}
+        />
+        : <input
+            ref={refi}
+            type="text"
+            placeholder={placeholder}
+            value={value}
+            style={style}
+            size={size}
+            onKeyDown={onKeyDown}
+            onChange={e => onChange(e.target.value)}
+            onPaste={e => {
+                const clip = e.clipboardData.getData("text/plain");
+                if (clip.match(/\n/)) {
+                    const el = refi.current!;
+                    const v = el.value;
+                    onChange(v.slice(0, el.selectionStart ?? v.length) + clip + v.slice(el.selectionEnd ?? v.length));
+                    e.preventDefault();
+                }
+            }}
+            onFocus={e => setFocus(f => true)}
+            onBlur={e => setFocus(f => false)}
+        />;
+};
 
 export default () => {
     const mux = useNostrWorker();
@@ -260,21 +306,25 @@ export default () => {
                     }))}>{m.scope}</button>
                 </div>
             </>)}
-            <div><input type="text" placeholder="npub or hex..." value={mutepk} style={{ fontFamily: "monospace" }} size={64} onChange={e => {
-                const s = e.target.value;
-                if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
-                    setMutepk(nip19.npubEncode(s) || "");
-                } else {
-                    setMutepk(e.target.value);
-                }
-            }} /></div>
+            <div>
+                <TextInput value={mutepk} placeholder="npub or hex..." style={{ fontFamily: "monospace" }} size={64} onChange={s => {
+                    setMutepk(s.split("\n").map(s => {
+                        if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
+                            return nip19.npubEncode(s) || "";
+                        } else {
+                            return s;
+                        }
+                    }).join("\n"));
+                }} />
+            </div>
             <div style={{ marginLeft: "1em", display: "flex" }}>
-                <button style={{ flex: 1 }} disabled={!expectn(mutepk, "npub")} onClick={e => setMuteUsers(produce(draft => {
-                    const r = draft.find(r => r.pk === mutepk);
-                    if (!r) {
-                        draft.push({ pk: mutepk, scope: "private", added: true });
-                        setMutepk("");
+                <button style={{ flex: 1 }} disabled={!mutepk.split("\n").every(p => expectn(p, "npub"))} onClick={e => setMuteUsers(produce(draft => {
+                    const pks = mutepk.split("\n").filter(p => !draft.find(r => r.pk));
+                    if (pks.length === 0) {
+                        return;
                     }
+                    draft.push(...pks.map(pk => ({ pk, scope: "private", added: true } as const)));
+                    setMutepk("");
                 }))}>add</button>
             </div>
         </div>
@@ -300,7 +350,9 @@ export default () => {
                     }))}>{m.removed ? "Undo" : "Remove"}</button>
                 </div>
             </>)}
-            <div><input type="text" placeholder="regex..." value={mutepat} style={{ fontFamily: "monospace" }} size={50} onChange={e => setMutepat(e.target.value)} /></div>
+            <div>
+                <TextInput value={mutepat} placeholder="regex..." style={{ fontFamily: "monospace" }} size={50} onChange={s => setMutepat(s)} />
+            </div>
             <div style={{ marginLeft: "1em", display: "flex" }}>
                 <button style={{ flex: 1 }} disabled={mutepat === ""} onClick={e => setMuteRegexlocal(produce(draft => {
                     const r = draft.find(r => r.pattern === mutepat);
