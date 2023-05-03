@@ -160,6 +160,81 @@ type ProfileEvents = {
     relays: DeletableEvent | null;
 };
 
+export abstract class FetchPred {
+    public uncached = false;
+    constructor(uncached?: boolean) {
+        if (uncached !== undefined) {
+            this.uncached = uncached;
+        }
+    }
+    abstract filter(): Filter[];
+    abstract merge(other: FetchPred): FetchPred | null;
+}
+export class FetchId extends FetchPred {
+    /* private */public ids: string[];
+    constructor(id: string, uncached?: boolean) {
+        super(uncached);
+        this.ids = [id];
+    }
+    filter() { return [{ ids: this.ids }]; }
+    merge(other: FetchPred) {
+        if (!(other instanceof FetchId)) return null;
+        const p = new FetchId(this.ids[0]);
+        p.ids = [...new Set(...this.ids, ...other.ids).values()];
+        return p;
+    }
+}
+export class FetchProfile extends FetchPred {
+    /* private */public pks: string[];
+    constructor(pk: string, uncached?: boolean) {
+        super(uncached);
+        this.pks = [pk];
+    }
+    filter() { return [{ authors: this.pks, kinds: [Kinds.profile] }]; };
+    merge(other: FetchPred) {
+        if (!(other instanceof FetchProfile)) return null;
+        const p = new FetchProfile(this.pks[0]);
+        p.pks = [...new Set(...this.pks, ...other.pks).values()];
+        return p;
+    }
+}
+export class FetchContacts extends FetchPred {
+    /* private */public pks: string[];
+    constructor(pk: string, uncached?: boolean) {
+        super(uncached);
+        this.pks = [pk];
+    }
+    filter() { return [{ authors: this.pks, kinds: [Kinds.contacts] }]; };
+    merge(other: FetchPred) {
+        if (!(other instanceof FetchContacts)) return null;
+        const p = new FetchContacts(this.pks[0]);
+        p.pks = [...new Set(...this.pks, ...other.pks).values()];
+        return p;
+    }
+}
+export class FetchFollowers extends FetchPred {
+    constructor(/* private */public pk: string, uncached?: boolean) {
+        super(uncached);
+    }
+    filter() { return [{ "#p": [this.pk], kinds: [Kinds.contacts] }]; };
+    merge(other: FetchPred) {
+        // if (!(other instanceof FetchFollowers)) return null;
+        return null;
+    }
+}
+
+type FetchWill = {
+    pred: FetchPred;
+    onEvent?: (receives: DeletableEvent[]) => void;
+    onEnd?: () => void;
+};
+
+// XXX: you may think eose as {ok:[],ng:[]} but consider just a kind5 with all-known. nah.
+type VerifiedHandler = (result: {
+    ok: Set<DeletableEvent>;
+    ng: Event[];
+} | null) => void;
+
 export class NostrWorker {
     mux = new Mux();
     relays = new Map<string, Relay>();
@@ -168,15 +243,15 @@ export class NostrWorker {
     events = new Map<string, DeletableEvent>();
     posts = new Map<string, Post>();
     nunreads = 0;
-    postStreams = new Map<string, { posts: Post[], nunreads: number; }>(); // order by created_at TODO: also received_at for LRU considering fetching older post that is mentioned?
+    postStreams = new Map<string, { posts: Post[], eose: boolean, nunreads: number; }>(); // order by created_at TODO: also received_at for LRU considering fetching older post that is mentioned?
     pubkey: string | null = null;
     profiles = new Map<string, ProfileEvents>();
     profsid: string | null = null;
     onHealthy = new SimpleEmitter<MuxRelayEvent>();
     onMyContacts = new SimpleEmitter<DeletableEvent>();
     receiveEmitter = new Map<string, Emitter<NostrWorkerListenerMessage>>();
-    addq: { name: string, messages: EventMessageFromRelay[]; }[] = [];
-    fetchq: { filter: Filter, onComplete: (receives: EventMessageFromRelay | null) => void; }[] = [];
+    verifyq: { receivedAt: number; messages: FilledEventMessagesFromRelay | null; onVerified: VerifiedHandler; }[] = [];
+    fetchq: FetchWill[] = [];
 
     getRelays() {
         return [...this.relays.values()].map(r => ({ url: r.url, read: r.isReadable, write: r.isWritable }));
@@ -217,30 +292,35 @@ export class NostrWorker {
 
         this.pubkey = pubkey;
         if (pkchanged && pubkey) {
-            let first = true;
+            // getProfile is oneshot. but need continuous...
+            // this.getProfile(pubkey, Kinds.contacts).catch(console.error);
             // XXX: sub on here is ugly
             this.profsid = this.mux.subscribe({
                 filters: [{ authors: [pubkey], kinds: [Kinds.contacts] }],
                 enableBuffer: { flushInterval: 500 },
-                onEvent: async res => {
-                    // FIXME: use the single queue to avoid race...
-                    const okrecv = await this.msgsToDelableEvent(res);
-                    for (const dev of okrecv.values()) {
+                onEvent: res => this.enqueueVerify(res, r => {
+                    if (!r) return;
+                    for (const dev of r.ok.values()) {
                         const newer = this.putProfile(dev);
                         if (!newer) continue;
                         const ev = dev.event?.event;
                         if (!ev) continue;
-                        if (!first) continue;
-                        first = false;
                         if (ev.pubkey !== pubkey || ev.kind !== Kinds.contacts) {
                             // !?
                             continue;
                         }
+                        // if eosed?
                         this.onMyContacts.emit(dev);
                     }
-                },
+                }),
+                // onEose: subid => this.enqueueVerify(null, r => {
+                //     const dev = this.profiles.get(pubkey)?.contacts;
+                //     if (dev) {
+                //         this.onMyContacts.emit(dev);
+                //         eosed = true;
+                //     }
+                // })
             });
-            this.getProfile(pubkey, Kinds.contacts).catch(console.error);
         }
         // TODO: myaction should be wiped
         // TODO: recent, reply, etc. should be wiped, but it is callers resp?
@@ -347,7 +427,7 @@ export class NostrWorker {
                 }
             } else {
                 // new
-                this.postStreams.set(name, { posts: [], nunreads: 0 });
+                this.postStreams.set(name, { posts: [], eose: false, nunreads: 0 });
             }
 
             // TODO: we should intro global async verify/add queue?
@@ -357,8 +437,14 @@ export class NostrWorker {
                 const sid = this.mux.subscribe({
                     filters: filters,
                     enableBuffer: { flushInterval: 50 },
-                    onEvent: receives => this.onReceive(name, receives),
-                    onEose: subid => this.onReceive(name, []),
+                    onEvent: receives => this.enqueueVerify(receives, async r => {
+                        invariant(r);
+                        this.delevToPost(name, r.ok);
+                    }),
+                    onEose: subid => this.enqueueVerify(null, r => {
+                        invariant(!r);
+                        this.receiveEmitter.get(name)?.emit({ name, type: "eose", events: [], posts: [] });
+                    }),
                 });
                 return {
                     filters,
@@ -390,7 +476,7 @@ export class NostrWorker {
         }
         emitter.stop(fn);
     }
-    enqueueFetchEventFor(fetches: typeof this.fetchq) {
+    enqueueFetchEventFor(fetches: FetchWill[]) {
         const first = this.fetchq.length === 0;
         this.fetchq.push(...fetches);
         if (first) {
@@ -404,7 +490,7 @@ export class NostrWorker {
         return this.posts.get(id);
     }
     overwritePosts(name: string, posts: Post[]) {
-        const strm = getmk(this.postStreams, name, () => ({ posts: [], nunreads: 0 }));
+        const strm = getmk(this.postStreams, name, () => ({ posts: [], eose: false, nunreads: 0 }));
         strm.posts.splice(0, strm.posts.length, ...posts);
         strm.nunreads = posts.reduce((p, c) => p + (c.hasread ? 1 : 0), 0);
     }
@@ -496,69 +582,105 @@ export class NostrWorker {
         while (this.fetchq.length) {
             let i = 0;
             const l = this.fetchq.length;
-            const fetchs: typeof this.fetchq = [];
+            const wills: (FetchWill & { filters: Filter[]; })[] = [];
+            const predsbag = new Map<string, FetchPred[]>();
+            let nfilters = 0;
             for (; i < l; i++) {
                 const f = this.fetchq[i];
 
                 // cached?
-                const ids = f.filter.ids;
-                if (ids) {
-                    const ev = this.events.get(ids[0])?.event;
-                    if (ev) {
-                        f.onComplete({ received: { type: "EVENT", subscriptionID: "", event: ev.event }, relay: ev.receivedfrom.values().next().value });
-                        continue;
-                    }
-                    if (fetchs.find(fe => fe.filter.ids?.[0] === ids[0])) {
-                        continue;
-                    }
-                }
-                // XXX: this intros mergeability of prof/contact/relays...
-                const authors = f.filter.authors;
-                const kinds = f.filter.kinds;
-                if (authors && kinds && [Kinds.profile, Kinds.contacts, Kinds.relays].includes(kinds[0])) {
-                    const k = this.profkey(kinds[0]);
-                    const ev = this.profiles.get(authors[0])?.[k]?.event;
-                    if (ev) {
-                        f.onComplete({ received: { type: "EVENT", subscriptionID: "", event: ev.event }, relay: ev.receivedfrom.values().next().value });
-                        continue;
-                    }
-                    if (fetchs.find(fe => fe.filter.authors?.[0] === authors[0] && fe.filter.kinds?.[0] === kinds[0])) {
+                // TODO: cache checking in derivatives of FetchPred
+                if (f.pred instanceof FetchId && !f.pred.uncached) {
+                    const dev = this.events.get(f.pred.ids[0]);
+                    if (dev) {
+                        // return if it is not deleted, or id is kind5 event itself
+                        if ((dev?.event && !dev?.deleteevent) || dev.deleteevent?.event?.id === f.pred.ids[0]) {
+                            f.onEvent?.([dev]);
+                            f.onEnd?.();
+                        }
                         continue;
                     }
                 }
+                // XXX: this intros mergeability of prof/contact/relays...?
+                if (f.pred instanceof FetchProfile && !f.pred.uncached) {
+                    const prof = this.profiles.get(f.pred.pks[0])?.profile;
+                    if (prof) {
+                        if (prof?.event && !prof?.deleteevent) {
+                            f.onEvent?.([prof]);
+                            f.onEnd?.();
+                        }
+                        continue;
+                    }
+                }
+                if (f.pred instanceof FetchContacts && !f.pred.uncached) {
+                    const cont = this.profiles.get(f.pred.pks[0])?.contacts;
+                    if (cont) {
+                        if (cont?.event && !cont?.deleteevent) {
+                            f.onEvent?.([cont]);
+                            f.onEnd?.();
+                        }
+                        continue;
+                    }
+                }
+                // no cache for FetchFollowers
 
-                fetchs.push(f);
+                const preds = predsbag.get(f.pred.constructor.name) || [];
+                const plast = preds[preds.length - 1];
+                const merged = plast?.merge(f.pred);
+                if (merged) {
+                    preds[preds.length - 1] = merged;
+                } else {
+                    nfilters++;
+                    // any relay must accept these many filters...
+                    if (20 < nfilters) {
+                        break;
+                    }
+                    preds.push(f.pred);
+                }
+                wills.push({ ...f, filters: f.pred.filter() });
+                // we don't want set if nfilters over (with empty preds), so we can't getmk()
+                predsbag.set(f.pred.constructor.name, preds);
             }
 
-            if (0 < fetchs.length) {
+            if (0 < predsbag.size) {
                 await new Promise<void>((resolve, reject) => {
-                    const fmap = new Map(fetchs.map(f => [f.filter, f]));
                     let sid: string;
+                    // TODO: enqueue and forget
                     sid = this.mux.subscribe({
-                        filters: fetchs.map(e => e.filter) as FilledFilters,
-                        onEvent: evs => {
+                        filters: [...predsbag.values()].flatMap(e => e.flatMap(f => f.filter())) as FilledFilters,
+                        enableBuffer: { flushInterval: 100 },
+                        eoseTimeout: 3000,
+                        onEvent: receives => this.enqueueVerify(receives, async r => {
                             try {
-                                for (const ev of evs) {
-                                    const eve = ev.received.event;
-                                    const ms = [...fmap.values()].filter(f => matchFilter(f.filter, eve));
-                                    for (const m of ms) {
-                                        m.onComplete(ev);
-                                        fmap.delete(m.filter);
+                                invariant(r);
+                                const one = new Map<(receives: DeletableEvent[]) => void, DeletableEvent[]>();
+                                for (const ev of r.ok.values()) {
+                                    const eve = ev.event;
+                                    if (!eve) continue; // just delete event
+
+                                    // umm O(NM)
+                                    const ms = wills.filter(f => f.filters.some(g => matchFilter(g, eve.event)));
+                                    for (const w of ms) {
+                                        if (w.onEvent) {
+                                            getmk(one, w.onEvent, () => []).push(ev);
+                                        }
                                     }
                                 }
+                                for (const [f, evs] of one.entries()) {
+                                    f(evs);
+                                }
                             } catch (e) { reject(e); }
-                        },
-                        onEose: () => {
+                        }),
+                        onEose: subid => this.enqueueVerify(null, r => {
                             try {
-                                for (const m of fmap.values()) {
-                                    m.onComplete(null);
+                                invariant(!r);
+                                for (const w of wills) {
+                                    w.onEnd?.();
                                 }
                                 this.mux.unSubscribe(sid);
                                 resolve();
                             } catch (e) { reject(e); }
-                        },
-                        enableBuffer: { flushInterval: 100 },
-                        eoseTimeout: 3000,
+                        }),
                     });
                 });
             }
@@ -566,39 +688,9 @@ export class NostrWorker {
         }
     }
 
-    private onReceive(name: string, messages: EventMessageFromRelay[]) {
-        const first = this.addq.length === 0;
-        this.addq.push({ name, messages });
-        if (first) {
-            this.receiveProc().catch(e => {
-                console.error(e);
-                this.addq.splice(0);
-            });
-        }
-    }
-
-    private async receiveProc() {
-        while (this.addq.length) {
-            // peek not pop to avoid launch receive proc while processing last.
-            const { name, messages } = this.addq[0];
-            if (isFilledEventMessagesFromRelay(messages)) {
-                await this.receiveOneProc(name, messages);
-            } else {
-                this.receiveEmitter.get(name)?.emit({ name, type: "eose", events: [], posts: [] });
-            }
-
-            this.addq.splice(0, 1);
-        }
-    }
-
-    private async receiveOneProc(name: string, messages: FilledEventMessagesFromRelay) {
+    private delevToPost(name: string, okrecv: Set<DeletableEvent>) {
         // TODO: repost/reaction target fetching
-        // TODO: we may can use batch schnorr verify (if library supports) but bothered if some fail.
 
-        // first, event (with deletion) layer.
-        const okrecv = await this.msgsToDelableEvent(messages);
-
-        // then post layer.
         const tap = this.postStreams.get(name);
         invariant(tap, `no postStream for ${name}`);
         const posted = [];
@@ -668,9 +760,44 @@ export class NostrWorker {
         }
     }
 
-    private async msgsToDelableEvent(messages: FilledEventMessagesFromRelay) {
-        const now = Date.now();
-        const okrecv = new Map<string, DeletableEvent>;
+    enqueueVerify(messages: FilledEventMessagesFromRelay | null, onVerified: VerifiedHandler) {
+        const first = this.verifyq.length === 0;
+        this.verifyq.push({ receivedAt: Date.now(), messages, onVerified });
+        if (first) {
+            this.verifyMessages().catch(e => {
+                // bailout
+                console.error(e);
+                this.verifyq.forEach(v => {
+                    try {
+                        v.onVerified(null);
+                    } catch (e) {
+                        console.error(e);
+                    }
+                });
+                this.verifyq.splice(0);
+            });
+        }
+    }
+
+    private async verifyMessages() {
+        while (this.verifyq.length) {
+            // peek not pop to avoid launch receive proc while processing last.
+            const v = this.verifyq[0];
+            if (v.messages) {
+                const r = await this.msgsToDelableEvent(v.receivedAt, v.messages);
+                v.onVerified(r);
+            } else {
+                v.onVerified(null);
+            }
+
+            this.verifyq.splice(0, 1);
+        }
+    }
+
+    private async msgsToDelableEvent(receivedAt: number, messages: FilledEventMessagesFromRelay) {
+        // TODO: we may can use batch schnorr verify (if library supports) but bothered if some fail.
+        const ok = new Set<DeletableEvent>;
+        const ng = [];
         for (const { received: { event }, relay } of messages) {
             // TODO: unify these del,post,repost.
             if (event.kind === 5) {
@@ -686,7 +813,9 @@ export class NostrWorker {
                     //                         diff sig: treat as bad. (same id can have other sig though...)
                     if (event.sig === dev.deleteevent.event.sig) {
                         dev.deleteevent.receivedfrom.add(relay);
-                        okrecv.set(dev.id, dev); // update my tab too
+                        ok.add(dev); // update my tab too
+                    } else {
+                        ng.push(event);
                     }
                     continue;
                 }
@@ -705,6 +834,7 @@ export class NostrWorker {
                 }
                 if (dels.length === 0) {
                     // all are known (1:N delete event?); skip
+                    // this is not a badrecv.
                     // TODO: remember to events and make fastpath-able?
                     continue;
                 }
@@ -712,6 +842,7 @@ export class NostrWorker {
                 const r = await verifyEvent(event);
                 if (typeof r === "string") {
                     // TODO: invalid sig!?
+                    ng.push(event);
                     continue;
                 }
 
@@ -727,7 +858,13 @@ export class NostrWorker {
                         // FIXME: NIP-26 (as of 2023-04-13) states that delegator has a power to delete delegatee event.
                         //        this logic also prohibit that... but treating it needs more complex...
                         // TODO: should log before null?
+
+                        // keep tdev.
+
+                        // delete kind5 link
                         this.events.delete(event.id);
+                        ng.push(event); // XXX: what if this kind5 contain both ok and bad??
+
                         continue;
                     }
 
@@ -739,8 +876,11 @@ export class NostrWorker {
                         lastreceivedat: 0,
                     };
                     tdev.deleteevent.receivedfrom.add(relay);
-                    tdev.deleteevent.lastreceivedat = now;
-                    okrecv.set(did, tdev);
+                    tdev.deleteevent.lastreceivedat = receivedAt;
+
+                    // delete event is for multi events...
+                    // put to okrecv? but not kind6 subevent??
+                    ok.add(tdev);
                 }
             } else {
                 // others
@@ -752,7 +892,9 @@ export class NostrWorker {
                     //                         diff sig: treat as bad. (same id can have other sig though...)
                     if (event.sig === dev.event.event.sig) {
                         dev.event.receivedfrom.add(relay);
-                        okrecv.set(event.id, dev); // update my tab too
+                        ok.add(dev); // update my tab too
+                    } else {
+                        ng.push(event);
                     }
                     continue;
                 }
@@ -760,6 +902,7 @@ export class NostrWorker {
                 const r = await verifyEvent(event);
                 if (typeof r === "string") {
                     // TODO: invalid sig!?
+                    ng.push(event);
                     continue;
                 }
 
@@ -776,19 +919,20 @@ export class NostrWorker {
                     lastreceivedat: 0,
                 };
                 tdev.event.receivedfrom.add(relay);
-                tdev.event.lastreceivedat = now;
+                tdev.event.lastreceivedat = receivedAt;
 
                 if (tdev.deleteevent && tdev.deleteevent.event.pubkey !== event.pubkey) {
                     // reject liar on first receive. nullify the delete event.
                     // FIXME: NIP-26 (as of 2023-04-13) states that delegator has a power to delete delegatee event.
                     //        this logic also prohibit that... but treating it needs more complex...
+                    // XXX: badrecv?
                     // TODO: should log before null?
                     this.events.delete(tdev.deleteevent.event.id);
                     tdev.deleteevent = null;
                     // fallthrough
                 }
 
-                okrecv.set(event.id, tdev);
+                ok.add(tdev);
 
                 // hack: repost.
                 //       verify and remember as events but not okrecv to not pop up as originated (not reposted)
@@ -801,6 +945,7 @@ export class NostrWorker {
                     const subevent = validateEvent(cobj);
                     if (typeof subevent === "string") {
                         // does not form of an Event...
+                        // even not a badrecv.
                         continue;
                     }
 
@@ -813,14 +958,16 @@ export class NostrWorker {
                         //                         diff sig: treat as bad. (same id can have other sig though...)
                         if (subevent.sig === sdev.event.event.sig) {
                             sdev.event.receivedfrom.add(relay);
-                            okrecv.set(subevent.id, sdev); // update my tab too
+                            ok.add(sdev); // update my tab too
                         }
+                        // else badrecv?
                         continue;
                     }
 
                     const sr = await verifyEvent(subevent);
                     if (typeof sr === "string") {
                         // TODO: invalid sig...
+                        // badrecv?
                         continue;
                     }
 
@@ -837,7 +984,7 @@ export class NostrWorker {
                         lastreceivedat: 0,
                     };
                     stdev.event.receivedfrom.add(relay); // ?
-                    stdev.event.lastreceivedat = now;
+                    stdev.event.lastreceivedat = receivedAt;
 
                     if (stdev.deleteevent && stdev.deleteevent.event.pubkey !== subevent.pubkey) {
                         // reject liar on first receive. nullify the delete event.
@@ -853,7 +1000,7 @@ export class NostrWorker {
                 }
             }
         }
-        return okrecv;
+        return { ok, ng };
     }
 }
 

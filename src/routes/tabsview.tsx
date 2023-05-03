@@ -283,7 +283,7 @@ const timefmt = (date: Date, fmt: string) => {
 class PostStreamWrapper {
     private readonly listeners = new Map<string, Map<(msg: NostrWorkerListenerMessage) => void, (msg: NostrWorkerListenerMessage) => void>>();
     private readonly streams = new Map<string, ReturnType<typeof NostrWorker.prototype.getPostStream>>();
-    private readonly emptystream = { posts: [], nunreads: 0 }; // fixed reference is important
+    private readonly emptystream = { posts: [], eose: false, nunreads: 0 }; // fixed reference is important
     private muteusers: RegExp = NeverMatch;
     private mutepatterns: RegExp = NeverMatch;
     constructor(private readonly noswk: NostrWorker) { }
@@ -329,6 +329,9 @@ class PostStreamWrapper {
     getNunreads() {
         return this.noswk.nunreads;
     }
+
+    // TODO: impl setHasread considering mutes
+
     setMutes({ users, regexs }: { users: string[], regexs: string[]; }) {
         // https://stackoverflow.com/a/9213411
         this.muteusers = users.length === 0 ? NeverMatch : new RegExp(users.map(e => `(${e})`).join("|"));
@@ -354,6 +357,7 @@ class PostStreamWrapper {
                 }
                 return true;
             }),
+            eose: stream.eose,
             nunreads: stream.nunreads, // TODO: minus mute?
         };
         this.streams.set(name, news);
@@ -1253,6 +1257,7 @@ const Tabsview: FC<{
                         </div>
                         <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
                             <div>
+                                {/* TODO: twemoji? */}
                                 {!selev ? "text..." : (() => {
                                     return spans((selrpev || selev).event!.event).map((s, i) => {
                                         switch (s.type) {
