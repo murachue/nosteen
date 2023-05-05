@@ -1,8 +1,8 @@
-import { Relay, relayInit } from './relay';
-import { normalizeURL } from './utils';
-import { Filter } from './filter';
-import { Event } from './event';
-import { SubscriptionOptions, Sub, Pub, CountPayload } from './relay';
+// based on nostr-tools@1.10.1
+
+import { Event, Filter, utils } from 'nostr-tools';
+import { Pub, Relay, Sub, SubscriptionOptions, relayInit } from './relay';
+const normalizeURL = utils.normalizeURL;
 
 export class SimplePool {
     private _conn: { [url: string]: Relay; };
