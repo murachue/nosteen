@@ -1,13 +1,12 @@
 import { produce } from "immer";
 import { useAtom } from "jotai";
-import { decodeBech32ID, encodeBech32ID } from "nostr-mux/dist/core/utils";
 import { generatePrivateKey, getPublicKey, nip19 } from "nostr-tools";
 import { CSSProperties, FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
 import { useNostrWorker } from "../nostrworker";
 import state from "../state";
-import { expectn } from "../util";
+import { expectn, rescue } from "../util";
 
 // XXX: lose undo on transform...
 const TextInput: FC<{ value: string; size?: number; placeholder?: string; style?: CSSProperties; onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement | HTMLInputElement>; onChange: (s: string) => void; }> = ({ value, size, placeholder, style, onKeyDown, onChange }) => {
@@ -81,19 +80,21 @@ export default () => {
     const [prefMuteUserlocal, setPrefMuteUserlocal] = useAtom(state.preferences.mute.userlocal);
     const [prefMuteRegexlocal, setPrefMuteRegexlocal] = useAtom(state.preferences.mute.regexlocal);
 
-    const normhex = (s: string, tag: string) => {
+    const normhex = (s: string, tag: "npub" | "nsec") => {
         if (!s.startsWith(tag)) {
             // fastpath
             return s;
         }
-        const id = decodeBech32ID(s);
-        return id && id.prefix === tag ? id.hexID : s;
+        return rescue(() => {
+            const id = nip19.decode(s);
+            return id && id.type === tag ? id.data : s;
+        }, s);
     };
     const normb32 = (s: string, tag: "npub" | "nsec") => {
         if (!/^[0-9A-Fa-f]{64}$/.exec(s)) {
             return s;
         }
-        return encodeBech32ID(tag, s);
+        return tag === "npub" ? nip19.npubEncode(s) : nip19.nsecEncode(s);
     };
 
     const prefrelayurls = new Set(prefrelays.map(r => r.url));
@@ -121,8 +122,8 @@ export default () => {
     const [muteRegexlocal, setMuteRegexlocal] = useState(prefMuteRegexlocal.map(pattern => ({ pattern, added: false, removed: false })));
 
     const [url, setUrl] = useState("");
-    const [npub, setNpub] = useState(normb32(prefaccount?.pubkey || "", "npub") || "");
-    const [nsec, setNsec] = useState(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec") || "");
+    const [npub, setNpub] = useState(rescue(() => nip19.npubEncode(prefaccount?.pubkey || ""), ""));
+    const [nsec, setNsec] = useState(rescue(() => nip19.nsecEncode(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : ""), ""));
     const [nsecmask, setNsecmask] = useState(true);
     const [mutepk, setMutepk] = useState("");
     const [mutepat, setMutepat] = useState("");
@@ -182,12 +183,11 @@ export default () => {
                 <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: npubok ? "#0f08" : "#f008" }}>
                     <input type="text" placeholder="npub1... or hex (auto-filled when correct privkey is set)" size={64} disabled={nsecok} value={npub} style={{ fontFamily: "monospace" }} onChange={e => {
                         const s = e.target.value;
-                        if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
-                            setNpub(encodeBech32ID("npub", s) || "");
-                        } else {
-                            // TODO: nprofile support
-                            setNpub(s);
-                        }
+                        const p = s.startsWith("nprofile1") ? rescue(() => {
+                            const d = nip19.decode(s);
+                            return d.type === "nprofile" ? d.data.pubkey : s;
+                        }, s) : s;
+                        setNpub(normb32(p, "npub"));
                     }} />
                 </div>
             </li>
@@ -195,14 +195,10 @@ export default () => {
                 <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: nsecvalid ? "#0f08" : "#f008" }}>
                     <input type={nsecmask ? "password" : "text"} placeholder="nsec1... or hex (NIP-07 extension is very recommended)" size={64} value={nsec} style={{ fontFamily: "monospace" }} onChange={e => {
                         const s = e.target.value;
-                        if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
-                            setNsec(encodeBech32ID("nsec", s) || "");
-                        } else {
-                            setNsec(s);
-                        }
+                        setNsec(normb32(s, "nsec"));
                         const hs = normhex(s, "nsec");
                         if (/^[0-9A-Fa-f]{64}$/.exec(hs)) {
-                            setNpub(encodeBech32ID("npub", getPublicKey(hs)) || "");
+                            setNpub(nip19.npubEncode(getPublicKey(hs)));
                         }
                     }} onFocus={e => setNsecmask(false)} onBlur={e => setNsecmask(true)} />
                 </div>
@@ -223,12 +219,12 @@ export default () => {
             }}>Login with extension</button>
             <button onClick={e => {
                 const sk = generatePrivateKey();
-                setNsec(encodeBech32ID("nsec", sk) || "");
-                setNpub(encodeBech32ID("npub", getPublicKey(sk)) || "");
+                setNsec(nip19.nsecEncode(sk));
+                setNpub(nip19.npubEncode(getPublicKey(sk)));
             }}>Generate</button>
             <button onClick={e => {
-                setNpub(normb32(prefaccount?.pubkey || "", "npub") || "");
-                setNsec(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec") || "");
+                setNpub(rescue(() => nip19.npubEncode(prefaccount?.pubkey || ""), ""));
+                setNsec(rescue(() => nip19.nsecEncode(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : ""), ""));
             }}>Reset</button>
         </p>
         <h2>Colors:</h2>

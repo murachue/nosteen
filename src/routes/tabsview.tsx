@@ -1,14 +1,13 @@
 import Identicon from "identicon.js";
 import produce from "immer";
 import { useAtom } from "jotai";
-import { encodeBech32ID } from "nostr-mux/dist/core/utils";
-import { Event, nip19 } from "nostr-tools";
+import { Event, Kind, nip19 } from "nostr-tools";
 import { FC, ForwardedRef, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
-import { NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
+import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { Kinds, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex } from "../util";
@@ -46,7 +45,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
         let bg = undefined;
         let text = colornormal;
 
-        if (post.event!.event!.event.kind === 6) {
+        if (post.event!.event!.event.kind === (6 as Kind)) {
             text = colorrepost;
         }
         if (post.myreaction?.event) {
@@ -482,7 +481,6 @@ const Tabsview: FC<{
     const [muteregexlocal] = useAtom(state.preferences.mute.regexlocal);
     const noswk = useNostrWorker();
     const streams = useMemo(() => noswk && new PostStreamWrapper(noswk), [noswk]);
-    const [relayinfo] = useAtom(state.relayinfo);
     const listref = useRef<HTMLDivElement>(null);
     const textref = useRef<HTMLDivElement>(null);
     const [listscrollto, setListscrollto] = useState<Parameters<typeof TheList>[0]["scrollTo"]>(undefined);
@@ -501,6 +499,26 @@ const Tabsview: FC<{
     const [prof, setProf] = useState(null);
 
     const [status, setStatus] = useState("status...");
+
+    const relayinfo = useSyncExternalStore(
+        useCallback(storeChange => {
+            const handler = (ev: MuxRelayEvent): void => storeChange();
+            noswk!.onHealthy.on("", handler);
+            return () => { noswk!.onHealthy.off("", handler); };
+        }, []),
+        useCallback((() => {
+            let v: { all: number, healthy: number; } | null = null;
+            return () => {
+                const rs = noswk!.getRelays();
+                const all = rs.length;
+                const healthy = rs.filter(r => r.healthy).length;
+                if (!v || v.all !== all || v.healthy !== healthy) {
+                    v = { all, healthy };
+                }
+                return v;
+            };
+        })(), [])
+    );
 
     const tab = (() => {
         const tab = tabs.find(t => t.id === tabid);
@@ -1215,7 +1233,7 @@ const Tabsview: FC<{
                                         {[...rev.receivedfrom.values()].map(r => (<div key={r.url}>{r.url}</div>))}
                                     </div>
                                     <div style={{ textAlign: "right" }}>note id:</div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{ev.id}</div>
-                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{encodeBech32ID("note", ev.id)}</div>
+                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{nip19.noteEncode(ev.id)}</div>
                                     <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: froms })}</div>
                                     <div style={{ textAlign: "right" }}>json:</div><div style={{ overflow: "hidden", whiteSpace: "pre", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{[
                                         selpost.event!.event!.event,

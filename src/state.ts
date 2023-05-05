@@ -1,6 +1,5 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { Mux, Relay } from "nostr-mux";
 import { Kinds } from "./types";
 
 const tabstate = () => ({
@@ -44,6 +43,7 @@ const tabinit: {
         // },
         { ...tabstate(), id: "global", name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }] },
     ];
+
 export default {
     preferences: {
         account: atomWithStorage<
@@ -90,18 +90,5 @@ export default {
             regexlocal: atomWithStorage<string[]>("preferences.mute.regexlocal", []),
         },
     },
-    // relays: atom(new Map<string, Relay>()),
-    relaymux: atom(new Mux()),
-    relayinfo: atom({ all: 0, healthy: 0 }),
-    // uh?
-    myprofile: atom(Event),
-    mycontacts: atom(Event),
-    //
-    // posts: atom({
-    //     allevents: new Map<string, DeletableEvent>(),  // to make least verifying
-    //     allposts: new Map<string, Post>(),  // Post events contain same Event instances of allevents
-    //     bytab: new Map<string, Post[]>(tabinit.map(t => [t.name, []])),  // contains same Post instance of allposts
-    // }),
     tabs: atom(tabinit),
-    activetab: atom(""),
 };

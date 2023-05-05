@@ -1,6 +1,5 @@
 import { WritableDraft } from "immer/dist/internal";
-import { Event } from "nostr-mux";
-import { nip19 } from "nostr-tools";
+import { Event, nip19 } from "nostr-tools";
 import { Post } from "./types";
 
 export const bsearchi = <T>(arr: T[], comp: (x: T) => boolean): number => {
@@ -76,4 +75,24 @@ export const expectn = <T extends ReturnType<typeof nip19.decode>["type"]>(s: st
     }
 };
 
+export const rescue = <T>(fn: () => T, rescue: T | ((err: unknown) => T)) => {
+    try {
+        return fn();
+    } catch (err) {
+        if (typeof rescue === "function") {
+            return (rescue as ((err: unknown) => T))(err); // ugh
+        } else {
+            return rescue;
+        }
+    }
+};
+
 export const NeverMatch = /(?!)/;
+
+// XXX: it should have true "event" multiplex
+export class SimpleEmitter<T> {
+    private listeners = new Set<(value: T) => void>();
+    on(event: string, fn: (value: T) => void) { this.listeners.add(fn); }
+    off(event: string, fn: (value: T) => void) { this.listeners.delete(fn); }
+    emit(event: string, value: T) { this.listeners.forEach(fn => fn(value)); }
+}

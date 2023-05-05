@@ -1,16 +1,26 @@
-import { Emitter, Event, Filter, Mux, Relay, validateEvent, verifyEvent } from "nostr-mux";
-import { SimpleEmitter } from "nostr-mux/dist/core/emitter"; // ugh
-import { UnsignedEvent, finishEvent, matchFilter } from "nostr-tools";
+import { Event, Filter, Kind, Relay, SimplePool, UnsignedEvent, finishEvent, matchFilter, validateEvent, verifySignature } from "nostr-tools";
 import { FC, PropsWithChildren, createContext, useContext } from "react";
 import invariant from "tiny-invariant";
-import { DeletableEvent, EventMessageFromRelay, FilledEventMessagesFromRelay, FilledFilters, Kinds, Post } from "./types";
-import { getmk, postindex, postupsertindex } from "./util";
+import { DeletableEvent, EventMessageFromRelay, FilledFilters, Kinds, Post } from "./types";
+import { SimpleEmitter, getmk, postindex, postupsertindex } from "./util";
 
-export type MuxRelayEvent = {
-    mux: Mux;
-    relay: Relay;
+export type RelayWithMode = {
+    relay: Relay | null;
+    url: string;  // relay is nullable... have a copy
+    read: boolean;
+    write: boolean;
 };
 
+export type MuxRelayEvent = {
+    mux: SimplePool;
+    relay: Relay;
+    event: "connected" | "disconnected";
+} | {
+    mux: SimplePool;
+    relayurl: string;
+    event: "disconnected";
+    reason: string;
+};
 
 // quick deep(?) equality that requires same order for arrays
 const filtereq = (a: FilledFilters, b: FilledFilters): boolean => {
@@ -145,14 +155,23 @@ const getPostId = (e: Event): string | null => {
     }
 };
 
+const validateCompleteEvent = (event: unknown): event is Event => {
+    if (!validateEvent(event)) return false;
+    if (!("id" in event)) return false;  // satisfy type
+    if (typeof event.id !== "string") return false;
+    if (!event.id.match(/^[a-f0-9]{64}$/)) return false;
+    if (!("sig" in event)) return false;  // satisfy type
+    if (typeof event.sig !== "string") return false;
+    if (!event.sig.match(/^[a-f0-9]{128}$/)) return false;
+    return true;
+};
+
 export type NostrWorkerListenerMessage = {
     name: string;
     type: "event" | "eose" | "hasread";
     events: DeletableEvent[];
     posts: Post[];
 };
-
-const isFilledEventMessagesFromRelay = (ms: EventMessageFromRelay[]): ms is FilledEventMessagesFromRelay => 0 < ms.length;
 
 // TODO: CachedDeletableEvent (negative cache and TTL)
 type ProfileEvents = {
@@ -236,10 +255,14 @@ type VerifiedHandler = (result: {
     ng: Event[];
 } | null) => void;
 
+// TODO: nostr-tools's SimplePool does not have reconnect/resub/resend. (nostr-mux have though)
+//       also SimplePool have redundant "seenOn"... we should re-impl that.
+// TODO: nostr-tools's Relay may drop REQ/EVENT. also don't clear openSubs on disconnect.
+//       and also have unnecessary alreadyHaveEvent. we should re-impl that.
 export class NostrWorker {
-    mux = new Mux();
-    relays = new Map<string, Relay>();
-    subs = new Map<string, { sid: string; filters: FilledFilters; } | { sid: null; filters: null; }>();
+    mux = new SimplePool();
+    relays = new Map<string, RelayWithMode>();
+    subs = new Map<string, { sid: ReturnType<Relay["sub"]>; filters: FilledFilters; } | { sid: null; filters: null; }>();
     // TODO: GC/LRUify events and posts. copy-gc from postStreams?
     events = new Map<string, DeletableEvent>();
     posts = new Map<string, Post>();
@@ -247,15 +270,15 @@ export class NostrWorker {
     postStreams = new Map<string, { posts: Post[], eose: boolean, nunreads: number; }>(); // order by created_at TODO: also received_at for LRU considering fetching older post that is mentioned?
     pubkey: string | null = null;
     profiles = new Map<string, ProfileEvents>();
-    profsid: string | null = null;
+    profsid: ReturnType<Relay["sub"]> | null = null;
     onHealthy = new SimpleEmitter<MuxRelayEvent>();
     onMyContacts = new SimpleEmitter<DeletableEvent>();
-    receiveEmitter = new Map<string, Emitter<NostrWorkerListenerMessage>>();
-    verifyq: { receivedAt: number; messages: FilledEventMessagesFromRelay | null; onVerified: VerifiedHandler; }[] = [];
+    receiveEmitter = new Map<string, SimpleEmitter<NostrWorkerListenerMessage>>();
+    verifyq: { receivedAt: number; messages: EventMessageFromRelay[] | null; onVerified: VerifiedHandler; }[] = [];
     fetchq: FetchWill[] = [];
 
     getRelays() {
-        return [...this.relays.values()].map(r => ({ url: r.url, read: r.isReadable, write: r.isWritable }));
+        return [...this.relays.values()].map(r => ({ ...r, healthy: r.relay ? r.relay.status === WebSocket.OPEN : WebSocket.CLOSED }));
     }
     setRelays(newrelays: { url: string, read: boolean, write: boolean; }[]) {
         const pre = new Map(this.relays); // taking a (shallow) copy for direct modify
@@ -265,21 +288,24 @@ export class NostrWorker {
         for (const [url, relopt] of cur.entries()) {
             if (pre.has(url)) continue;
 
-            const relay = new Relay(relopt.url, {
-                read: relopt.read,
-                write: relopt.write,
-                watchDogInterval: 3600000,
+            const rm: RelayWithMode = { relay: null, url, read: relopt.read, write: relopt.write };
+            this.relays.set(relopt.url, rm);
+            // XXX: async...
+            this.mux.ensureRelay(relopt.url).then(relay => {
+                relay.on("connect", () => this.onHealthy.emit("", { mux: this.mux, relay, event: "connected" }));
+                relay.on("error", () => this.onHealthy.emit("", { mux: this.mux, relay, event: "disconnected" }));
+                relay.on("disconnect", () => this.onHealthy.emit("", { mux: this.mux, relay, event: "disconnected" }));
+                rm.relay = relay;
+            }, reason => {
+                this.onHealthy.emit("", { mux: this.mux, relayurl: url, reason, event: "disconnected" });
             });
-            relay.onHealthy.listen(e => this.onHealthy.emit({ mux: this.mux, relay: e.relay }));
-            this.relays.set(relopt.url, relay);
-            this.mux.addRelay(relay);
         }
 
         // removed
         for (const url of pre.keys()) {
             if (cur.has(url)) continue;
 
-            this.mux.removeRelay(url);
+            this.mux.close([url]);
             this.relays.delete(url);
         }
     }
@@ -287,7 +313,8 @@ export class NostrWorker {
         const pkchanged = this.pubkey !== pubkey;
 
         if (pkchanged && this.profsid) {
-            this.mux.unSubscribe(this.profsid);
+            // this.mux.unSubscribe(this.profsid);
+            this.profsid.unsub();
             this.profsid = null;
         }
 
@@ -296,32 +323,33 @@ export class NostrWorker {
             // getProfile is oneshot. but need continuous...
             // this.getProfile(pubkey, Kinds.contacts).catch(console.error);
             // XXX: sub on here is ugly
-            this.profsid = this.mux.subscribe({
-                filters: [{ authors: [pubkey], kinds: [Kinds.contacts] }],
-                enableBuffer: { flushInterval: 500 },
-                onEvent: res => this.enqueueVerify(res, r => {
-                    if (!r) return;
-                    for (const dev of r.ok.values()) {
-                        const newer = this.putProfile(dev);
-                        if (!newer) continue;
-                        const ev = dev.event?.event;
-                        if (!ev) continue;
-                        if (ev.pubkey !== pubkey || ev.kind !== Kinds.contacts) {
-                            // !?
-                            continue;
-                        }
-                        // if eosed?
-                        this.onMyContacts.emit(dev);
+            this.profsid = this.mux.sub(
+                [...this.relays.values()].filter(r => r.read).map(r => r.url),
+                [{ authors: [pubkey], kinds: [Kinds.contacts] }],
+                { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
+            );
+            this.profsid.on("event", event => this.enqueueVerify([{ relay: null/* Nooo */, event }], r => {
+                if (!r) return;
+                for (const dev of r.ok.values()) {
+                    const newer = this.putProfile(dev);
+                    if (!newer) continue;
+                    const ev = dev.event?.event;
+                    if (!ev) continue;
+                    if (ev.pubkey !== pubkey || ev.kind !== Kinds.contacts) {
+                        // !?
+                        continue;
                     }
-                }),
-                // onEose: subid => this.enqueueVerify(null, r => {
-                //     const dev = this.profiles.get(pubkey)?.contacts;
-                //     if (dev) {
-                //         this.onMyContacts.emit(dev);
-                //         eosed = true;
-                //     }
-                // })
-            });
+                    // if eosed?
+                    this.onMyContacts.emit("", dev);
+                }
+            }));
+            // this.profsid.on("eose", subid => this.enqueueVerify(null, r => {
+            //     const dev = this.profiles.get(pubkey)?.contacts;
+            //     if (dev) {
+            //         this.onMyContacts.emit(dev);
+            //         eosed = true;
+            //     }
+            // }));
         }
         // TODO: myaction should be wiped
         // TODO: recent, reply, etc. should be wiped, but it is callers resp?
@@ -410,7 +438,7 @@ export class NostrWorker {
 
             // removed
             if (sub.filters) {
-                this.mux.unSubscribe(sub.sid);
+                sub.sid.unsub();
             }
             this.subs.delete(name);
             this.postStreams.delete(name);
@@ -424,7 +452,7 @@ export class NostrWorker {
 
                 // changed; unsubscribe to override (nostr protocol supports override but nostr-mux silently rejects it)
                 if (sub.filters) {
-                    this.mux.unSubscribe(sub.sid);
+                    sub.sid.unsub();
                 }
             } else {
                 // new
@@ -435,18 +463,19 @@ export class NostrWorker {
             const su = (() => {
                 if (!filters) return { filters: null, sid: null };
 
-                const sid = this.mux.subscribe({
-                    filters: filters,
-                    enableBuffer: { flushInterval: 50 },
-                    onEvent: receives => this.enqueueVerify(receives, async r => {
-                        invariant(r);
-                        this.delevToPost(name, r.ok);
-                    }),
-                    onEose: subid => this.enqueueVerify(null, r => {
-                        invariant(!r);
-                        this.receiveEmitter.get(name)?.emit({ name, type: "eose", events: [], posts: [] });
-                    }),
-                });
+                const sid = this.mux.sub(
+                    [...this.relays.values()].filter(r => r.read).map(r => r.url),
+                    filters,
+                    { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
+                );
+                sid.on("event", event => this.enqueueVerify([{ relay: null, event }], async r => {
+                    invariant(r);
+                    this.delevToPost(name, r.ok);
+                }));
+                sid.on("eose", () => this.enqueueVerify(null, r => {
+                    invariant(!r);
+                    this.receiveEmitter.get(name)?.emit("", { name, type: "eose", events: [], posts: [] });
+                }));
                 return {
                     filters,
                     sid,
@@ -468,14 +497,14 @@ export class NostrWorker {
     addListener(name: string, fn: (msg: NostrWorkerListenerMessage) => void) {
         const emitter = this.receiveEmitter.get(name) || new SimpleEmitter();
         this.receiveEmitter.set(name, emitter);
-        emitter.listen(fn);
+        emitter.on("", fn);
     }
     removeListener(name: string, fn: (msg: NostrWorkerListenerMessage) => void) {
         const emitter = this.receiveEmitter.get(name);
         if (!emitter) {
             return;
         }
-        emitter.stop(fn);
+        emitter.off("", fn);
     }
     enqueueFetchEventFor(fetches: FetchWill[]) {
         const first = this.fetchq.length === 0;
@@ -519,7 +548,7 @@ export class NostrWorker {
                     continue;
                 }
                 tab.nunreads += dhr;
-                this.receiveEmitter.get(name)?.emit({ name, type: "hasread", events: [], posts: [post] });
+                this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", events: [], posts: [post] });
             }
             return;
         }
@@ -542,7 +571,7 @@ export class NostrWorker {
                 changed.push(posts[i]);
             }
             if (0 < changed.length) {
-                this.receiveEmitter.get(spec.stream)?.emit({ name: spec.stream, type: "hasread", events: [], posts: changed });
+                this.receiveEmitter.get(spec.stream)?.emit("", { name: spec.stream, type: "hasread", events: [], posts: changed });
             }
             for (const [name, s] of this.postStreams.entries()) {
                 if (name === spec.stream) continue;
@@ -550,7 +579,7 @@ export class NostrWorker {
                 if (s.nunreads !== nunrs) {
                     s.nunreads = nunrs;
                     // FIXME: posts is empty...
-                    this.receiveEmitter.get(name)?.emit({ name, type: "hasread", events: [], posts: [] });
+                    this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", events: [], posts: [] });
                 }
             }
         }
@@ -677,44 +706,44 @@ export class NostrWorker {
 
             if (0 < predsbag.size) {
                 await new Promise<void>((resolve, reject) => {
-                    let sid: string;
-                    // TODO: enqueue and forget
-                    sid = this.mux.subscribe({
-                        filters: [...predsbag.values()].flatMap(e => e.flatMap(f => f.filter())) as FilledFilters,
-                        enableBuffer: { flushInterval: 100 },
-                        eoseTimeout: 3000,
-                        onEvent: receives => this.enqueueVerify(receives, async r => {
-                            try {
-                                invariant(r);
-                                const one = new Map<(receives: DeletableEvent[]) => void, DeletableEvent[]>();
-                                for (const ev of r.ok.values()) {
-                                    const eve = ev.event;
-                                    if (!eve) continue; // just delete event
+                    let sid: ReturnType<Relay["sub"]>;
+                    // TODO: use list() instead of sub()?
+                    sid = this.mux.sub(
+                        [...this.relays.values()].filter(r => r.read).map(r => r.url),
+                        [...predsbag.values()].flatMap(e => e.flatMap(f => f.filter())) as FilledFilters,
+                        { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
+                    );
+                    sid.on("event", event => this.enqueueVerify([{ relay: null/* Nooo */, event }], async r => {
+                        try {
+                            invariant(r);
+                            const one = new Map<(receives: DeletableEvent[]) => void, DeletableEvent[]>();
+                            for (const ev of r.ok.values()) {
+                                const eve = ev.event;
+                                if (!eve) continue; // just delete event
 
-                                    // umm O(NM)
-                                    const ms = wills.filter(f => f.filters.some(g => matchFilter(g, eve.event)));
-                                    for (const w of ms) {
-                                        if (w.onEvent) {
-                                            getmk(one, w.onEvent, () => []).push(ev);
-                                        }
+                                // umm O(NM)
+                                const ms = wills.filter(f => f.filters.some(g => matchFilter(g, eve.event)));
+                                for (const w of ms) {
+                                    if (w.onEvent) {
+                                        getmk(one, w.onEvent, () => []).push(ev);
                                     }
                                 }
-                                for (const [f, evs] of one.entries()) {
-                                    f(evs);
-                                }
-                            } catch (e) { reject(e); }
-                        }),
-                        onEose: subid => this.enqueueVerify(null, r => {
-                            try {
-                                invariant(!r);
-                                for (const w of wills) {
-                                    w.onEnd?.();
-                                }
-                                this.mux.unSubscribe(sid);
-                                resolve();
-                            } catch (e) { reject(e); }
-                        }),
-                    });
+                            }
+                            for (const [f, evs] of one.entries()) {
+                                f(evs);
+                            }
+                        } catch (e) { reject(e); }
+                    }));
+                    sid.on("eose", () => this.enqueueVerify(null, r => {
+                        try {
+                            invariant(!r);
+                            for (const w of wills) {
+                                w.onEnd?.();
+                            }
+                            sid.unsub();
+                            resolve();
+                        } catch (e) { reject(e); }
+                    }));
                 });
             }
             this.fetchq.splice(0, i);
@@ -789,11 +818,11 @@ export class NostrWorker {
         // XXX: ignore only-delevs, is it ok?
         const okevs = [...okrecv.values()].filter(e => e.event);
         if (0 < okevs.length) {
-            this.receiveEmitter.get(name)?.emit({ name, type: "event", events: okevs, posts: posted });
+            this.receiveEmitter.get(name)?.emit("", { name, type: "event", events: okevs, posts: posted });
         }
     }
 
-    enqueueVerify(messages: FilledEventMessagesFromRelay | null, onVerified: VerifiedHandler) {
+    enqueueVerify(messages: EventMessageFromRelay[] | null, onVerified: VerifiedHandler) {
         const first = this.verifyq.length === 0;
         this.verifyq.push({ receivedAt: Date.now(), messages, onVerified });
         if (first) {
@@ -827,11 +856,11 @@ export class NostrWorker {
         }
     }
 
-    private async msgsToDelableEvent(receivedAt: number, messages: FilledEventMessagesFromRelay) {
+    private async msgsToDelableEvent(receivedAt: number, messages: EventMessageFromRelay[]) {
         // TODO: we may can use batch schnorr verify (if library supports) but bothered if some fail.
         const ok = new Set<DeletableEvent>;
         const ng = [];
-        for (const { received: { event }, relay } of messages) {
+        for (const { event, relay } of messages) {
             // TODO: unify these del,post,repost.
             if (event.kind === 5) {
                 // delete: verify only if it's new and some are unknown
@@ -872,8 +901,8 @@ export class NostrWorker {
                     continue;
                 }
 
-                const r = await verifyEvent(event);
-                if (typeof r === "string") {
+                // TODO: this can be async... nostr-tools only exports sync ver.
+                if (!verifySignature(event)) {
                     // TODO: invalid sig!?
                     ng.push(event);
                     continue;
@@ -932,8 +961,7 @@ export class NostrWorker {
                     continue;
                 }
 
-                const r = await verifyEvent(event);
-                if (typeof r === "string") {
+                if (!verifySignature(event)) {
                     // TODO: invalid sig!?
                     ng.push(event);
                     continue;
@@ -969,14 +997,13 @@ export class NostrWorker {
 
                 // hack: repost.
                 //       verify and remember as events but not okrecv to not pop up as originated (not reposted)
-                if (event.kind === 6) {
-                    const cobj = (() => { try { return JSON.parse(event.content); } catch { return undefined; } })();
-                    if (!cobj) {
+                if (event.kind === (6 as Kind)) {
+                    const subevent: unknown = (() => { try { return JSON.parse(event.content); } catch { return undefined; } })();
+                    if (!subevent) {
                         continue;
                     }
 
-                    const subevent = validateEvent(cobj);
-                    if (typeof subevent === "string") {
+                    if (!validateCompleteEvent(subevent)) {
                         // does not form of an Event...
                         // even not a badrecv.
                         continue;
@@ -997,8 +1024,7 @@ export class NostrWorker {
                         continue;
                     }
 
-                    const sr = await verifyEvent(subevent);
-                    if (typeof sr === "string") {
+                    if (!verifySignature(subevent)) {
                         // TODO: invalid sig...
                         // badrecv?
                         continue;

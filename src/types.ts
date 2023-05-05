@@ -1,14 +1,4 @@
-import { Event, EventMessage, Filter, Relay, RelayMessageEvent } from "nostr-mux";
-
-// export type Event = {
-//     id: string;
-//     pubkey: string;
-//     created_at: number;
-//     kind: number;
-//     tags: string[][];
-//     content: string;
-//     sig: string;
-// };
+import { Event, Filter, Kind, Relay } from "nostr-tools";
 
 export type ReceivedEvent = {
     event: Event;
@@ -32,16 +22,15 @@ export type Post = {
 
 export type Filled<T extends unknown[]> = [T[number], ...T];
 export type FilledFilters = Filled<Filter[]>;
-export type EventMessageFromRelay = RelayMessageEvent<EventMessage>;
-export type FilledEventMessagesFromRelay = Filled<EventMessageFromRelay[]>;
+export type EventMessageFromRelay = { event: Event, relay: Relay; };
 
 export const Kinds = {
-    profile: 0,
-    post: 1,
-    contacts: 3,
-    dm: 4,
-    delete: 5,
+    profile: Kind.Metadata,
+    post: Kind.Text,
+    contacts: Kind.Contacts,
+    dm: Kind.EncryptedDirectMessage,
+    delete: Kind.EventDeletion,
     repost: 6,
-    reaction: 7,
-    relays: 10002,
+    reaction: Kind.Reaction,
+    relays: Kind.RelayList,
 };
