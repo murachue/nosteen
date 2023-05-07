@@ -18,7 +18,7 @@ type SubEvent = {
     event: (event: Event) => void | Promise<void>;
     count: (payload: CountPayload) => void | Promise<void>;
     eose: () => void | Promise<void>;
-    error: (err: string) => void | Promise<void>;
+    error: (err: unknown) => void | Promise<void>;
 };
 export type Relay = {
     url: string;
@@ -43,9 +43,20 @@ export type Relay = {
         listener: U
     ) => void;
 };
+type PubEvent = {
+    ok: (reason: string) => void;
+    failed: (reason: unknown) => void;
+};
 export type Pub = {
-    on: (type: 'ok' | 'failed', cb: any) => void;
-    off: (type: 'ok' | 'failed', cb: any) => void;
+    off: <T extends keyof PubEvent, U extends PubEvent[T]>(
+        event: T,
+        listener: U
+    ) => void;
+    on: <T extends keyof PubEvent, U extends PubEvent[T]>(
+        event: T,
+        listener: U
+    ) => void;
+    forget: () => void;
 };
 export type Sub = {
     sub: (filters: Filter[], opts: SubscriptionOptions) => Sub;
@@ -112,10 +123,7 @@ export function relayInit(
         [subid: string]: { [TK in keyof SubEvent]: SubEvent[TK][] };
     } = {};
     let pubListeners: {
-        [eventid: string]: {
-            ok: Array<() => void>;
-            failed: Array<(reason: string) => void>;
-        };
+        [eventid: string]: { [TK in keyof PubEvent]: PubEvent[TK][] };
     } = {};
     let idgen = idgenerator();
 
@@ -212,7 +220,7 @@ export function relayInit(
                             let ok: boolean = data[2];
                             let reason: string = data[3] || '';
                             if (id in pubListeners) {
-                                if (ok) pubListeners[id].ok.forEach(cb => cb());
+                                if (ok) pubListeners[id].ok.forEach(cb => cb(reason));
                                 else pubListeners[id].failed.forEach(cb => cb(reason));
                                 delete pubListeners[id]; // 'ok' only happens once per pub, so stop listeners here
                             }
@@ -246,12 +254,12 @@ export function relayInit(
         await connectRelay();
     }
 
-    async function trySend(params: [string, ...any], onerror: (err: string) => void | Promise<void>) {
+    async function trySend(params: [string, ...any], onerror: (err: unknown) => void | Promise<void>) {
         let msg = JSON.stringify(params);
         if (!connected()) {
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (!connected()) {
-                onerror("not connected");
+                onerror(new Error("not connected"));
                 return;
             }
         }
@@ -259,7 +267,7 @@ export function relayInit(
             ws!.send(msg);
         } catch (err) {
             console.log(err);
-            onerror(err instanceof Error ? err.message : String(err));
+            onerror(err);
         }
     }
 
@@ -299,8 +307,8 @@ export function relayInit(
                 delete subListeners[subid];
                 idgen.put(subid);
                 trySend(['CLOSE', subid], err => {
-                    delete pubListeners[id];  // remove potential
                     subListeners[subid].error.forEach(cb => cb(err));
+                    delete subListeners[subid];  // remove potential
                 });
             },
             on: <T extends keyof SubEvent, U extends SubEvent[T]>(
@@ -326,27 +334,33 @@ export function relayInit(
         };
     };
 
-    function _publishEvent(event: Event, type: string) {
+    function _publishEvent(event: Event, type: string): Pub {
         if (!event.id) throw new Error(`event ${event} has no id`);
         let id = event.id;
 
         trySend([type, event], err => {
-            pubListeners[id].failed.forEach(cb => cb(err));
+            const listeners = pubListeners[id];
+            if (!listeners) return;
+            listeners.failed.forEach(cb => cb(err));
         });
 
         return {
-            on: (type: 'ok' | 'failed', cb: any) => {
+            on: (event, listener) => {
                 pubListeners[id] = pubListeners[id] || {
                     ok: [],
                     failed: []
                 };
-                pubListeners[id][type].push(cb);
+                pubListeners[id][event].push(listener);
             },
-            off: (type: 'ok' | 'failed', cb: any) => {
+            off: (event, listener) => {
                 let listeners = pubListeners[id];
                 if (!listeners) return;
-                let idx = listeners[type].indexOf(cb);
-                if (idx >= 0) listeners[type].splice(idx, 1);
+                let idx = listeners[event].indexOf(listener);
+                if (idx >= 0) listeners[event].splice(idx, 1);
+            },
+            // for the case of a relay does not support NIP-20.
+            forget: () => {
+                delete pubListeners[id];
             }
         };
     }
@@ -384,10 +398,10 @@ export function relayInit(
                     clearTimeout(timeout);
                     resolve(events);
                 });
-                s.on('event', (event: Event) => {
+                s.on('event', event => {
                     events.push(event);
                 });
-                s.on('error', (err: string) => {
+                s.on('error', err => {
                     clearTimeout(timeout);
                     reject(err);
                 });
@@ -399,12 +413,12 @@ export function relayInit(
                     s.unsub();
                     resolve(null);
                 }, getTimeout);
-                s.on('event', (event: Event) => {
+                s.on('event', event => {
                     s.unsub();
                     clearTimeout(timeout);
                     resolve(event);
                 });
-                s.on('error', (err: string) => {
+                s.on('error', err => {
                     clearTimeout(timeout);
                     reject(err);
                 });
@@ -416,12 +430,12 @@ export function relayInit(
                     s.unsub();
                     resolve(null);
                 }, countTimeout);
-                s.on('count', (event: CountPayload) => {
+                s.on('count', event => {
                     s.unsub();
                     clearTimeout(timeout);
                     resolve(event);
                 });
-                s.on('error', (err: string) => {
+                s.on('error', err => {
                     clearTimeout(timeout);
                     reject(err);
                 });
