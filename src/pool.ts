@@ -47,7 +47,6 @@ export type MuxPub = {
 };
 
 // TODO: reconnect with exp-time
-// TODO: resub on reconnect... what if eose?
 export class MuxPool {
     private _conn: { [url: string]: Relay; };
     private subListeners: ListenersContainer<MuxEvent> = {
@@ -86,8 +85,14 @@ export class MuxPool {
     }
 
     sub(relays: string[], filters: Filter[], opts?: SubscriptionOptions): MuxSub {
-        const subs: Sub[] = [];
-        let subListeners: ListenersContainer<MuxSubEvent> = {
+        // XXX: this subs is complicated...
+        const subs = new Map<string, {
+            relay: Relay;
+            sub: Sub;
+            disconnectl: () => void | Promise<void>;
+            connectl: () => void | Promise<void>;
+        }>();
+        const subListeners: ListenersContainer<MuxSubEvent> = {
             event: [],
             error: [],
             eose: [],
@@ -108,19 +113,40 @@ export class MuxPool {
                 handleEose();
                 return;
             }
-            let s = r.sub(filters, opts);
-            s.on('event', (event: Event) => {
-                subListeners.event.forEach(cb => cb({ relay: r, event }));
-            });
-            s.on('eose', () => {
-                handleEose();
-            });
-            s.on('error', err => {
-                handleEose();
-            });
-            subs.push(s);
+            function subone() {
+                let s = r.sub(filters, opts);
+                s.on('event', (event: Event) => {
+                    subListeners.event.forEach(cb => cb({ relay: r, event }));
+                });
+                s.on('eose', () => {
+                    handleEose();
+                });
+                s.on('error', err => {
+                    handleEose();
+                });
 
+                const ps = subs.get(relay);
+                if (ps) {
+                    r.off('disconnect', ps.disconnectl);
+                    r.off('connect', ps.connectl);
+                }
+
+                const disconnectl = () => {
+                    handleEose();
+                };
+                r.on('disconnect', disconnectl);
+                const connectl = () => {
+                    subone();
+                };
+                r.on('connect', connectl);
+                subs.set(relay, { relay: r, sub: s, connectl, disconnectl });
+            }
+            subone();
+
+            let eosed = false;
             function handleEose() {
+                if (eosed) return;
+                eosed = true;
                 if (eoseSent) return;
                 eosesMissing--;
                 if (eosesMissing === 0) {
@@ -133,12 +159,17 @@ export class MuxPool {
 
         let greaterSub: MuxSub = {
             sub(filters, opts) {
-                // TODO: don't reset subListeners...
-                subs.forEach(sub => sub.sub(filters, opts));
+                subs.forEach(s => s.sub.sub(filters, opts));
                 return greaterSub;
             },
             unsub() {
-                subs.forEach(sub => sub.unsub());
+                subs.forEach(s => {
+                    s.sub.unsub();
+                    if (s) {
+                        s.relay.off('disconnect', s.disconnectl);
+                        s.relay.off('connect', s.connectl);
+                    }
+                });
             },
             on: (event, listener) => {
                 subListeners[event].push(listener);
