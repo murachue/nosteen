@@ -75,7 +75,6 @@ export type SubscriptionOptions = {
     id?: string;
     verb?: 'REQ' | 'COUNT';
     skipVerification?: boolean;
-    alreadyHaveEvent?: null | ((id: string, relay: string) => boolean);
 };
 
 const idgenerator = () => {
@@ -276,7 +275,6 @@ export function relayInit(
         {
             verb = 'REQ',
             skipVerification = false,
-            alreadyHaveEvent = null,
             id = idgen.get()
         }: SubscriptionOptions = {}
     ): Sub => {
@@ -286,7 +284,6 @@ export function relayInit(
             id: subid,
             filters,
             skipVerification,
-            alreadyHaveEvent
         };
         // get a ref to avoid overwriting by on() after unsub()
         // `sL[id] || {}` to keep on re-sub()
@@ -307,8 +304,8 @@ export function relayInit(
             sub: (newFilters, newOpts = {}) =>
                 sub(newFilters || filters, {
                     skipVerification: newOpts.skipVerification ?? skipVerification,
-                    alreadyHaveEvent: newOpts.alreadyHaveEvent ?? alreadyHaveEvent,
                     id: subid
+                    // no verb.
                 }),
             unsub: () => {
                 const errlisteners = subListeners[subid].error; // keep before delete

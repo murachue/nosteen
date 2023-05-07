@@ -29,8 +29,11 @@ type MuxSubEvent = {
     error: (failure: MuxedError) => void | Promise<void>;
     eose: () => void | Promise<void>;
 };
+export type MuxSubscriptionOptions = SubscriptionOptions & {
+    refilters?: (relay: string, filter: Filter[]) => Filter[];
+};
 export type MuxSub = {
-    sub: (filters: Filter[], opts: SubscriptionOptions) => MuxSub;
+    sub: (filters: Filter[], opts: MuxSubscriptionOptions) => MuxSub;
     unsub: () => void;
     on: ListenerModifier<MuxSubEvent>;
     off: ListenerModifier<MuxSubEvent>;
@@ -73,10 +76,13 @@ export class MuxPool {
         const nm = utils.normalizeURL(url);
 
         if (!this._conn[nm]) {
-            this._conn[nm] = relayInit(nm, {
+            const r = relayInit(nm, {
                 getTimeout: this.getTimeout * 0.9,
                 listTimeout: this.getTimeout * 0.9
             });
+            r.on('connect', () => this.subListeners.health.forEach(cb => cb(r, 'connected')));
+            r.on('disconnect', () => this.subListeners.health.forEach(cb => cb(r, 'disconnected')));
+            this._conn[nm] = r;
         }
 
         const relay = this._conn[nm];
@@ -84,7 +90,15 @@ export class MuxPool {
         return relay;
     }
 
-    sub(relays: string[], filters: Filter[], opts?: SubscriptionOptions): MuxSub {
+    on: ListenerModifier<MuxEvent> = (event, listener) => {
+        this.subListeners[event].push(listener);
+    };
+    off: ListenerModifier<MuxEvent> = (event, listener) => {
+        let idx = this.subListeners[event].indexOf(listener);
+        if (idx >= 0) this.subListeners[event].splice(idx, 1);
+    };
+
+    sub(relays: string[], filters: Filter[], opts?: MuxSubscriptionOptions): MuxSub {
         // XXX: this subs is complicated...
         const subs = new Map<string, {
             relay: Relay;
@@ -113,8 +127,9 @@ export class MuxPool {
                 handleEose();
                 return;
             }
+            let rfilters = filters;
             function subone() {
-                let s = r.sub(filters, opts);
+                let s = r.sub(rfilters, opts);
                 s.on('event', (event: Event) => {
                     subListeners.event.forEach(cb => cb({ relay: r, event }));
                 });
@@ -136,6 +151,9 @@ export class MuxPool {
                 };
                 r.on('disconnect', disconnectl);
                 const connectl = () => {
+                    if (opts?.refilters) {
+                        rfilters = opts.refilters(relay, rfilters);
+                    }
                     subone();
                 };
                 r.on('connect', connectl);
