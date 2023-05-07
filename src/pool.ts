@@ -100,7 +100,7 @@ export class MuxPool {
             subListeners.eose = []; // 'eose' only happens once per sub, so stop listeners here
         }, this.eoseSubTimeout);
 
-        relays.forEach(async relay => {
+        relays.forEach(relay => (async () => {
             let r: Relay;
             try {
                 r = await this.ensureRelay(relay);
@@ -129,7 +129,7 @@ export class MuxPool {
                     subListeners.eose = []; // 'eose' only happens once per sub, so stop listeners here
                 }
             }
-        });
+        })().catch(console.error));
 
         let greaterSub: MuxSub = {
             sub(filters, opts) {

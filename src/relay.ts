@@ -288,6 +288,14 @@ export function relayInit(
             skipVerification,
             alreadyHaveEvent
         };
+        // get a ref to avoid overwriting by on() after unsub()
+        // `sL[id] || {}` to keep on re-sub()
+        const subListener = subListeners[subid] = subListeners[subid] || {
+            event: [],
+            count: [],
+            eose: [],
+            error: []
+        };
         trySend([verb, subid, ...filters], err => {
             subListeners[subid].error.forEach(cb => cb(err));
             delete openSubs[subid];
@@ -303,31 +311,25 @@ export function relayInit(
                     id: subid
                 }),
             unsub: () => {
+                const errlisteners = subListeners[subid].error; // keep before delete
                 delete openSubs[subid];
                 delete subListeners[subid];
                 idgen.put(subid);
                 trySend(['CLOSE', subid], err => {
-                    subListeners[subid].error.forEach(cb => cb(err));
-                    delete subListeners[subid];  // remove potential
+                    errlisteners.forEach(cb => cb(err));
                 });
             },
             on: <T extends keyof SubEvent, U extends SubEvent[T]>(
                 type: T,
                 cb: U
             ): void => {
-                subListeners[subid] = subListeners[subid] || {
-                    event: [],
-                    count: [],
-                    eose: [],
-                    error: []
-                };
-                subListeners[subid][type].push(cb);
+                subListener[type].push(cb);
             },
             off: <T extends keyof SubEvent, U extends SubEvent[T]>(
                 type: T,
                 cb: U
             ): void => {
-                let listeners = subListeners[subid];
+                let listeners = subListener;
                 let idx = listeners[type].indexOf(cb);
                 if (idx >= 0) listeners[type].splice(idx, 1);
             }
