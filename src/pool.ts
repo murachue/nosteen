@@ -1,60 +1,58 @@
 // based on nostr-tools@1.10.1
 
 import { Event, Filter, utils } from 'nostr-tools';
-import { Pub, Relay, Sub, SubscriptionOptions, relayInit } from './relay';
+import { Relay, Sub, SubscriptionOptions, relayInit } from './relay';
 import { getmk } from './util';
 
-export type MuxEvent = {
+export type MuxedEvent = {
     relay: Relay;
     event: Event;
 };
-export type MuxError = {
+export type MuxedError = {
     relay: string;  // we cannot ensure that Relay instance is available...
     reason: unknown;
 };
-export type MuxOk = {
+export type MuxedOk = {
     relay: Relay;
     reason: string;
 };
 
+type ListenerModifier<E> = <T extends keyof E, U extends E[T]>(event: T, listener: U) => void;
+type ListenersContainer<E> = { [TK in keyof E]: E[TK][] };
+
+type MuxEvent = {
+    health: (relay: Relay, event: "connected" | "disconnected") => void | Promise<void>;
+};
+
 type MuxSubEvent = {
-    event: (receive: MuxEvent) => void | Promise<void>;
-    error: (failure: MuxError) => void | Promise<void>;
+    event: (receive: MuxedEvent) => void | Promise<void>;
+    error: (failure: MuxedError) => void | Promise<void>;
     eose: () => void | Promise<void>;
 };
 export type MuxSub = {
     sub: (filters: Filter[], opts: SubscriptionOptions) => MuxSub;
     unsub: () => void;
-    on: <T extends keyof MuxSubEvent, U extends MuxSubEvent[T]>(
-        event: T,
-        listener: U
-    ) => void;
-    off: <T extends keyof MuxSubEvent, U extends MuxSubEvent[T]>(
-        event: T,
-        listener: U
-    ) => void;
+    on: ListenerModifier<MuxSubEvent>;
+    off: ListenerModifier<MuxSubEvent>;
 };
 
 type MuxPubEvent = {
-    ok: (receive: MuxOk) => void;
-    failed: (failure: MuxError) => void;
+    ok: (receive: MuxedOk) => void;
+    failed: (failure: MuxedError) => void;
 };
 export type MuxPub = {
-    off: <T extends keyof MuxPubEvent, U extends MuxPubEvent[T]>(
-        event: T,
-        listener: U
-    ) => void;
-    on: <T extends keyof MuxPubEvent, U extends MuxPubEvent[T]>(
-        event: T,
-        listener: U
-    ) => void;
+    on: ListenerModifier<MuxPubEvent>;
+    off: ListenerModifier<MuxPubEvent>;
     forget: () => void;
 };
 
 // TODO: reconnect with exp-time
-// TODO: resub on reconnect
+// TODO: resub on reconnect... what if eose?
 export class MuxPool {
     private _conn: { [url: string]: Relay; };
+    private subListeners: ListenersContainer<MuxEvent> = {
+        health: [],
+    };
 
     private eoseSubTimeout: number;
     private getTimeout: number;
@@ -89,7 +87,7 @@ export class MuxPool {
 
     sub(relays: string[], filters: Filter[], opts?: SubscriptionOptions): MuxSub {
         const subs: Sub[] = [];
-        let subListeners: { [TK in keyof MuxSubEvent]: MuxSubEvent[TK][] } = {
+        let subListeners: ListenersContainer<MuxSubEvent> = {
             event: [],
             error: [],
             eose: [],
@@ -135,6 +133,7 @@ export class MuxPool {
 
         let greaterSub: MuxSub = {
             sub(filters, opts) {
+                // TODO: don't reset subListeners...
                 subs.forEach(sub => sub.sub(filters, opts));
                 return greaterSub;
             },
@@ -159,7 +158,7 @@ export class MuxPool {
         relays: string[],
         filter: Filter,
         opts?: SubscriptionOptions
-    ): Promise<MuxEvent | null> {
+    ): Promise<MuxedEvent | null> {
         return new Promise(resolve => {
             let sub = this.sub(relays, [filter], opts);
             let timeout = setTimeout(() => {
@@ -180,9 +179,9 @@ export class MuxPool {
         relays: string[],
         filters: Filter[],
         opts?: SubscriptionOptions
-    ): Promise<MuxEvent[]> {
+    ): Promise<MuxedEvent[]> {
         return new Promise((resolve, reject) => {
-            let events: MuxEvent[] = [];
+            let events: MuxedEvent[] = [];
             let sub = this.sub(relays, filters, opts);
 
             sub.on('event', (receive) => {
@@ -203,7 +202,7 @@ export class MuxPool {
 
     publish(relays: string[], event: Event): MuxPub {
         // we maintain listeners ourself for both make-easier and quick-return without switching microtask.
-        let pubListeners: Map<string, { [TK in keyof MuxPubEvent]: MuxPubEvent[TK][] }> = new Map();
+        let pubListeners: Map<string, ListenersContainer<MuxPubEvent>> = new Map();
         let unlinker = () => { };  // hacky...
 
         relays.forEach(relay => (async () => {
