@@ -2,6 +2,7 @@
 
 import { Event, Filter, utils } from 'nostr-tools';
 import { Pub, Relay, Sub, SubscriptionOptions, relayInit } from './relay';
+import { getmk } from './util';
 
 export type MuxEvent = {
     relay: Relay;
@@ -201,61 +202,62 @@ export class MuxPool {
     }
 
     publish(relays: string[], event: Event): MuxPub {
+        // we maintain listeners ourself for both make-easier and quick-return without switching microtask.
         let pubListeners: Map<string, { [TK in keyof MuxPubEvent]: MuxPubEvent[TK][] }> = new Map();
+        let unlinker = () => { };  // hacky...
 
-        const pubPromises: Promise<Pub>[] = relays.map(relay => (async (): Promise<Pub> => {
+        relays.forEach(relay => (async () => {
             try {
                 const r = await this.ensureRelay(relay);
                 const pub = r.publish(event);
-                pub.on('ok', reason => {
+                const okhandler = (reason: string): void => {
                     const listeners = pubListeners.get(relay);
-                    if (!listeners) return;
-                    listeners.ok.forEach(cb => cb({ relay: r, reason }));
-                    pubListeners.delete(relay);  // gc-friendly. Relay itself is already off()ed.
-                });
-                pub.on('failed', reason => {
-                    const listeners = pubListeners.get(relay);
-                    if (!listeners) return;
-                    listeners.failed.forEach(cb => cb({ relay, reason }));
-                    pubListeners.delete(relay);  // gc-friendly. Relay itself is already off()ed.
-                });
-                return pub;
-            } catch (reason) {
-                return {
-                    on(event, listener) {
-                        if (event === 'failed') {
-                            // enqueue invoke immediate and forget.
-                            // we don't expect on-then-immediately-off.
-                            setTimeout(() => (listener as MuxPubEvent["failed"])({ relay, reason }), 0);
-                        }
-                    },
-                    off() { },
-                    forget() { },
+                    if (listeners) {
+                        listeners.ok.forEach(cb => cb({ relay: r, reason }));
+                        pubListeners.delete(relay);
+                    }
+                    if (pubListeners.size === 0) {
+                        unlinker();
+                    }
                 };
+                const failedhandler = (reason: unknown): void => {
+                    const listeners = pubListeners.get(relay);
+                    if (listeners) {
+                        listeners.failed.forEach(cb => cb({ relay, reason }));
+                        pubListeners.delete(relay);
+                    }
+                    if (pubListeners.size === 0) {
+                        unlinker();
+                    }
+                };
+                unlinker = () => {
+                    pub.off('ok', okhandler);
+                    pub.off('failed', failedhandler);
+                };
+                pub.on('ok', okhandler);
+                pub.on('failed', failedhandler);
+            } catch (reason) {
+                pubListeners.forEach(lns => lns.failed.forEach(cb => cb({ relay, reason })));
             }
-        })());
+        })().catch(console.error));
 
         return {
             on(event, listener) {
+                // XXX: on()'ed after complete will not be invoked.
                 relays.forEach(async (relay, i) => {
-                    // pubListeners.set
-                    let pub = await pubPromises[i];
-                    let callback = reason => listener({ relay, reason });
-                    callbackMap.set(listener, callback);
-                    pub.on(event, callback);
+                    getmk(pubListeners, relay, () => ({ ok: [], failed: [] }))[event].push(listener);
                 });
             },
             off(event, listener) {
-                relays.forEach(async (_, i) => {
-                    let callback = callbackMap.get(listener);
-                    if (callback) {
-                        let pub = await pubPromises[i];
-                        pub.off(event, callback);
-                    }
+                relays.forEach(async (relay, i) => {
+                    const lns = getmk(pubListeners, relay, () => ({ ok: [], failed: [] }))[event];
+                    let idx = lns.indexOf(listener);
+                    if (idx >= 0) lns.splice(idx, 1);
                 });
             },
             forget() {
-                TODO;
+                pubListeners.clear();
+                unlinker();
             }
         };
     }

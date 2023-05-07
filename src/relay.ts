@@ -18,7 +18,7 @@ type SubEvent = {
     event: (event: Event) => void | Promise<void>;
     count: (payload: CountPayload) => void | Promise<void>;
     eose: () => void | Promise<void>;
-    error: (err: unknown) => void | Promise<void>;
+    error: (err: unknown) => void | Promise<void>;  // TODO: what if REQ responded with NOTICE?
 };
 export type Relay = {
     url: string;
