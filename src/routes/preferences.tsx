@@ -122,8 +122,8 @@ export default () => {
     const [muteRegexlocal, setMuteRegexlocal] = useState(prefMuteRegexlocal.map(pattern => ({ pattern, added: false, removed: false })));
 
     const [url, setUrl] = useState("");
-    const [npub, setNpub] = useState(rescue(() => normb32(prefaccount?.pubkey || "", "npub"), ""));
-    const [nsec, setNsec] = useState(rescue(() => normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec"), ""));
+    const [npub, setNpub] = useState(normb32(prefaccount?.pubkey || "", "npub"));
+    const [nsec, setNsec] = useState(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec"));
     const [nsecmask, setNsecmask] = useState(true);
     const [mutepk, setMutepk] = useState("");
     const [mutepat, setMutepat] = useState("");
@@ -223,8 +223,8 @@ export default () => {
                 setNpub(nip19.npubEncode(getPublicKey(sk)));
             }}>Generate</button>
             <button onClick={e => {
-                setNpub(rescue(() => nip19.npubEncode(prefaccount?.pubkey || ""), ""));
-                setNsec(rescue(() => nip19.nsecEncode(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : ""), ""));
+                setNpub(normb32(prefaccount?.pubkey || "", "npub"));
+                setNsec(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec"));
             }}>Reset</button>
         </p>
         <h2>Colors:</h2>
