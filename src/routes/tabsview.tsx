@@ -12,6 +12,9 @@ import state from "../state";
 import { DeletableEvent, Kinds, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
 
+const name = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content)["name"], null);
+const display_name = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content)["display_name"], null);
+
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const noswk = useNostrWorker();
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -30,13 +33,11 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
     const derefev = post.reposttarget || post.event!;
 
     const [author, setAuthor] = useState(() => {
-        const name = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content)["name"], null);
         const cached = noswk!.getProfile(derefev.event!.event.pubkey, Kinds.profile, ev => setAuthor(name(ev)));
         return cached && name(cached);
     });
     const [rpauthor, setRpauthor] = useState(() => {
         if (!post.reposttarget) return null;
-        const name = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content)["name"], null);
         const cached = noswk!.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(name(ev)));
         return cached && name(cached);
     });
@@ -497,7 +498,9 @@ const Tabsview: FC<{
     const [profpopping, setProfpopping] = useState(false);
     const profpopref = useRef<HTMLDivElement>(null);
     const [author, setAuthor] = useState(null);
+    const [authordn, setAuthordn] = useState(null);
     const [rpauthor, setRpauthor] = useState(null);
+    const [rpauthordn, setRpauthordn] = useState(null);
     const [prof, setProf] = useState(null);
 
     const [status, setStatus] = useState("status...");
@@ -1084,9 +1087,29 @@ const Tabsview: FC<{
     }, []);
     useEffect(() => {
         if (selev) {
-            noswk!.getProfile(selev.event!.event.pubkey, Kinds.profile, ev => setAuthor(JSON.parse(ev.event!.event.content)["name"]), () => { });
+            const cachedauthor = noswk!.getProfile(selev.event!.event.pubkey, Kinds.profile, ev => {
+                setAuthor(name(ev));
+                setAuthordn(display_name(ev));
+            });
+            if (cachedauthor) {
+                setAuthor(name(cachedauthor));
+                setAuthordn(display_name(cachedauthor));
+            } else {
+                setAuthor(null);
+                setAuthordn(null);
+            }
             if (selrpev) {
-                noswk!.getProfile(selrpev.event!.event.pubkey, Kinds.profile, ev => setRpauthor(JSON.parse(ev.event!.event.content)["name"]), () => { });
+                const cachedrpauthor = noswk!.getProfile(selrpev.event!.event.pubkey, Kinds.profile, ev => {
+                    setRpauthor(name(ev));
+                    setRpauthordn(display_name(ev));
+                });
+                if (cachedrpauthor) {
+                    setRpauthor(name(cachedrpauthor));
+                    setRpauthordn(display_name(cachedrpauthor));
+                } else {
+                    setRpauthor(null);
+                    setRpauthordn(null);
+                }
             }
         }
     }, [selev]);
@@ -1162,8 +1185,8 @@ const Tabsview: FC<{
                             <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} onClick={e => setProfpopping(s => !s)}>
                                 {!selev ? "name..." : (
                                     selpost.reposttarget
-                                        ? `${rpauthor || selpost.reposttarget.event!.event.pubkey} (RP: ${author || selev.event!.event.pubkey})`
-                                        : (author || selev.event!.event.pubkey)
+                                        ? `${rpauthor ? `${rpauthor}/${rpauthordn}` : selpost.reposttarget.event!.event.pubkey} (RP: ${author ? `${author}/${authordn}` : selev.event!.event.pubkey})`
+                                        : (author ? `${author}/${authordn}` : selev.event!.event.pubkey)
                                 )}
                             </div>
                             {!selev ? null : <div
