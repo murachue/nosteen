@@ -24,6 +24,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
     const [colorselbg] = useAtom(state.preferences.colors.selectedbg);
     const [colorseltext] = useAtom(state.preferences.colors.selectedtext);
     const [fonttext] = useAtom(state.preferences.fonts.text);
+    const [identiconStore] = useAtom(state.identiconStore);
     const [author, setAuthor] = useState(null);
     const [rpauthor, setRpauthor] = useState(null);
 
@@ -89,9 +90,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
             </TD>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {<img style={{ maxWidth: "16px" }} src={`data:image/png;base64,${new Identicon(
-                        derefev.event!.event.pubkey,
-                        { background: [0, 0, 0, 0] }).toString()}`} />}
+                    {<img style={{ maxWidth: "16px" }} src={identiconStore.png(derefev.event!.event.pubkey)} />}
                 </div>
             </TD>
             <TD>

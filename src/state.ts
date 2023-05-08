@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Kinds } from "./types";
+import { IdenticonStore } from "./identicon";
 
 const tabstate = () => ({
     selected: null,
@@ -91,4 +92,5 @@ export default {
         },
     },
     tabs: atom(tabinit),
+    identiconStore: atom(new IdenticonStore()),
 };

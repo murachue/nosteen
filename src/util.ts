@@ -87,6 +87,15 @@ export const rescue = <T>(fn: () => T, rescue: T | ((err: unknown) => T)) => {
     }
 };
 
+export const binarystringToUint8array = (bs: string): Uint8Array => {
+    const l = bs.length;
+    const ab = new Uint8Array(l);
+    for (let i = 0; i < l; i++) {
+        ab[i] = bs.charCodeAt(i);
+    }
+    return ab;
+};
+
 export const NeverMatch = /(?!)/;
 
 // XXX: it should have true "event" multiplex
