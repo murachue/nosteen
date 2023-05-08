@@ -12,8 +12,9 @@ import state from "../state";
 import { DeletableEvent, Kinds, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
 
-const name = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content)["name"], null);
-const display_name = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content)["display_name"], null);
+const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
+const name = (ev: DeletableEvent) => rescue(() => jsoncontent(ev)?.name, null);
+const display_name = (ev: DeletableEvent) => rescue(() => jsoncontent(ev)?.display_name, null);
 
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const noswk = useNostrWorker();
@@ -501,7 +502,7 @@ const Tabsview: FC<{
     const [authordn, setAuthordn] = useState(null);
     const [rpauthor, setRpauthor] = useState(null);
     const [rpauthordn, setRpauthordn] = useState(null);
-    const [prof, setProf] = useState(null);
+    const [prof, setProf] = useState<{ metadata?: DeletableEvent | null; contacts?: DeletableEvent | null; }>({});
 
     const [status, setStatus] = useState("status...");
 
@@ -1090,6 +1091,9 @@ const Tabsview: FC<{
             const cachedauthor = noswk!.getProfile(selev.event!.event.pubkey, Kinds.profile, ev => {
                 setAuthor(name(ev));
                 setAuthordn(display_name(ev));
+                if (profpopping) {
+                    setProf(p => ({ ...p, metadata: ev }));
+                }
             });
             if (cachedauthor) {
                 setAuthor(name(cachedauthor));
@@ -1111,8 +1115,21 @@ const Tabsview: FC<{
                     setRpauthordn(null);
                 }
             }
+
+            if (profpopping) {
+                if (cachedauthor) {
+                    setProf(p => ({ ...p, metadata: cachedauthor }));
+                } else {
+                    setProf(p => ({ ...p, metadata: null, contacts: null }));
+                }
+
+                const cachedcontacts = noswk!.getProfile(selev.event!.event.pubkey, Kinds.contacts, ev => {
+                    setProf(p => ({ ...p, contacts: ev }));
+                });
+                setProf(p => ({ ...p, contacts: cachedcontacts }));
+            }
         }
-    }, [selev]);
+    }, [selev, profpopping]);
     useEffect(() => {
         // set opacity/transition after a moment
         if (flash?.bang) {
@@ -1189,40 +1206,57 @@ const Tabsview: FC<{
                                         : (author ? `${author}/${authordn}` : selev.event!.event.pubkey)
                                 )}
                             </div>
-                            {!selev ? null : <div
-                                ref={profpopref}
-                                style={{
-                                    display: profpopping ? "flex" : "none",
-                                    flexDirection: "column",
-                                    position: "absolute",
-                                    left: "0",
-                                    bottom: "0",
-                                    padding: "5px",
-                                    minWidth: "10em",
-                                    maxWidth: "40em",
-                                    border: "2px outset",
-                                    background: coloruibg,
-                                    color: coloruitext,
-                                    font: fontui,
-                                    gridTemplateColumns: "max-content 20em",
-                                    rowGap: "0.5em",
-                                }}
-                            >
-                                <div>pk</div>
-                                <div>display_name</div>
-                                <div>last updated at (created_at)</div>
-                                <div>name</div>
-                                <div>location</div>
-                                <div>url</div>
-                                <div>nip05</div>
-                                <div>lud06/16</div>
-                                <div>following?, followed?</div>
-                                <div>follow/unfollow, show TL, block/unblock</div>
-                                <div>desc...</div>
-                                <div>recent note</div>
-                                <div>following, followers</div>
-                                <div>notes, reactions</div>
-                            </div>}
+                            {!selev || !prof.metadata ? null : (() => {
+                                const p = jsoncontent(prof.metadata);
+                                return <div
+                                    ref={profpopref}
+                                    style={{
+                                        display: profpopping ? "grid" : "none",
+                                        // flexDirection: "column",
+                                        position: "absolute",
+                                        left: "0",
+                                        bottom: "0",
+                                        padding: "5px",
+                                        minWidth: "10em",
+                                        maxWidth: "40em",
+                                        border: "2px outset",
+                                        background: coloruibg,
+                                        color: coloruitext,
+                                        font: fontui,
+                                        gridTemplateColumns: "max-content 20em",
+                                        columnGap: "0.5em",
+                                    }}
+                                >
+                                    <div style={{ textAlign: "right" }}>pubkey:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{prof.metadata.event!.event.pubkey}</div>
+                                    <div style={{ textAlign: "right" }}>name:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.name}</div>
+                                    <div style={{ textAlign: "right" }}>display_name:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.display_name}</div>
+                                    <div style={{ textAlign: "right" }}>last updated at (created_at):</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
+                                    <div style={{ textAlign: "right" }}>location:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
+                                    <div style={{ textAlign: "right" }}>url:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.url}</div>
+                                    <div style={{ textAlign: "right" }}>nip05:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.nip05}</div>
+                                    <div style={{ textAlign: "right" }}>lud06/16:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.lud16 || p.lud06}</div>
+                                    <div style={{ textAlign: "right" }}>following?, followed?</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{prof.contacts?.event?.event.tags.filter(t => t[0] === "p").length} / ENOTIMPL</div>
+                                    <div style={{ textAlign: "right" }}>follow/unfollow, show TL, block/unblock</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
+                                    <div style={{ textAlign: "right" }}>desc...</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.content}</div>
+                                    <div style={{ textAlign: "right" }}>recent note</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
+                                    <div style={{ textAlign: "right" }}>following, followers</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
+                                    <div style={{ textAlign: "right" }}>notes, reactions</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
+                                </div>;
+                            })()}
                         </div>
                         <div style={{ position: "relative" }}>
                             <div style={{ cursor: "pointer" }} onClick={e => setEvinfopopping(s => !s)}>
