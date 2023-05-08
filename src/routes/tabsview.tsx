@@ -9,8 +9,8 @@ import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
-import { Kinds, Post } from "../types";
-import { NeverMatch, bsearchi, expectn, getmk, postindex } from "../util";
+import { DeletableEvent, Kinds, Post } from "../types";
+import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
 
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const noswk = useNostrWorker();
@@ -25,18 +25,21 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
     const [colorseltext] = useAtom(state.preferences.colors.selectedtext);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [identiconStore] = useAtom(state.identiconStore);
-    const [author, setAuthor] = useState(null);
-    const [rpauthor, setRpauthor] = useState(null);
 
     const ev = post.event!.event!.event;
     const derefev = post.reposttarget || post.event!;
 
-    useEffect(() => {
-        noswk!.getProfile(derefev.event!.event.pubkey, Kinds.profile, ev => setAuthor(JSON.parse(ev.event!.event.content)["name"]), () => { });
-        if (post.reposttarget) {
-            noswk!.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(JSON.parse(ev.event!.event.content)["name"]), () => { });
-        }
-    }, []);
+    const [author, setAuthor] = useState(() => {
+        const name = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content)["name"], null);
+        const cached = noswk!.getProfile(derefev.event!.event.pubkey, Kinds.profile, ev => setAuthor(name(ev)));
+        return cached && name(cached);
+    });
+    const [rpauthor, setRpauthor] = useState(() => {
+        if (!post.reposttarget) return null;
+        const name = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content)["name"], null);
+        const cached = noswk!.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(name(ev)));
+        return cached && name(cached);
+    });
 
     const [bg, text] = (() => {
         if (post === selected) {

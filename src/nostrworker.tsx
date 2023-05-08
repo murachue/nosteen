@@ -176,11 +176,14 @@ export type NostrWorkerListenerMessage = {
     posts: Post[];
 };
 
-// TODO: CachedDeletableEvent (negative cache and TTL)
+type CachedDeletableEvent = {
+    event: DeletableEvent | null;
+    fetchedAt: number;
+};
 type ProfileEvents = {
-    profile: DeletableEvent | null;
-    contacts: DeletableEvent | null;
-    relays: DeletableEvent | null;
+    profile: CachedDeletableEvent | null;
+    contacts: CachedDeletableEvent | null;
+    relays: CachedDeletableEvent | null;
 };
 
 export abstract class FetchPred {
@@ -367,7 +370,7 @@ export class NostrWorker {
                 if (!this.pubkey) {
                     return null;
                 }
-                const followingpks = this.profiles.get(this.pubkey)?.contacts?.event?.event?.tags?.filter(t => t[0] === "p")?.map(t => t[1]) || [];
+                const followingpks = this.profiles.get(this.pubkey)?.contacts?.event?.event?.event?.tags?.filter(t => t[0] === "p")?.map(t => t[1]) || [];
                 return [
                     // my events and following events
                     // following events but we don't need their reactions
@@ -593,14 +596,11 @@ export class NostrWorker {
     tryGetProfile(pk: string, kind: typeof Kinds[keyof typeof Kinds]) {
         return this.profiles.get(pk)?.[this.profkey(kind)];
     }
-    getProfile(pk: string, kind: typeof Kinds[keyof typeof Kinds], onEvent: (ev: DeletableEvent) => void, onEnd: () => void) {
+    getProfile(pk: string, kind: typeof Kinds[keyof typeof Kinds], onEvent: (ev: DeletableEvent) => void, onEnd?: () => void, ttl?: number): DeletableEvent | null {
         const profkey = this.profkey(kind);
         const pcache = this.profiles.get(pk)?.[profkey];
-        if (pcache) {
-            // TODO: TTL
-            onEvent(pcache);
-            onEnd();
-            return;
+        if (pcache && Date.now() < pcache.fetchedAt + (ttl ?? Infinity)) {
+            return pcache.event;
         }
 
         const pred = (() => {
@@ -618,12 +618,21 @@ export class NostrWorker {
                     this.putProfile(ev);
                 }
                 const pcache = this.profiles.get(pk)?.[profkey];
-                if (pcache) {
-                    onEvent(pcache);
+                if (pcache?.event) {
+                    onEvent(pcache.event);
                 }
             },
-            onEnd
+            onEnd: () => {
+                const pf = getmk(this.profiles, pk, () => ({ profile: null, contacts: null, relays: null }));
+                const pcache = pf[profkey];
+                if (!pcache) {
+                    pf[profkey] = { event: null, fetchedAt: Date.now() };
+                }
+                onEnd?.();
+            },
         }]);
+
+        return null;
     }
 
     private putProfile(event: DeletableEvent): boolean {
@@ -631,9 +640,9 @@ export class NostrWorker {
         const ev = event.event.event;
         const pf = getmk(this.profiles, ev.pubkey, () => ({ profile: null, contacts: null, relays: null }));
         const k = this.profkey(ev.kind);
-        const knownev = pf[k]?.event?.event;
+        const knownev = pf[k]?.event?.event?.event;
         if (knownev && ev.created_at <= knownev.created_at) return false;
-        pf[k] = event;
+        pf[k] = { event, fetchedAt: Date.now() };
         return true;
     }
 
@@ -673,20 +682,20 @@ export class NostrWorker {
                 if (f.pred instanceof FetchProfile && !f.pred.uncached) {
                     const prof = this.profiles.get(f.pred.pks[0])?.profile;
                     if (prof) {
-                        if (prof?.event && !prof?.deleteevent) {
-                            f.onEvent?.([prof]);
-                            f.onEnd?.();
+                        if (prof.event?.event && !prof.event?.deleteevent) {
+                            f.onEvent?.([prof.event]);
                         }
+                        f.onEnd?.();
                         continue;
                     }
                 }
                 if (f.pred instanceof FetchContacts && !f.pred.uncached) {
                     const cont = this.profiles.get(f.pred.pks[0])?.contacts;
                     if (cont) {
-                        if (cont?.event && !cont?.deleteevent) {
-                            f.onEvent?.([cont]);
-                            f.onEnd?.();
+                        if (cont.event?.event && !cont.event?.deleteevent) {
+                            f.onEvent?.([cont.event]);
                         }
+                        f.onEnd?.();
                         continue;
                     }
                 }
