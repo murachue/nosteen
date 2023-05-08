@@ -1,4 +1,5 @@
-import { Event, Filter, Kind, Relay } from "nostr-tools";
+import { Event, Filter, Kind } from "nostr-tools";
+import { Relay } from "./relay";
 
 export type ReceivedEvent = {
     event: Event;

@@ -7,7 +7,7 @@ import { Event, Filter, matchFilters, validateEvent, verifySignature } from 'nos
 type RelayEvent = {
     connect: () => void | Promise<void>;
     disconnect: () => void | Promise<void>;
-    error: () => void | Promise<void>;
+    error: (reason?: unknown) => void | Promise<void>;
     notice: (msg: string) => void | Promise<void>;
     auth: (challenge: string) => void | Promise<void>;
 };
@@ -142,6 +142,7 @@ export function relayInit(
             try {
                 ws = new WebSocket(url);
             } catch (err) {
+                listeners.error.forEach(cb => cb(err));
                 return reject(err);
             }
 
@@ -149,9 +150,9 @@ export function relayInit(
                 listeners.connect.forEach(cb => cb());
                 resolve();
             };
-            ws.onerror = () => {
+            ws.onerror = (ev) => {
                 reset();
-                listeners.error.forEach(cb => cb());
+                listeners.error.forEach(cb => cb(ev));
                 reject();
             };
             ws.onclose = async () => {

@@ -21,7 +21,7 @@ type ListenerModifier<E> = <T extends keyof E, U extends E[T]>(event: T, listene
 type ListenersContainer<E> = { [TK in keyof E]: E[TK][] };
 
 type MuxEvent = {
-    health: (relay: Relay, event: "connected" | "disconnected") => void | Promise<void>;
+    health: (event: { relay: Relay; event: 'connected' | 'disconnected'; reason?: unknown; }) => void | Promise<void>;
 };
 
 type MuxSubEvent = {
@@ -80,8 +80,9 @@ export class MuxPool {
                 getTimeout: this.getTimeout * 0.9,
                 listTimeout: this.getTimeout * 0.9
             });
-            r.on('connect', () => this.subListeners.health.forEach(cb => cb(r, 'connected')));
-            r.on('disconnect', () => this.subListeners.health.forEach(cb => cb(r, 'disconnected')));
+            r.on('connect', () => this.subListeners.health.forEach(cb => cb({ relay: r, event: 'connected' })));
+            r.on('error', reason => this.subListeners.health.forEach(cb => cb({ relay: r, event: 'disconnected', reason })));
+            r.on('disconnect', () => this.subListeners.health.forEach(cb => cb({ relay: r, event: 'disconnected' })));
             this._conn[nm] = r;
         }
 
@@ -127,6 +128,7 @@ export class MuxPool {
                 handleEose();
                 return;
             }
+            let disconnected = false;
             let rfilters = filters;
             function subone() {
                 let s = r.sub(rfilters, opts);
@@ -141,23 +143,27 @@ export class MuxPool {
                 });
 
                 const ps = subs.get(relay);
-                if (ps) {
-                    r.off('disconnect', ps.disconnectl);
-                    r.off('connect', ps.connectl);
-                }
+                if (!ps) {
+                    const disconnectl = () => {
+                        handleEose();
+                        disconnected = true;
+                    };
+                    r.on('disconnect', disconnectl);
+                    const connectl = () => {
+                        // relay calls me on first on()... don't fucked with that.
+                        if (!disconnected) return;
+                        disconnected = false;
 
-                const disconnectl = () => {
-                    handleEose();
-                };
-                r.on('disconnect', disconnectl);
-                const connectl = () => {
-                    if (opts?.refilters) {
-                        rfilters = opts.refilters(relay, rfilters);
-                    }
-                    subone();
-                };
-                r.on('connect', connectl);
-                subs.set(relay, { relay: r, sub: s, connectl, disconnectl });
+                        if (opts?.refilters) {
+                            rfilters = opts.refilters(relay, rfilters);
+                        }
+                        subone();
+                    };
+                    r.on('connect', connectl);
+                    subs.set(relay, { relay: r, sub: s, connectl, disconnectl });
+                } else {
+                    ps.sub = s;
+                }
             }
             subone();
 
@@ -176,6 +182,7 @@ export class MuxPool {
         })().catch(console.error));
 
         let greaterSub: MuxSub = {
+            // TODO: relays
             sub(filters, opts) {
                 subs.forEach(s => s.sub.sub(filters, opts));
                 return greaterSub;

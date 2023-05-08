@@ -1,8 +1,10 @@
-import { Event, Filter, Kind, Relay, SimplePool, UnsignedEvent, finishEvent, matchFilter, validateEvent, verifySignature } from "nostr-tools";
+import { Event, Filter, Kind, UnsignedEvent, finishEvent, matchFilter, validateEvent, verifySignature } from "nostr-tools";
 import { FC, PropsWithChildren, createContext, useContext } from "react";
 import invariant from "tiny-invariant";
 import { DeletableEvent, EventMessageFromRelay, FilledFilters, Kinds, Post } from "./types";
 import { SimpleEmitter, getmk, postindex, postupsertindex } from "./util";
+import { MuxPool } from "./pool";
+import { Relay } from "./relay";
 
 export type RelayWithMode = {
     relay: Relay | null;
@@ -12,14 +14,15 @@ export type RelayWithMode = {
 };
 
 export type MuxRelayEvent = {
-    mux: SimplePool;
+    mux: MuxPool;
     relay: Relay;
     event: "connected" | "disconnected";
+    reason?: unknown;
 } | {
-    mux: SimplePool;
+    mux: MuxPool;
     relayurl: string;
     event: "disconnected";
-    reason: string;
+    reason: unknown;
 };
 
 // quick deep(?) equality that requires same order for arrays
@@ -260,9 +263,9 @@ type VerifiedHandler = (result: {
 // TODO: nostr-tools's Relay may drop REQ/EVENT. also don't clear openSubs on disconnect.
 //       and also have unnecessary alreadyHaveEvent. we should re-impl that.
 export class NostrWorker {
-    mux = new SimplePool();
+    mux = new MuxPool();
     relays = new Map<string, RelayWithMode>();
-    subs = new Map<string, { sid: ReturnType<Relay["sub"]>; filters: FilledFilters; } | { sid: null; filters: null; }>();
+    subs = new Map<string, { sid: ReturnType<MuxPool["sub"]>; filters: FilledFilters; } | { sid: null; filters: null; }>();
     // TODO: GC/LRUify events and posts. copy-gc from postStreams?
     events = new Map<string, DeletableEvent>();
     posts = new Map<string, Post>();
@@ -270,13 +273,18 @@ export class NostrWorker {
     postStreams = new Map<string, { posts: Post[], eose: boolean, nunreads: number; }>(); // order by created_at TODO: also received_at for LRU considering fetching older post that is mentioned?
     pubkey: string | null = null;
     profiles = new Map<string, ProfileEvents>();
-    profsid: ReturnType<Relay["sub"]> | null = null;
+    profsid: ReturnType<MuxPool["sub"]> | null = null;
     onHealthy = new SimpleEmitter<MuxRelayEvent>();
     onMyContacts = new SimpleEmitter<DeletableEvent>();
     receiveEmitter = new Map<string, SimpleEmitter<NostrWorkerListenerMessage>>();
     verifyq: { receivedAt: number; messages: EventMessageFromRelay[] | null; onVerified: VerifiedHandler; }[] = [];
     fetchq: FetchWill[] = [];
 
+    constructor() {
+        this.mux.on("health", ({ relay, event, reason }) => {
+            this.onHealthy.emit("", { mux: this.mux, relay, event, reason });
+        });
+    }
     getRelays() {
         return [...this.relays.values()].map(r => ({ ...r, healthy: r.relay ? r.relay.status === WebSocket.OPEN : WebSocket.CLOSED }));
     }
@@ -290,11 +298,9 @@ export class NostrWorker {
 
             const rm: RelayWithMode = { relay: null, url, read: relopt.read, write: relopt.write };
             this.relays.set(relopt.url, rm);
+            // TODO: apply subs
             // XXX: async...
             this.mux.ensureRelay(relopt.url).then(relay => {
-                relay.on("connect", () => this.onHealthy.emit("", { mux: this.mux, relay, event: "connected" }));
-                relay.on("error", () => this.onHealthy.emit("", { mux: this.mux, relay, event: "disconnected" }));
-                relay.on("disconnect", () => this.onHealthy.emit("", { mux: this.mux, relay, event: "disconnected" }));
                 rm.relay = relay;
             }, reason => {
                 this.onHealthy.emit("", { mux: this.mux, relayurl: url, reason, event: "disconnected" });
@@ -326,9 +332,9 @@ export class NostrWorker {
             this.profsid = this.mux.sub(
                 [...this.relays.values()].filter(r => r.read).map(r => r.url),
                 [{ authors: [pubkey], kinds: [Kinds.contacts] }],
-                { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
+                { skipVerification: true },
             );
-            this.profsid.on("event", event => this.enqueueVerify([{ relay: null/* Nooo */, event }], r => {
+            this.profsid.on("event", ({ relay, event }) => this.enqueueVerify([{ relay, event }], r => {
                 if (!r) return;
                 for (const dev of r.ok.values()) {
                     const newer = this.putProfile(dev);
@@ -468,7 +474,7 @@ export class NostrWorker {
                     filters,
                     { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
                 );
-                sid.on("event", event => this.enqueueVerify([{ relay: null, event }], async r => {
+                sid.on("event", ({ relay, event }) => this.enqueueVerify([{ relay, event }], async r => {
                     invariant(r);
                     this.delevToPost(name, r.ok);
                 }));
@@ -706,14 +712,14 @@ export class NostrWorker {
 
             if (0 < predsbag.size) {
                 await new Promise<void>((resolve, reject) => {
-                    let sid: ReturnType<Relay["sub"]>;
+                    let sid: ReturnType<MuxPool["sub"]>;
                     // TODO: use list() instead of sub()?
                     sid = this.mux.sub(
                         [...this.relays.values()].filter(r => r.read).map(r => r.url),
                         [...predsbag.values()].flatMap(e => e.flatMap(f => f.filter())) as FilledFilters,
                         { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
                     );
-                    sid.on("event", event => this.enqueueVerify([{ relay: null/* Nooo */, event }], async r => {
+                    sid.on("event", ({ relay, event }) => this.enqueueVerify([{ relay, event }], async r => {
                         try {
                             invariant(r);
                             const one = new Map<(receives: DeletableEvent[]) => void, DeletableEvent[]>();

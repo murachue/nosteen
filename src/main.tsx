@@ -24,6 +24,9 @@ const App = () => {
     const [mycontacts, setMycontacts] = useState(null);
     const noswk = useNostrWorker();
 
+    useEffect(() => {
+        noswk!.setRelays(prefrelays);
+    }, [prefrelays]);
     // TODO: unsub on unload, but useEffect.return is overkill
     useEffect(() => {
         const pk = prefaccount?.pubkey;
@@ -35,9 +38,6 @@ const App = () => {
             ])
             .filter((e): e is [string, FilledFilters] => !!e[1])));
     }, [tabs, prefaccount, mycontacts]);
-    useEffect(() => {
-        noswk!.setRelays(prefrelays);
-    }, [prefrelays]);
 
     return <HashRouter>
         <Routes>
