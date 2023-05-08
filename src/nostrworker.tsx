@@ -2,7 +2,7 @@ import { Event, Filter, Kind, UnsignedEvent, finishEvent, matchFilter, validateE
 import { FC, PropsWithChildren, createContext, useContext } from "react";
 import invariant from "tiny-invariant";
 import { DeletableEvent, EventMessageFromRelay, FilledFilters, Kinds, Post } from "./types";
-import { SimpleEmitter, getmk, postindex, postupsertindex } from "./util";
+import { SimpleEmitter, getmk, postindex, postupsertindex, rescue } from "./util";
 import { MuxPool } from "./pool";
 import { Relay } from "./relay";
 
@@ -334,7 +334,7 @@ export class NostrWorker {
                 [{ authors: [pubkey], kinds: [Kinds.contacts] }],
                 { skipVerification: true },
             );
-            this.profsid.on("event", ({ relay, event }) => this.enqueueVerify([{ relay, event }], r => {
+            this.profsid.on("event", receives => this.enqueueVerify(receives, r => {
                 if (!r) return;
                 for (const dev of r.ok.values()) {
                     const newer = this.putProfile(dev);
@@ -474,7 +474,7 @@ export class NostrWorker {
                     filters,
                     { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
                 );
-                sid.on("event", ({ relay, event }) => this.enqueueVerify([{ relay, event }], async r => {
+                sid.on("event", receives => this.enqueueVerify(receives, async r => {
                     invariant(r);
                     this.delevToPost(name, r.ok);
                 }));
@@ -719,7 +719,7 @@ export class NostrWorker {
                         [...predsbag.values()].flatMap(e => e.flatMap(f => f.filter())) as FilledFilters,
                         { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
                     );
-                    sid.on("event", ({ relay, event }) => this.enqueueVerify([{ relay, event }], async r => {
+                    sid.on("event", receives => this.enqueueVerify(receives, async r => {
                         try {
                             invariant(r);
                             const one = new Map<(receives: DeletableEvent[]) => void, DeletableEvent[]>();
@@ -1004,7 +1004,7 @@ export class NostrWorker {
                 // hack: repost.
                 //       verify and remember as events but not okrecv to not pop up as originated (not reposted)
                 if (event.kind === (6 as Kind)) {
-                    const subevent: unknown = (() => { try { return JSON.parse(event.content); } catch { return undefined; } })();
+                    const subevent: unknown = rescue(() => JSON.parse(event.content), undefined);
                     if (!subevent) {
                         continue;
                     }

@@ -25,7 +25,7 @@ type MuxEvent = {
 };
 
 type MuxSubEvent = {
-    event: (receive: MuxedEvent) => void | Promise<void>;
+    event: (receives: MuxedEvent[]) => void | Promise<void>;
     error: (failure: MuxedError) => void | Promise<void>;
     eose: () => void | Promise<void>;
 };
@@ -40,7 +40,7 @@ export type MuxSub = {
 };
 
 type MuxPubEvent = {
-    ok: (receive: MuxedOk) => void;
+    ok: (receives: MuxedOk[]) => void;
     failed: (failure: MuxedError) => void;
 };
 export type MuxPub = {
@@ -120,6 +120,54 @@ export class MuxPool {
             subListeners.eose = []; // 'eose' only happens once per sub, so stop listeners here
         }, this.eoseSubTimeout);
 
+        // mixed between relays...
+        const buffered = (({ onEvent, onEose, spongems = 100 }: {
+            onEvent: (receives: MuxedEvent[]) => void;
+            onEose: () => void;
+            spongems?: number;
+        }): {
+            onEvent: (receive: MuxedEvent) => void;
+            onEose: () => void;
+        } => {
+            if (spongems <= 0) {
+                return { onEvent: (ev: MuxedEvent) => onEvent([ev]), onEose };
+            }
+            const evbuf: MuxedEvent[] = [];
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            return {
+                onEvent: (ev: MuxedEvent) => {
+                    evbuf.push(ev);
+                    if (timeout === undefined) {
+                        timeout = setTimeout(() => {
+                            timeout = undefined;
+                            onEvent(evbuf);
+                            evbuf.splice(0);
+                        }, spongems);
+                    }
+                },
+                onEose: () => {
+                    if (timeout) {
+                        clearTimeout(timeout);
+                        timeout = undefined;
+                        onEvent(evbuf);
+                        evbuf.splice(0);
+                    }
+                    onEose();
+                }
+            };
+        })({
+            onEvent: (receives: MuxedEvent[]) => subListeners.event.forEach(cb => cb(receives)),
+            onEose: () => {
+                if (eoseSent) return;
+                eosesMissing--;
+                if (eosesMissing === 0) {
+                    clearTimeout(eoseTimeout);
+                    subListeners.eose.forEach(cb => cb());
+                    subListeners.eose = []; // 'eose' only happens once per sub, so stop listeners here
+                }
+            },
+        });
+
         relays.forEach(relay => (async () => {
             let r: Relay;
             try {
@@ -133,7 +181,7 @@ export class MuxPool {
             function subone() {
                 let s = r.sub(rfilters, opts);
                 s.on('event', (event: Event) => {
-                    subListeners.event.forEach(cb => cb({ relay: r, event }));
+                    buffered.onEvent({ relay: r, event });
                 });
                 s.on('eose', () => {
                     handleEose();
@@ -171,13 +219,7 @@ export class MuxPool {
             function handleEose() {
                 if (eosed) return;
                 eosed = true;
-                if (eoseSent) return;
-                eosesMissing--;
-                if (eosesMissing === 0) {
-                    clearTimeout(eoseTimeout);
-                    subListeners.eose.forEach(cb => cb());
-                    subListeners.eose = []; // 'eose' only happens once per sub, so stop listeners here
-                }
+                buffered.onEose();
             }
         })().catch(console.error));
 
@@ -222,7 +264,7 @@ export class MuxPool {
                 resolve(null);
             }, this.getTimeout);
             sub.on('event', (receive) => {
-                resolve(receive);
+                resolve(receive[0]);
                 clearTimeout(timeout);
                 sub.unsub();
             });
@@ -241,7 +283,7 @@ export class MuxPool {
             let sub = this.sub(relays, filters, opts);
 
             sub.on('event', (receive) => {
-                events.push(receive);
+                events.push(...receive);
             });
 
             // we can rely on an eose being emitted here because pool.sub() will fake one
@@ -268,7 +310,7 @@ export class MuxPool {
                 const okhandler = (reason: string): void => {
                     const listeners = pubListeners.get(relay);
                     if (listeners) {
-                        listeners.ok.forEach(cb => cb({ relay: r, reason }));
+                        listeners.ok.forEach(cb => cb([{ relay: r, reason }]));
                         pubListeners.delete(relay);
                     }
                     if (pubListeners.size === 0) {
