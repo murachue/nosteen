@@ -359,22 +359,23 @@ class PostStreamWrapper {
         if (!stream) {
             return this.emptystream;
         }
+        const filteredPosts = stream.posts.filter(p => {
+            const ev = p.event!.event!.event;
+            if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) {
+                return false;
+            }
+            const rpev = p.reposttarget?.event?.event;
+            if (rpev && (this.muteusers.test(rpev.pubkey) || this.mutepatterns.test(rpev.content))) {
+                return false;
+            }
+            return true;
+        });
         // shallow copy "posts" to notify immutable change
         // FIXME: each element mutates, and that post may not re-rendered
         const news = {
-            posts: stream.posts.filter(p => {
-                const ev = p.event!.event!.event;
-                if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) {
-                    return false;
-                }
-                const rpev = p.reposttarget?.event?.event;
-                if (rpev && (this.muteusers.test(rpev.pubkey) || this.mutepatterns.test(rpev.content))) {
-                    return false;
-                }
-                return true;
-            }),
+            posts: filteredPosts,
             eose: stream.eose,
-            nunreads: stream.nunreads, // TODO: minus mute?
+            nunreads: filteredPosts.reduce((p, c) => p + (c.hasread ? 0 : 1), 0) /* stream.nunreads */, // TODO: minus mute?
         };
         this.streams.set(name, news);
         return news;
@@ -1166,7 +1167,13 @@ const Tabsview: FC<{
                     padding: "0 0 0 2px",
                 }}>
                     <div style={{ flex: "1", display: "flex", alignItems: "flex-start", overflow: "visible" }}>
-                        {tabs.map(t => <Tab key={t.name} active={t.id === tab.id} onClick={() => navigate(`/tab/${t.id}`)}>{t.name}</Tab>)}
+                        {tabs.map(t =>
+                            <Tab key={t.name} active={t.id === tab.id} onClick={() => navigate(`/tab/${t.id}`)}>
+                                {/* TODO: nunreads refresh only on active tab... */}
+                                <div style={{ color: 0 < streams!.getPostStream(t.id)!.nunreads ? "red" : undefined }}>
+                                    {t.name}
+                                </div>
+                            </Tab>)}
                     </div>
                     <div>
                         <Link to="/preferences" style={{
