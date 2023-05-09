@@ -33,7 +33,7 @@ export type MuxSubscriptionOptions = SubscriptionOptions & {
     refilters?: (relay: string, filter: Filter[]) => Filter[];
 };
 export type MuxSub = {
-    sub: (filters: Filter[], opts: MuxSubscriptionOptions) => MuxSub;
+    sub: (relays: string[], filters: Filter[] | null, opts?: MuxSubscriptionOptions) => MuxSub;
     unsub: () => void;
     on: ListenerModifier<MuxSubEvent>;
     off: ListenerModifier<MuxSubEvent>;
@@ -107,11 +107,13 @@ export class MuxPool {
             disconnectl: () => void | Promise<void>;
             connectl: () => void | Promise<void>;
         }>();
+        let lastfilters = filters; // XXX: ugly... should be capsuled into sub
         const subListeners: ListenersContainer<MuxSubEvent> = {
             event: [],
             error: [],
             eose: [],
         };
+        // muxed eose; not support on new relay of resubs.
         let eosesMissing = relays.length;
         let eoseSent = false;
         const eoseTimeout = setTimeout(() => {
@@ -168,7 +170,13 @@ export class MuxPool {
             },
         });
 
-        relays.forEach(relay => (async () => {
+        const add = (relay: string) => (async () => {
+            let eosed = false;
+            function handleEose() {
+                if (eosed) return;
+                eosed = true;
+                buffered.onEose();
+            }
             let r: Relay;
             try {
                 r = await this.ensureRelay(relay);
@@ -176,10 +184,10 @@ export class MuxPool {
                 handleEose();
                 return;
             }
+            // ugly...
             let disconnected = false;
-            let rfilters = filters;
-            function subone() {
-                let s = r.sub(rfilters, opts);
+            function subone(filters: Filter[]) {
+                let s = r.sub(lastfilters, opts);
                 s.on('event', (event: Event) => {
                     buffered.onEvent({ relay: r, event });
                 });
@@ -201,11 +209,7 @@ export class MuxPool {
                         // relay calls me on first on()... don't fucked with that.
                         if (!disconnected) return;
                         disconnected = false;
-
-                        if (opts?.refilters) {
-                            rfilters = opts.refilters(relay, rfilters);
-                        }
-                        subone();
+                        subone(opts?.refilters?.(relay, lastfilters) || lastfilters);
                     };
                     r.on('connect', connectl);
                     subs.set(relay, { relay: r, sub: s, connectl, disconnectl });
@@ -213,32 +217,46 @@ export class MuxPool {
                     ps.sub = s;
                 }
             }
-            subone();
-
-            let eosed = false;
-            function handleEose() {
-                if (eosed) return;
-                eosed = true;
-                buffered.onEose();
-            }
-        })().catch(console.error));
+            subone(lastfilters);
+        })().catch(console.error);
+        relays.forEach(add);
 
         let greaterSub: MuxSub = {
             // TODO: relays
-            sub(filters, opts) {
-                subs.forEach(s => s.sub.sub(filters, opts));
+            sub(relays, filters, opts) {
+                if (filters) {
+                    // be prepared to add() use new filters.
+                    lastfilters = filters;
+                }
+
+                for (const [url, s] of subs.entries()) {
+                    if (relays.includes(url)) continue;
+                    // removed
+                    s.sub.unsub();
+                    s.relay.off('disconnect', s.disconnectl);
+                    s.relay.off('connect', s.connectl);
+                }
+
+                for (const url of relays) {
+                    const s = subs.get(url);
+                    if (s) {
+                        s.sub.sub(filters || lastfilters, opts);
+                    } else {
+                        // added
+                        add(url);
+                    }
+                }
+
                 return greaterSub;
             },
             unsub() {
                 subs.forEach(s => {
                     s.sub.unsub();
-                    if (s) {
-                        s.relay.off('disconnect', s.disconnectl);
-                        s.relay.off('connect', s.connectl);
-                    }
+                    s.relay.off('disconnect', s.disconnectl);
+                    s.relay.off('connect', s.connectl);
                 });
             },
-            on: (event, listener) => {
+            on(event, listener) {
                 subListeners[event].push(listener);
             },
             off(type, cb) {

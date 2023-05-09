@@ -317,6 +317,13 @@ export class NostrWorker {
             this.mux.close([url]);
             this.relays.delete(url);
         }
+
+        // update subs
+        // TODO: relays per sid... what to do?
+        this.subs.forEach(({ sid }) => sid?.sub(
+            [...this.relays.values()].filter(r => r.read).map(r => r.url),
+            null,
+        ));
     }
     setIdentity(pubkey: string | null) {
         const pkchanged = this.pubkey !== pubkey;
@@ -468,7 +475,6 @@ export class NostrWorker {
                 this.postStreams.set(name, { posts: [], eose: false, nunreads: 0 });
             }
 
-            // TODO: we should intro global async verify/add queue?
             const su = (() => {
                 if (!filters) return { filters: null, sid: null };
 

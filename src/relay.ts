@@ -59,7 +59,7 @@ export type Pub = {
     forget: () => void;
 };
 export type Sub = {
-    sub: (filters: Filter[], opts: SubscriptionOptions) => Sub;
+    sub: (filters: Filter[], opts?: SubscriptionOptions) => Sub;
     unsub: () => void;
     on: <T extends keyof SubEvent, U extends SubEvent[T]>(
         event: T,
