@@ -9,12 +9,17 @@ import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import state from "../state";
-import { DeletableEvent, Kinds, Post } from "../types";
+import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
-const name = (ev: DeletableEvent) => rescue(() => jsoncontent(ev)?.name, null);
-const display_name = (ev: DeletableEvent) => rescue(() => jsoncontent(ev)?.display_name, null);
+const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
+    const json = jsoncontent(ev);
+    if (typeof json === "object" && json !== null) {
+        return json as MetadataContent;
+    }
+    return null;
+};
 
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
     const noswk = useNostrWorker();
@@ -34,13 +39,13 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
     const derefev = post.reposttarget || post.event!;
 
     const [author, setAuthor] = useState(() => {
-        const cached = noswk!.getProfile(derefev.event!.event.pubkey, Kinds.profile, ev => setAuthor(name(ev)));
-        return cached && name(cached);
+        const cached = noswk!.getProfile(derefev.event!.event.pubkey, Kinds.profile, ev => setAuthor(metadatajsoncontent(ev)));
+        return cached && metadatajsoncontent(cached);
     });
     const [rpauthor, setRpauthor] = useState(() => {
         if (!post.reposttarget) return null;
-        const cached = noswk!.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(name(ev)));
-        return cached && name(cached);
+        const cached = noswk!.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(metadatajsoncontent(ev)));
+        return cached && metadatajsoncontent(cached);
     });
 
     const [bg, text] = (() => {
@@ -101,8 +106,8 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {post.reposttarget
-                        ? `${author || post.reposttarget.event!.event.pubkey} (RP: ${rpauthor || ev.pubkey})`
-                        : (author || ev.pubkey)
+                        ? `${author?.name || post.reposttarget.event!.event.pubkey} (RP: ${rpauthor?.name || ev.pubkey})`
+                        : (author?.name || ev.pubkey)
                     }
                 </div>
             </TD>
@@ -499,10 +504,8 @@ const Tabsview: FC<{
     const [tryclosetab, setTryclosetab] = useState({ tid: "", time: 0 });
     const [profpopping, setProfpopping] = useState(false);
     const profpopref = useRef<HTMLDivElement>(null);
-    const [author, setAuthor] = useState(null);
-    const [authordn, setAuthordn] = useState(null);
-    const [rpauthor, setRpauthor] = useState(null);
-    const [rpauthordn, setRpauthordn] = useState(null);
+    const [author, setAuthor] = useState<MetadataContent | null>(null);
+    const [rpauthor, setRpauthor] = useState<MetadataContent | null>(null);
     const [prof, setProf] = useState<{ metadata?: DeletableEvent | null; contacts?: DeletableEvent | null; }>({});
 
     const [status, setStatus] = useState("status...");
@@ -1090,31 +1093,17 @@ const Tabsview: FC<{
     useEffect(() => {
         if (selev) {
             const cachedauthor = noswk!.getProfile(selev.event!.event.pubkey, Kinds.profile, ev => {
-                setAuthor(name(ev));
-                setAuthordn(display_name(ev));
+                setAuthor(jsoncontent(ev));
                 if (profpopping) {
                     setProf(p => ({ ...p, metadata: ev }));
                 }
             });
-            if (cachedauthor) {
-                setAuthor(name(cachedauthor));
-                setAuthordn(display_name(cachedauthor));
-            } else {
-                setAuthor(null);
-                setAuthordn(null);
-            }
+            setAuthor(cachedauthor && jsoncontent(cachedauthor));
             if (selrpev) {
                 const cachedrpauthor = noswk!.getProfile(selrpev.event!.event.pubkey, Kinds.profile, ev => {
-                    setRpauthor(name(ev));
-                    setRpauthordn(display_name(ev));
+                    setRpauthor(jsoncontent(ev));
                 });
-                if (cachedrpauthor) {
-                    setRpauthor(name(cachedrpauthor));
-                    setRpauthordn(display_name(cachedrpauthor));
-                } else {
-                    setRpauthor(null);
-                    setRpauthordn(null);
-                }
+                setRpauthor(cachedrpauthor && jsoncontent(cachedrpauthor));
             }
 
             if (profpopping) {
@@ -1209,8 +1198,8 @@ const Tabsview: FC<{
                             <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} onClick={e => setProfpopping(s => !s)}>
                                 {!selev ? "name..." : (
                                     selpost.reposttarget
-                                        ? `${rpauthor ? `${rpauthor}/${rpauthordn}` : selpost.reposttarget.event!.event.pubkey} (RP: ${author ? `${author}/${authordn}` : selev.event!.event.pubkey})`
-                                        : (author ? `${author}/${authordn}` : selev.event!.event.pubkey)
+                                        ? `${rpauthor ? `${rpauthor.name}/${rpauthor.display_name}` : selpost.reposttarget.event!.event.pubkey} (RP: ${author ? `${author.name}/${author.display_name}` : selev.event!.event.pubkey})`
+                                        : (author ? `${author.name}/${author.display_name}` : selev.event!.event.pubkey)
                                 )}
                             </div>
                             {!selev || !prof.metadata ? null : (() => {

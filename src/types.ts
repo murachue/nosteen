@@ -25,6 +25,21 @@ export type Filled<T extends unknown[]> = [T[number], ...T];
 export type FilledFilters = Filled<Filter[]>;
 export type EventMessageFromRelay = { event: Event, relay: Relay; };
 
+export type MetadataContent = {
+    // NIP-01
+    name?: string;
+    about?: string;
+    picture?: string;
+    // NIP-05
+    nip05?: string;
+    // de-facto
+    display_name?: string;
+    banner?: string;
+    website?: string;
+    lud06?: string;
+    lud16?: string;
+};
+
 export const Kinds = {
     profile: Kind.Metadata,
     post: Kind.Text,
