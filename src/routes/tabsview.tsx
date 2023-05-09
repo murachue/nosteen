@@ -1205,7 +1205,7 @@ const Tabsview: FC<{
                 </div>
                 <div style={{ flex: "1", minWidth: "0", /* display: "flex", flexDirection: "column" */ }}>
                     <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex" }}>
-                        <div style={{ flex: "1", minWidth: "0", position: "relative" }}>
+                        <div style={{ flex: "1", minWidth: "0", position: "relative", height: "1em", display: "flex", alignItems: "center" }}>
                             <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} onClick={e => setProfpopping(s => !s)}>
                                 {!selev ? "name..." : (
                                     selpost.reposttarget
