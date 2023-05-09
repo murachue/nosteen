@@ -304,18 +304,12 @@ export default () => {
             </>)}
             <div>
                 <TextInput value={mutepk} placeholder="npub or hex..." style={{ fontFamily: "monospace" }} size={64} onChange={s => {
-                    setMutepk(s.split("\n").map(s => {
-                        if (/^[0-9A-Fa-f]{64}$/.exec(s)) {
-                            return nip19.npubEncode(s) || "";
-                        } else {
-                            return s;
-                        }
-                    }).join("\n"));
+                    setMutepk(s.split("\n").map(s => normb32(s, "npub")).join("\n"));
                 }} />
             </div>
             <div style={{ marginLeft: "1em", display: "flex" }}>
-                <button style={{ flex: 1 }} disabled={!mutepk.split("\n").every(p => expectn(p, "npub"))} onClick={e => setMuteUsers(produce(draft => {
-                    const pks = mutepk.split("\n").filter(p => !draft.find(r => r.pk));
+                <button style={{ flex: 1 }} disabled={mutepk.split("\n").some(p => !expectn(p, "npub"))} onClick={e => setMuteUsers(produce(draft => {
+                    const pks = mutepk.split("\n").filter(p => !draft.find(r => r.pk === p));
                     if (pks.length === 0) {
                         return;
                     }
@@ -350,12 +344,13 @@ export default () => {
                 <TextInput value={mutepat} placeholder="regex..." style={{ fontFamily: "monospace" }} size={50} onChange={s => setMutepat(s)} />
             </div>
             <div style={{ marginLeft: "1em", display: "flex" }}>
-                <button style={{ flex: 1 }} disabled={mutepat === ""} onClick={e => setMuteRegexlocal(produce(draft => {
-                    const r = draft.find(r => r.pattern === mutepat);
-                    if (!r) {
-                        draft.push({ pattern: mutepat, added: true, removed: false });
-                        setMutepat("");
+                <button style={{ flex: 1 }} disabled={mutepat.split("\n").some(s => s === "")} onClick={e => setMuteRegexlocal(produce(draft => {
+                    const rs = mutepat.split("\n").filter(mp => !draft.find(r => r.pattern === mp));
+                    if (rs.length === 0) {
+                        return;
                     }
+                    draft.push(...rs.map(r => ({ pattern: r, added: true, removed: false } as const)));
+                    setMutepat("");
                 }))}>add</button>
             </div>
         </div>

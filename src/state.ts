@@ -34,14 +34,6 @@ const tabinit: {
         { ...tabstate(), id: "reply", name: "Reply", filter: "reply" },
         { ...tabstate(), id: "dm", name: "DM", filter: "dm" },
         { ...tabstate(), id: "favs", name: "Favs", filter: "favs" },
-        // {
-        //     name: "me",
-        //     filter: [
-        //         { authors: ["eeef"], kinds: [1], limit: 20 },
-        //         { "#p": ["eeef"], kinds: [1], limit: 20 },
-        //     ],
-        //     selected: "",
-        // },
         { ...tabstate(), id: "global", name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }] },
     ];
 
