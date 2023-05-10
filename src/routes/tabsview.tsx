@@ -597,7 +597,7 @@ const Tabsview: FC<{
     }
 
     const [postdraft, setPostdraft] = useState("");
-    const posteditor = useRef<HTMLInputElement>(null);
+    const posteditor = useRef<HTMLTextAreaElement>(null);
 
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
@@ -644,6 +644,20 @@ const Tabsview: FC<{
         if (!el) return;
         el.focus();
     }, [linksel]);
+    const nextunread = useCallback(() => {
+        if (!tap) return false;
+        const tapl = tap.posts.length;
+        let i: number;
+        for (i = 0; i < tapl; i++) {
+            if (!tap.posts[i].hasread) {
+                break;
+            }
+        }
+        if (i < tapl) {
+            onselect(i, true);
+        }
+        return true;
+    }, [tap]);
     useEffect(() => {
         setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
@@ -985,16 +999,7 @@ const Tabsview: FC<{
                     break;
                 }
                 case " ": {
-                    if (!tap) break;
-                    const tapl = tap.posts.length;
-                    let i: number;
-                    for (i = 0; i < tapl; i++) {
-                        if (!tap.posts[i].hasread) {
-                            break;
-                        }
-                    }
-                    if (i < tapl) {
-                        onselect(i, true);
+                    if (nextunread()) {
                         e.preventDefault();
                     }
                     break;
@@ -1074,7 +1079,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping]);
+    }, [tabs, tab, tap, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -1430,14 +1435,22 @@ const Tabsview: FC<{
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
             </div>
             <div style={{ display: "flex", alignItems: "center", background: coloruibg }}>
-                <input ref={posteditor} type="text" style={{ flex: "1", border: "2px inset", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} onChange={e => setPostdraft(e.target.value)} />
+                <textarea ref={posteditor} style={{ flex: "1", border: "2px inset", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} rows={(postdraft.match(/\n/g)?.length || 0) + 1} onChange={e => {
+                    if (e.target.value === " ") {
+                        listref.current?.focus();
+                        nextunread();
+                        return;
+                    }
+                    setPostdraft(e.target.value);
+                }} />
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
                 <div style={{ flex: "1" }}>tab {tap?.nunreads}/{tap?.posts?.length}, all {streams?.getNunreads()}/{streams?.getAllPosts()?.size} | post/fav/note /h | {status}</div>
+                <div style={{ padding: "0 0.5em" }}>-</div>
                 <div style={{ padding: "0 0.5em" }}>{relayinfo.healthy}/{relayinfo.all}</div>
-                <div style={{ position: "relative" }}>
+                {/* <div style={{ position: "relative" }}>
                     #hashtag
                     <div style={{ display: "none", position: "absolute", bottom: "100%", right: "0px", padding: "5px", minWidth: "10em", border: "2px outset", background: coloruibg, color: coloruitext }}>
                         <div style={{ height: "1.5em" }}>#foo</div>
@@ -1447,7 +1460,7 @@ const Tabsview: FC<{
                             <input type="text" value="" placeholder="hashtag" style={{ flex: "1", boxSizing: "border-box", font: fontui }} onChange={e => { }} />
                         </div>
                     </div>
-                </div>
+                </div> */}
             </div>
             <div
                 style={{
