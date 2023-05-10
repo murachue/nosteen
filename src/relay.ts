@@ -309,7 +309,12 @@ export function relayInit(
                     // no verb.
                 }),
             unsub: () => {
-                const errlisteners = subListeners[subid].error; // keep before delete
+                const subLn = subListeners[subid];
+                if (!subLn) {
+                    console.error(new Error("unsub could not find subListeneres?"));
+                    return;
+                }
+                const errlisteners = subLn.error; // keep before delete
                 delete openSubs[subid];
                 delete subListeners[subid];
                 idgen.put(subid);

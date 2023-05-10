@@ -240,7 +240,9 @@ export class MuxPool {
                 for (const url of relays) {
                     const s = subs.get(url);
                     if (s) {
-                        s.sub.sub(filters || lastfilters, opts);
+                        if (filters) {
+                            s.sub.sub(lastfilters, opts);
+                        }
                     } else {
                         // added
                         add(url);
