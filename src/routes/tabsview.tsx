@@ -1094,21 +1094,19 @@ const Tabsview: FC<{
         if (selev) {
             const cachedauthor = noswk!.getProfile(selev.event!.event.pubkey, Kinds.profile, ev => {
                 setAuthor(jsoncontent(ev));
-                if (profpopping) {
-                    setProf(p => ({ ...p, metadata: ev }));
-                }
             });
             setAuthor(cachedauthor && jsoncontent(cachedauthor));
+            let cachedrpauthor: DeletableEvent | null | undefined;
             if (selrpev) {
-                const cachedrpauthor = noswk!.getProfile(selrpev.event!.event.pubkey, Kinds.profile, ev => {
+                cachedrpauthor = noswk!.getProfile(selrpev.event!.event.pubkey, Kinds.profile, ev => {
                     setRpauthor(jsoncontent(ev));
                 });
                 setRpauthor(cachedrpauthor && jsoncontent(cachedrpauthor));
             }
 
             if (profpopping) {
-                if (cachedauthor) {
-                    setProf(p => ({ ...p, metadata: cachedauthor }));
+                if (cachedrpauthor || cachedauthor) {
+                    setProf(p => ({ ...p, metadata: cachedrpauthor || cachedauthor }));
                 } else {
                     setProf(p => ({ ...p, metadata: null, contacts: null }));
                 }
@@ -1231,26 +1229,38 @@ const Tabsview: FC<{
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.display_name}</div>
                                     <div style={{ textAlign: "right" }}>last updated at (created_at):</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
-                                    <div style={{ textAlign: "right" }}>location:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
-                                    <div style={{ textAlign: "right" }}>url:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.url}</div>
+                                    <div style={{ textAlign: "right" }}>website:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.website}</div>
                                     <div style={{ textAlign: "right" }}>nip05:</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.nip05}</div>
                                     <div style={{ textAlign: "right" }}>lud06/16:</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.lud16 || p.lud06}</div>
                                     <div style={{ textAlign: "right" }}>following?, followed?</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{prof.contacts?.event?.event.tags.filter(t => t[0] === "p").length} / ENOTIMPL</div>
-                                    <div style={{ textAlign: "right" }}>follow/unfollow, show TL, block/unblock</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{
+                                        !account?.pubkey
+                                            ? ""
+                                            : noswk!.tryGetProfile(account.pubkey, Kind.Contacts)?.event?.event?.event?.tags?.some(t => t[0] === "p" && t[1] === prof.metadata?.event?.event?.pubkey)
+                                                ? "Following"
+                                                : "NOT following"
+                                    } / {
+                                            !prof.contacts?.event
+                                                ? "?"
+                                                : (prof.contacts.event.event.tags.some(t => t[0] === "p" && t[1] === account?.pubkey)
+                                                    ? "Followed"
+                                                    : "NOT followed")
+                                        }</div>
+                                    {/* <div style={{ textAlign: "right" }}>follow/unfollow, show TL, block/unblock</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>desc...</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.content}</div>
-                                    <div style={{ textAlign: "right" }}>recent note</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
-                                    <div style={{ textAlign: "right" }}>following, followers</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
-                                    <div style={{ textAlign: "right" }}>notes, reactions</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div>
+                                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", maxHeight: "3em", /* ugh... */ display: "-webkit-box", WebkitLineClamp: "3", WebkitBoxOrient: "vertical" }}>{p.about}</div>
+                                    {/* <div style={{ textAlign: "right" }}>recent note</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
+                                    <div style={{ textAlign: "right" }}>followings, followers:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{prof.contacts?.event ? prof.contacts.event.event.tags.filter(t => t[0] === "p").length : "?"} / ENOTIMPL</div>
+                                    {/* <div style={{ textAlign: "right" }}>notes, reactions</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
+                                    <div style={{ textAlign: "right" }}>json:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: "20em" }}>{JSON.stringify(prof.metadata.event?.event)}</div>
                                 </div>;
                             })()}
                         </div>
