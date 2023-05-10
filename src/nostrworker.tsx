@@ -289,7 +289,7 @@ export class NostrWorker {
         });
     }
     getRelays() {
-        return [...this.relays.values()].map(r => ({ ...r, healthy: r.relay ? r.relay.status === WebSocket.OPEN : WebSocket.CLOSED }));
+        return [...this.relays.values()].map(r => ({ ...r, healthy: r.relay?.status === WebSocket.OPEN }));
     }
     setRelays(newrelays: { url: string, read: boolean, write: boolean; }[]) {
         const pre = new Map(this.relays); // taking a (shallow) copy for direct modify
