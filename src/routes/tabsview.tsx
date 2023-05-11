@@ -1205,8 +1205,8 @@ const Tabsview: FC<{
                                         : (author ? `${author.name}/${author.display_name}` : selev.event!.event.pubkey)
                                 )}
                             </div>
-                            {!selev || !prof.metadata ? null : (() => {
-                                const p = jsoncontent(prof.metadata);
+                            {!selev || !profpopping ? null : (() => {
+                                const p = !prof.metadata ? null : jsoncontent(prof.metadata);
                                 return <div
                                     ref={profpopref}
                                     style={{
@@ -1227,19 +1227,19 @@ const Tabsview: FC<{
                                     }}
                                 >
                                     <div style={{ textAlign: "right" }}>pubkey:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{prof.metadata.event!.event.pubkey}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{selev.event!.event.pubkey}</div>
                                     <div style={{ textAlign: "right" }}>name:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.name}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.name}</div>
                                     <div style={{ textAlign: "right" }}>display_name:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.display_name}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.display_name}</div>
                                     <div style={{ textAlign: "right" }}>last updated at (created_at):</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{!prof.metadata ? "?" : timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
                                     <div style={{ textAlign: "right" }}>website:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.website}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.website}</div>
                                     <div style={{ textAlign: "right" }}>nip05:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.nip05}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.nip05}</div>
                                     <div style={{ textAlign: "right" }}>lud06/16:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.lud16 || p.lud06}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.lud16 || p?.lud06}</div>
                                     <div style={{ textAlign: "right" }}>following?, followed?</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{
                                         !account?.pubkey
@@ -1257,7 +1257,7 @@ const Tabsview: FC<{
                                     {/* <div style={{ textAlign: "right" }}>follow/unfollow, show TL, block/unblock</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>desc...</div>
-                                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", maxHeight: "3em", /* ugh... */ display: "-webkit-box", WebkitLineClamp: "3", WebkitBoxOrient: "vertical" }}>{p.about}</div>
+                                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", maxHeight: "3em", /* ugh... */ display: "-webkit-box", WebkitLineClamp: "3", WebkitBoxOrient: "vertical" }}>{p?.about}</div>
                                     {/* <div style={{ textAlign: "right" }}>recent note</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>followings, followers:</div>
@@ -1265,7 +1265,7 @@ const Tabsview: FC<{
                                     {/* <div style={{ textAlign: "right" }}>notes, reactions</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>json:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: "20em" }}>{JSON.stringify(prof.metadata.event?.event)}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: "20em" }}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</div>
                                 </div>;
                             })()}
                         </div>
