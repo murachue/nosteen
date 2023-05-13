@@ -2,16 +2,16 @@ import Identicon from "identicon.js";
 import produce from "immer";
 import { useAtom } from "jotai";
 import { Event, Kind, nip19 } from "nostr-tools";
-import { FC, ForwardedRef, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { FC, ForwardedRef, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
+import { Relay } from "../relay";
 import state from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
-import { npubEncode } from "nostr-tools/lib/nip19";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
@@ -1231,7 +1231,13 @@ const Tabsview: FC<{
                                     <div>
                                         <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{selev.event!.event.pubkey}</div>
                                         <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.npubEncode(selev.event!.event.pubkey)}</div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.nprofileEncode({ pubkey: selev.event!.event.pubkey, relays: [selev.event!.receivedfrom.keys().next().value] })}</div>
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{
+                                            (() => {
+                                                const pk: Relay | undefined = selev.event!.receivedfrom.values().next().value;
+                                                // should we use kind0's receivedfrom or kind10002? but using kind1's receivedfrom that is _real_/_in use_
+                                                return nip19.nprofileEncode({ pubkey: selev.event!.event.pubkey, relays: pk ? [pk.url] : undefined });
+                                            })()
+                                        }</div>
                                     </div>
                                     <div style={{ textAlign: "right" }}>name:</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.name}</div>
