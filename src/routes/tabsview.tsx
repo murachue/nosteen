@@ -11,6 +11,7 @@ import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker 
 import state from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
+import { npubEncode } from "nostr-tools/lib/nip19";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
@@ -1227,7 +1228,11 @@ const Tabsview: FC<{
                                     }}
                                 >
                                     <div style={{ textAlign: "right" }}>pubkey:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{selev.event!.event.pubkey}</div>
+                                    <div>
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{selev.event!.event.pubkey}</div>
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.npubEncode(selev.event!.event.pubkey)}</div>
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.nprofileEncode({ pubkey: selev.event!.event.pubkey, relays: [selev.event!.receivedfrom.keys().next().value] })}</div>
+                                    </div>
                                     <div style={{ textAlign: "right" }}>name:</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.name}</div>
                                     <div style={{ textAlign: "right" }}>display_name:</div>
