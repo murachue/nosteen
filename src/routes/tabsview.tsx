@@ -1214,7 +1214,7 @@ const Tabsview: FC<{
                                         // flexDirection: "column",
                                         position: "absolute",
                                         left: "0",
-                                        bottom: "0",
+                                        bottom: "100%",
                                         padding: "5px",
                                         minWidth: "10em",
                                         maxWidth: "40em",
