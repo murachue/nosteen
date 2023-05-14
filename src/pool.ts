@@ -121,6 +121,8 @@ export class MuxPool {
             subListeners.eose.forEach(cb => cb());
             subListeners.eose = []; // 'eose' only happens once per sub, so stop listeners here
         }, this.eoseSubTimeout);
+        // async headache.
+        let killed = false;
 
         // mixed between relays...
         const buffered = (({ onEvent, onEose, spongems = 100 }: {
@@ -187,6 +189,8 @@ export class MuxPool {
             // ugly...
             let disconnected = false;
             function subone(filters: Filter[]) {
+                if (killed) return;
+
                 let s = r.sub(lastfilters, opts);
                 s.on('event', (event: Event) => {
                     buffered.onEvent({ relay: r, event });
@@ -252,6 +256,7 @@ export class MuxPool {
                 return greaterSub;
             },
             unsub() {
+                killed = true;
                 subs.forEach(s => {
                     s.sub.unsub();
                     s.relay.off('disconnect', s.disconnectl);

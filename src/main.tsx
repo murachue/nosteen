@@ -11,7 +11,7 @@ import Preferences from './routes/preferences';
 import Root from './routes/root';
 import TabsView from './routes/tabsview';
 import state from './state';
-import { FilledFilters } from './types';
+import { DeletableEvent, FilledFilters } from './types';
 
 enableMapSet();
 
@@ -21,7 +21,6 @@ const App = () => {
     const [tabs] = useAtom(state.tabs);
     const [globalOnKeyDown, setGlobalOnKeyDown] = useState<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>(undefined);
     const [globalOnPointerDown, setGlobalOnPointerDown] = useState<React.DOMAttributes<HTMLDivElement>["onPointerDown"]>(undefined);
-    const [mycontacts, setMycontacts] = useState(null);
     const noswk = useNostrWorker();
 
     useEffect(() => {
@@ -31,13 +30,21 @@ const App = () => {
     useEffect(() => {
         const pk = prefaccount?.pubkey;
         noswk!.setIdentity(pk || null);
-        noswk!.setSubscribes(new Map(tabs
-            .map<[string, FilledFilters | null]>(e => [
-                e.id,
-                typeof e.filter === "string" ? (noswk!.getFilter(e.filter) || null) : (e.filter as FilledFilters)
-            ])
-            .filter((e): e is [string, FilledFilters] => !!e[1])));
-    }, [tabs, prefaccount, mycontacts]);
+        const setsub = () => {
+            noswk!.setSubscribes(new Map(tabs
+                .map<[string, FilledFilters | null]>(e => [
+                    e.id,
+                    typeof e.filter === "string" ? (noswk!.getFilter(e.filter) || null) : (e.filter as FilledFilters)
+                ])
+                .filter((e): e is [string, FilledFilters] => !!e[1])));
+        };
+        setsub();
+        const onMyContacts: (contacts: DeletableEvent) => void = contacts => {
+            setsub();
+        };
+        noswk!.onMyContacts.on("", onMyContacts);
+        return () => { noswk!.onMyContacts.off("", onMyContacts); };
+    }, [tabs, prefaccount]);
 
     return <HashRouter>
         <Routes>
