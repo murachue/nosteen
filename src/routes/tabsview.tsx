@@ -579,7 +579,7 @@ const Tabsview: FC<{
                     const newt = {
                         id: `e/${nid}`,
                         name: nid.slice(0, 8),
-                        filter: [{ ids: [nid], kinds: [Kinds.post], limit: 50 }],
+                        filter: [{ ids: [nid], /* kinds: [Kinds.post], */ limit: 1 }],
                         scroll: 0,
                         selected: null,
                         replypath: [],
