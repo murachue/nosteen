@@ -9,7 +9,7 @@ import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import { Relay } from "../relay";
-import state from "../state";
+import state, { Tabdef, newtabstate } from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
 
@@ -360,7 +360,7 @@ class PostStreamWrapper {
         this.mutepatterns = regexs.length === 0 ? NeverMatch : new RegExp(regexs.map(e => `(${e})`).join("|"));
     }
 
-    private refreshPosts(name: string) {
+    refreshPosts(name: string) {
         const stream = this.noswk.getPostStream(name);
         if (!stream) {
             return this.emptystream;
@@ -478,6 +478,7 @@ const Tabsview: FC<{
     const tabid = data["*"] || "";
     const [account] = useAtom(state.preferences.account);
     const [tabs, setTabs] = useAtom(state.tabs);
+    const [tabstates, setTabstates] = useAtom(state.tabstates);
     const [colorbase] = useAtom(state.preferences.colors.base);
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorrepost] = useAtom(state.preferences.colors.repost);
@@ -494,6 +495,8 @@ const Tabsview: FC<{
     const streams = useMemo(() => noswk && new PostStreamWrapper(noswk), [noswk]);
     const listref = useRef<HTMLDivElement>(null);
     const textref = useRef<HTMLDivElement>(null);
+    const [postdraft, setPostdraft] = useState("");
+    const posteditor = useRef<HTMLTextAreaElement>(null);
     const [listscrollto, setListscrollto] = useState<Parameters<typeof TheList>[0]["scrollTo"]>(undefined);
     const [evinfopopping, setEvinfopopping] = useState(false);
     const evinfopopref = useRef<HTMLDivElement>(null);
@@ -508,7 +511,6 @@ const Tabsview: FC<{
     const [author, setAuthor] = useState<MetadataContent | null>(null);
     const [rpauthor, setRpauthor] = useState<MetadataContent | null>(null);
     const [prof, setProf] = useState<{ metadata?: DeletableEvent | null; contacts?: DeletableEvent | null; }>({});
-
     const [status, setStatus] = useState("status...");
 
     const relayinfo = useSyncExternalStore(
@@ -531,7 +533,7 @@ const Tabsview: FC<{
         })(), [])
     );
 
-    const tab = (() => {
+    const tab = useCallback(() => {
         const tab = tabs.find(t => t.id === tabid);
         if (tab) return tab;
         {
@@ -548,15 +550,14 @@ const Tabsview: FC<{
                     return null;
                 })();
                 if (pk) {
-                    const newt = {
+                    // TODO: relay from nprofile
+                    const newt: Tabdef = {
                         id: `p/${pk}`,
                         name: pk.slice(0, 8),
                         filter: [{ authors: [pk], kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 50 }],
-                        scroll: 0,
-                        selected: null,
-                        replypath: [],
                     };
                     setTabs([...tabs, newt]);
+                    setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
                     navigate(`/tab/p/${pk}`, { replace: true });
                     return newt;
                 }
@@ -576,41 +577,35 @@ const Tabsview: FC<{
                     return null;
                 })();
                 if (nid) {
-                    const newt = {
+                    // TODO: relay from nevent
+                    const newt: Tabdef = {
                         id: `e/${nid}`,
                         name: nid.slice(0, 8),
                         filter: [{ ids: [nid], /* kinds: [Kinds.post], */ limit: 1 }],
-                        scroll: 0,
-                        selected: null,
-                        replypath: [],
                     };
                     setTabs([...tabs, newt]);
+                    setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
                     navigate(`/tab/e/${nid}`, { replace: true });
                     return newt;
                 }
             }
         }
-    })();
-    if (!tab) {
-        // redirect to first
-        navigate(`/tab/${tabs[0].id}`, { replace: true });
-        return <></>;
-    }
-
-    const [postdraft, setPostdraft] = useState("");
-    const posteditor = useRef<HTMLTextAreaElement>(null);
+    }, [tabs, tabid])();
 
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
+            if (!tab) return () => { };
             const onChange = (msg: NostrWorkerListenerMessage) => { msg.type !== "eose" && msg.name === tab.id && onStoreChange(); };
             streams!.addListener(tab.id, onChange);
             return () => streams!.removeListener(tab.id, onChange);
-        }, [streams, tab.id]),
+        }, [streams, tab?.id]),
         useCallback(() => {
+            if (!tab) return undefined;
             return streams!.getPostStream(tab.id);
-        }, [streams, tab.id]),
+        }, [streams, tab?.id]),
     );
     useEffect(() => {
+        if (!tab) return;
         const onChange = (msg: NostrWorkerListenerMessage) => {
             if (msg.type !== "event") return;
             if (msg.name !== tab.id) return;
@@ -618,34 +613,37 @@ const Tabsview: FC<{
         };
         streams!.addListener(tab.id, onChange);
         return () => streams!.removeListener(tab.id, onChange);
-    }, [streams, tab.id]);
+    }, [streams, tab?.id]);
     useEffect(() => {
         streams!.setMutes({ users: [...muteuserpublic, ...muteuserprivate, ...muteuserlocal], regexs: muteregexlocal });
     }, [streams, muteuserpublic, muteuserprivate, muteuserlocal, muteregexlocal]);
-    const selpost = tab.selected === null ? undefined : tap?.posts[tab.selected];
+    const tas = !tab ? undefined : tabstates.get(tab.id);
+    const selpost = (tas?.selected ?? null) === null ? undefined : tap?.posts[tas!.selected!];
     const selev = selpost?.event;
     const selrpev = selpost?.reposttarget;
     const onselect = useCallback((i: number, toTop?: boolean) => {
+        if (!tab || !tap) return;
         if (tap) {
             noswk!.setHasread({ id: tap.posts[i].id }, true);
         }
-        setTabs(produce(draft => {
-            const t = draft.find(t => t.id === tab.id)!;
-            t.selected = i;
+        setTabstates(produce(draft => {
+            draft.get(tab.id)!.selected = i;
         }));
         setListscrollto({ index: i, toTop });
         textref.current?.scrollTo(0, 0);
     }, [tap, noswk]);
     useEffect(() => {
+        if (!tas) return;
         // TODO: when fonttext changes?
-        setListscrollto({ pixel: tab.scroll });
-    }, [tab.id]); // !!
+        setListscrollto({ pixel: tas.scroll });
+    }, [tab?.id]); // !!
     useEffect(() => {
         const el = linkselref.current;
         if (!el) return;
         el.focus();
     }, [linksel]);
     const nextunread = useCallback(() => {
+        // TODO: search other tabs, jump to last note of first tab if all tabs has read.
         if (!tap) return false;
         const tapl = tap.posts.length;
         let i: number;
@@ -740,38 +738,40 @@ const Tabsview: FC<{
             }
             switch (e.key) {
                 case "a": {
+                    if (!tab) break;
                     const i = tabs.indexOf(tab);
                     const n = tabs[i === 0 ? tabs.length - 1 : i - 1].id;
                     navigate(`/tab/${n}`);
                     break;
                 }
                 case "s": {
+                    if (!tab) break;
                     const i = tabs.indexOf(tab);
                     const n = tabs[i === tabs.length - 1 ? 0 : i + 1].id;
                     navigate(`/tab/${n}`);
                     break;
                 }
                 case "j": {
-                    if (!tap) break;
-                    const i = tab.selected === null ? tap.posts.length - 1 : tab.selected + 1;
+                    if (!tas || !tap) break;
+                    const i = tas.selected === null ? tap.posts.length - 1 : tas.selected + 1;
                     if (i < tap.posts.length) {
                         onselect(i);
                     }
                     break;
                 }
                 case "k": {
-                    if (!tap) break;
-                    const i = tab.selected === null ? tap.posts.length - 1 : tab.selected - 1;
+                    if (!tas || !tap) break;
+                    const i = tas.selected === null ? tap.posts.length - 1 : tas.selected - 1;
                     if (0 <= i) {
                         onselect(i);
                     }
                     break;
                 }
                 case "h": {
-                    if (!tap) break;
-                    if (tab.selected === null) break;
-                    const pk = tap.posts[tab.selected].event!.event!.event.pubkey;
-                    for (let i = tab.selected - 1; 0 <= i; i--) {
+                    if (!tas || !tap) break;
+                    if (tas.selected === null) break;
+                    const pk = tap.posts[tas.selected].event!.event!.event.pubkey;
+                    for (let i = tas.selected - 1; 0 <= i; i--) {
                         if (tap.posts[i].event!.event!.event.pubkey === pk) {
                             onselect(i);
                             break;
@@ -780,11 +780,11 @@ const Tabsview: FC<{
                     break;
                 }
                 case "l": {
-                    if (!tap) break;
-                    if (tab.selected === null) break;
+                    if (!tas || !tap) break;
+                    if (tas.selected === null) break;
                     const l = tap.posts.length;
-                    const pk = tap.posts[tab.selected].event!.event!.event.pubkey;
-                    for (let i = tab.selected + 1; i < l; i++) {
+                    const pk = tap.posts[tas.selected].event!.event!.event.pubkey;
+                    for (let i = tas.selected + 1; i < l; i++) {
                         if (tap.posts[i].event!.event!.event.pubkey === pk) {
                             onselect(i);
                             break;
@@ -793,9 +793,9 @@ const Tabsview: FC<{
                     break;
                 }
                 case "[": {
-                    if (!tap) break;
-                    if (tab.selected === null) break;
-                    const selpost = tap.posts[tab.selected];
+                    if (!tas || !tap || !tab) break;
+                    if (tas.selected === null) break;
+                    // const selpost = tap.posts[tas.selected];
                     if (!selpost) break;  //!?
                     const ev = selpost.reposttarget || selpost.event!;
                     // really last? (if no "reply" marker) NIP-10 states that but...
@@ -806,28 +806,28 @@ const Tabsview: FC<{
                     const lp = noswk!.getPost(replye);
                     if (!lp) break;
 
-                    let rp = [...tab.replypath];
+                    let rp = [...tas.replypath];
                     const oevid = selpost.event!.id;  // on repost, replypath holds repost itself
-                    if (tab.replypath.indexOf(oevid) === -1) {
+                    if (tas.replypath.indexOf(oevid) === -1) {
                         rp = [oevid];
                     }
                     if (rp.indexOf(replye) === -1) {
                         rp.unshift(replye);
                     }
-                    setTabs(produce(draft => { draft.find(t => t.id === tab.id)!.replypath = rp; }));
+                    setTabstates(produce(draft => { draft.get(tab.id)!.replypath = rp; }));
                     const ei = postindex(tap.posts, lp.event!.event!.event);
                     if (ei === null) break;  // TODO: may move tab? what if already closed?
                     onselect(ei);
                     break;
                 }
                 case "]": {
-                    if (!tap) break;
-                    if (tab.selected === null) break;
-                    const selpost = tap.posts[tab.selected];
+                    if (!tas || !tap || !tab) break;
+                    if (tas.selected === null) break;
+                    // const selpost = tap.posts[tas.selected];
                     if (!selpost) break;  //!?
 
                     const lid = (() => {
-                        const rp = [...tab.replypath];
+                        const rp = [...tas.replypath];
 
                         // potentially repost itself have priority
                         const i1 = rp.indexOf(selpost.event!.id);
@@ -854,7 +854,7 @@ const Tabsview: FC<{
                             if (p.event!.event!.event.tags.find(t => t[0] === "e" && t[1] === id)) {
                                 const nrp = (i1 === -1 && i2 === -1) ? [] : rp;
                                 nrp.push(p.id);
-                                setTabs(produce(draft => { draft.find(t => t.id === tab.id)!.replypath = nrp; }));
+                                setTabs(produce(draft => { draft.get(tab.id)!.replypath = nrp; }));
                                 return p.id;
                             }
                         }
@@ -1010,15 +1010,17 @@ const Tabsview: FC<{
                     break;
                 }
                 case "b": {
-                    if (tab.selected === null) return;
+                    if (!tas || !tab) break;
+                    if (tas.selected === null) break;
                     // TODO: bug with mute
-                    noswk!.setHasread({ stream: tab.id, afterIndex: tab.selected }, false);
+                    noswk!.setHasread({ stream: tab.id, afterIndex: tas.selected }, false);
                     break;
                 }
                 case "B": {
-                    if (tab.selected === null) return;
+                    if (!tas || !tab) break;
+                    if (tas.selected === null) break;
                     // TODO: bug with mute
-                    noswk!.setHasread({ stream: tab.id, beforeIndex: tab.selected }, true);
+                    noswk!.setHasread({ stream: tab.id, beforeIndex: tas.selected }, true);
                     break;
                 }
                 case "u": {
@@ -1026,14 +1028,15 @@ const Tabsview: FC<{
                     break;
                 }
                 case "U": {
-                    if (!tap) break;
-                    if (tab.selected === null) break;
-                    const post = tap.posts[tab.selected];
+                    if (!tas || !tap) break;
+                    if (tas.selected === null) break;
+                    const post = tap.posts[tas.selected];
                     const pk = (post.reposttarget || post.event!).event!.event.pubkey;
                     navigate(`/tab/p/${pk}`);
                     break;
                 }
                 case "W": {
+                    if (!tab) break;
                     if (typeof tab.filter === "string") {
                         setFlash({ msg: "Cannot close system tabs", bang: true });
                     } else {
@@ -1042,6 +1045,7 @@ const Tabsview: FC<{
                             //       navigator.back may back to prefs, and one more back/fwd creates this tab too...
                             const ti = tabs.findIndex(t => t.id === tab.id);
                             setTabs(tabs.filter(t => t.id !== tab.id));
+                            setTabstates(produce(draft => { draft.delete(tab.id); }));
                             // normally next but previous if last
                             const nti = tabs.length - 1 <= ti ? ti - 1 : ti;
                             navigate(`/tab/${tabs[nti].id}`);
@@ -1053,16 +1057,14 @@ const Tabsview: FC<{
                     break;
                 }
                 case "&": {
-                    // pickup unreads and into tab... how represent virtual? (not tied to sub?)
+                    // if already exists, overwrite and move to last.
                     const id = "unreads";
                     setTabs([...tabs.filter(t => t.id !== id), {
                         id,
                         name: id,
                         filter: null,
-                        scroll: 0,
-                        selected: null,
-                        replypath: [],
                     }]);
+                    setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
                     noswk!.overwritePosts(id, tap!.posts.filter(p => !p.hasread));
                     navigate(`/tab/${id}`);
                     break;
@@ -1080,7 +1082,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -1130,22 +1132,28 @@ const Tabsview: FC<{
             setFlash({ ...flash, bang: false });
         }
     }, [flash]);
+
+    if (!tab) {
+        // redirect to first
+        navigate(`/tab/${tabs[0].id}`, { replace: true });
+    }
+
     return <>
         <Helmet>
-            <title>{tab.name} - nosteen</title>
+            <title>{tab?.name} - nosteen</title>
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default", position: "relative" }}>
                 {<TheList
                     posts={tap?.posts || []}
                     mypubkey={account?.pubkey}
-                    selection={tab.selected}
+                    selection={tas?.selected ?? null}
                     ref={listref}
                     onSelect={onselect}
                     onScroll={() => {
-                        setTabs(produce(draft => {
-                            const t = draft.find(t => t.id === tab.id)!;
-                            t.scroll = listref.current?.scrollTop || 0; // use event arg?
+                        if (!tab) return;
+                        setTabstates(produce(draft => {
+                            draft.get(tab.id)!.scroll = listref.current?.scrollTop || 0; // use event arg?
                         }));
                     }}
                     scrollTo={listscrollto}
@@ -1161,7 +1169,7 @@ const Tabsview: FC<{
                 }}>
                     <div style={{ flex: "1", display: "flex", alignItems: "flex-start", overflow: "visible" }}>
                         {tabs.map(t =>
-                            <Tab key={t.name} active={t.id === tab.id} onClick={() => navigate(`/tab/${t.id}`)}>
+                            <Tab key={t.name} active={t.id === tab?.id} onClick={() => navigate(`/tab/${t.id}`)}>
                                 {/* TODO: nunreads refresh only on active tab... */}
                                 <div style={{ color: 0 < streams!.getPostStream(t.id)!.nunreads ? "red" : undefined }}>
                                     {t.name}

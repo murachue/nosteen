@@ -3,19 +3,10 @@ import { atomWithStorage } from "jotai/utils";
 import { Kinds } from "./types";
 import { IdenticonStore } from "./identicon";
 
-const tabstate = () => ({
-    selected: null,
-    scroll: 0,
-    replypath: [],
-});
-const tabinit: {
+export type Tabdef = {
     id: string;
     name: string;
-    filter: "recent" |
-    "reply" |
-    "dm" |
-    "favs" |
-    Partial<{
+    filter: "recent" | "reply" | "dm" | "favs" | Partial<{
         ids: string[];
         authors: string[];
         kinds: number[];
@@ -24,18 +15,22 @@ const tabinit: {
         since: number;
         until: number;
         limit: number;
-    }>[] |
-    null;
+    }>[] | null;
+};
+const initTabdef: Tabdef[] = [
+    { id: "recent", name: "Recent", filter: "recent" },
+    { id: "reply", name: "Reply", filter: "reply" },
+    { id: "dm", name: "DM", filter: "dm" },
+    { id: "favs", name: "Favs", filter: "favs" },
+    { id: "global", name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }] },
+];
+
+type Tabstate = {
     selected: number | null;
     scroll: number;
     replypath: string[];
-}[] = [
-        { ...tabstate(), id: "recent", name: "Recent", filter: "recent" },
-        { ...tabstate(), id: "reply", name: "Reply", filter: "reply" },
-        { ...tabstate(), id: "dm", name: "DM", filter: "dm" },
-        { ...tabstate(), id: "favs", name: "Favs", filter: "favs" },
-        { ...tabstate(), id: "global", name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }] },
-    ];
+};
+export const newtabstate: () => Tabstate = () => ({ selected: null, scroll: 0, replypath: [] });
 
 export default {
     preferences: {
@@ -83,6 +78,7 @@ export default {
             regexlocal: atomWithStorage<string[]>("preferences.mute.regexlocal", []),
         },
     },
-    tabs: atom(tabinit),
+    tabs: atomWithStorage<Tabdef[]>("tabs", initTabdef),
+    tabstates: atom(new Map<string, Tabstate>(initTabdef.map(t => [t.id, newtabstate()]))),
     identiconStore: atom(new IdenticonStore()),
 };
