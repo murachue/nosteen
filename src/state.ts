@@ -79,6 +79,8 @@ export default {
         },
     },
     tabs: atomWithStorage<Tabdef[]>("tabs", initTabdef),
-    tabstates: atom(new Map<string, Tabstate>(initTabdef.map(t => [t.id, newtabstate()]))),
+    tabstates: atom(new Map<string, Tabstate>([])),
+    closedTabs: atom<Tabdef[]>([]),
+    tabzorder: atom<string[]>([]),
     identiconStore: atom(new IdenticonStore()),
 };

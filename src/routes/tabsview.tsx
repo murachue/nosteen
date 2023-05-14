@@ -479,6 +479,8 @@ const Tabsview: FC<{
     const [account] = useAtom(state.preferences.account);
     const [tabs, setTabs] = useAtom(state.tabs);
     const [tabstates, setTabstates] = useAtom(state.tabstates);
+    const [closedtabs, setClosedtabs] = useAtom(state.closedTabs);
+    const [tabzorder, setTabzorder] = useAtom(state.tabzorder);
     const [colorbase] = useAtom(state.preferences.colors.base);
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorrepost] = useAtom(state.preferences.colors.repost);
@@ -535,7 +537,12 @@ const Tabsview: FC<{
 
     const tab = useCallback(() => {
         const tab = tabs.find(t => t.id === tabid);
-        if (tab) return tab;
+        if (tab) {
+            if (tabzorder[tabzorder.length - 1] !== tabid) {
+                setTabzorder([...tabzorder.filter(t => t !== tabid), tabid]);
+            }
+            return tab;
+        }
         {
             const mp = tabid.match(/^p\/((npub|nprofile)1[a-z0-9]+|[0-9A-Fa-f]{64})$/);
             if (mp) {
@@ -590,7 +597,7 @@ const Tabsview: FC<{
                 }
             }
         }
-    }, [tabs, tabid])();
+    }, [tabs, tabid, tabzorder])();
 
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
@@ -627,7 +634,7 @@ const Tabsview: FC<{
             noswk!.setHasread({ id: tap.posts[i].id }, true);
         }
         setTabstates(produce(draft => {
-            draft.get(tab.id)!.selected = i;
+            getmk(draft, tab.id, newtabstate).selected = i;
         }));
         setListscrollto({ index: i, toTop });
         textref.current?.scrollTo(0, 0);
@@ -814,7 +821,7 @@ const Tabsview: FC<{
                     if (rp.indexOf(replye) === -1) {
                         rp.unshift(replye);
                     }
-                    setTabstates(produce(draft => { draft.get(tab.id)!.replypath = rp; }));
+                    setTabstates(produce(draft => { getmk(draft, tab.id, newtabstate).replypath = rp; }));
                     const ei = postindex(tap.posts, lp.event!.event!.event);
                     if (ei === null) break;  // TODO: may move tab? what if already closed?
                     onselect(ei);
@@ -1041,14 +1048,12 @@ const Tabsview: FC<{
                         setFlash({ msg: "Cannot close system tabs", bang: true });
                     } else {
                         if (tryclosetab.tid === tab.id && Date.now() < tryclosetab.time + 700) {
-                            // TODO: previous selection, that needs tab activate list.
-                            //       navigator.back may back to prefs, and one more back/fwd creates this tab too...
-                            const ti = tabs.findIndex(t => t.id === tab.id);
                             setTabs(tabs.filter(t => t.id !== tab.id));
                             setTabstates(produce(draft => { draft.delete(tab.id); }));
-                            // normally next but previous if last
-                            const nti = tabs.length - 1 <= ti ? ti - 1 : ti;
-                            navigate(`/tab/${tabs[nti].id}`);
+                            setClosedtabs([tab, ...closedtabs.slice(0, 4)]);
+                            const newzorder = tabzorder.filter(t => t !== tab.id);
+                            setTabzorder(newzorder);
+                            navigate(`/tab/${newzorder[newzorder.length - 1] || tabs[0].id}`);
                         } else {
                             setTryclosetab({ tid: tab.id, time: Date.now() });
                             setFlash({ msg: "One more to close the tab", bang: true });
@@ -1082,7 +1087,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -1133,14 +1138,17 @@ const Tabsview: FC<{
         }
     }, [flash]);
 
-    if (!tab) {
-        // redirect to first
-        navigate(`/tab/${tabs[0].id}`, { replace: true });
-    }
+    useEffect(() => {
+        if (!tab) {
+            // redirect to first
+            navigate(`/tab/${tabs[0].id}`, { replace: true });
+            console.log(tab, tabs[0]);
+        }
+    }, [tab]);
 
     return <>
         <Helmet>
-            <title>{tab?.name} - nosteen</title>
+            <title>{tab?.name || ""} - nosteen</title>
         </Helmet>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default", position: "relative" }}>
@@ -1153,7 +1161,7 @@ const Tabsview: FC<{
                     onScroll={() => {
                         if (!tab) return;
                         setTabstates(produce(draft => {
-                            draft.get(tab.id)!.scroll = listref.current?.scrollTop || 0; // use event arg?
+                            getmk(draft, tab.id, newtabstate).scroll = listref.current?.scrollTop || 0; // use event arg?
                         }));
                     }}
                     scrollTo={listscrollto}
@@ -1215,7 +1223,7 @@ const Tabsview: FC<{
                                 )}
                             </div>
                             {!selev || !profpopping ? null : (() => {
-                                const p = !prof.metadata ? null : jsoncontent(prof.metadata);
+                                const p: MetadataContent = !prof.metadata ? null : jsoncontent(prof.metadata);
                                 return <div
                                     ref={profpopref}
                                     style={{
@@ -1253,6 +1261,10 @@ const Tabsview: FC<{
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.display_name}</div>
                                     <div style={{ textAlign: "right" }}>last updated at (created_at):</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{!prof.metadata ? "?" : timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
+                                    <div style={{ textAlign: "right" }}>picture:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.picture}</div>
+                                    <div style={{ textAlign: "right" }}>banner:</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.banner}</div>
                                     <div style={{ textAlign: "right" }}>website:</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.website}</div>
                                     <div style={{ textAlign: "right" }}>nip05:</div>
