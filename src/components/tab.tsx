@@ -1,11 +1,12 @@
-import { FC, PropsWithChildren } from "react";
-import state from "../state";
 import { useAtom } from "jotai";
+import { CSSProperties, FC, PropsWithChildren } from "react";
+import state from "../state";
 
 const Tab: FC<PropsWithChildren<{
+    style?: CSSProperties;
     active?: boolean;
     onClick?: () => void;
-}>> = ({ active, onClick, children }) => {
+}>> = ({ style, active, onClick, children }) => {
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontUi] = useAtom(state.preferences.fonts.ui);
@@ -22,6 +23,7 @@ const Tab: FC<PropsWithChildren<{
             padding: `${active ? "2px" : "1px"} calc(0.5em + ${active ? "2px" : "0px"}) ${active ? "3px" : "0"}`,
             minHeight: "0",
             font: fontUi,
+            ...style
         }}
         onPointerDown={e => e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onClick && onClick()}
     >{children}</div>;

@@ -1,58 +1,13 @@
 import { produce } from "immer";
 import { useAtom } from "jotai";
 import { generatePrivateKey, getPublicKey, nip19 } from "nostr-tools";
-import { CSSProperties, FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
 import { useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { expectn, rescue } from "../util";
-
-// XXX: lose undo on transform...
-const TextInput: FC<{ value: string; size?: number; placeholder?: string; style?: CSSProperties; onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement | HTMLInputElement>; onChange: (s: string) => void; }> = ({ value, size, placeholder, style, onKeyDown, onChange }) => {
-    const [focus, setFocus] = useState(false);
-    const reft = useRef<HTMLTextAreaElement>(null);
-    const refi = useRef<HTMLInputElement>(null);
-    const m = useMemo(() => value.match(/\n/g), [value]);
-    useEffect(() => {
-        if (focus) {
-            (m ? reft : refi).current?.focus();
-        }
-    }, [focus, m]);
-    return m
-        ? <textarea
-            ref={reft}
-            value={value}
-            style={style}
-            cols={size}
-            rows={m.length + 1}
-            onKeyDown={onKeyDown}
-            onChange={e => onChange(e.target.value)}
-            onFocus={e => setFocus(f => true)}
-            onBlur={e => setFocus(f => false)}
-        />
-        : <input
-            ref={refi}
-            type="text"
-            placeholder={placeholder}
-            value={value}
-            style={style}
-            size={size}
-            onKeyDown={onKeyDown}
-            onChange={e => onChange(e.target.value)}
-            onPaste={e => {
-                const clip = e.clipboardData.getData("text/plain");
-                if (clip.match(/\n/)) {
-                    const el = refi.current!;
-                    const v = el.value;
-                    onChange(v.slice(0, el.selectionStart ?? v.length) + clip + v.slice(el.selectionEnd ?? v.length));
-                    e.preventDefault();
-                }
-            }}
-            onFocus={e => setFocus(f => true)}
-            onBlur={e => setFocus(f => false)}
-        />;
-};
+import { TextInput } from "../components/textinput";
 
 export default () => {
     const mux = useNostrWorker();

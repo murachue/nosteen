@@ -12,6 +12,7 @@ import { Relay } from "../relay";
 import state, { Tabdef, newtabstate } from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
+import { TextInput } from "../components/textinput";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
@@ -513,6 +514,9 @@ const Tabsview: FC<{
     const [author, setAuthor] = useState<MetadataContent | null>(null);
     const [rpauthor, setRpauthor] = useState<MetadataContent | null>(null);
     const [prof, setProf] = useState<{ metadata?: DeletableEvent | null; contacts?: DeletableEvent | null; }>({});
+    const [tabpopping, setTabpopping] = useState(false);
+    const [tabedit, setTabedit] = useState("");
+    const tabpopref = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState("status...");
 
     const relayinfo = useSyncExternalStore(
@@ -737,6 +741,16 @@ const Tabsview: FC<{
                 switch (e.key) {
                     case "Escape": {
                         setEvinfopopping(false);
+                        listref.current?.focus();
+                        return;
+                    }
+                }
+                // return;
+            }
+            if (tabpopping) {
+                switch (e.key) {
+                    case "Escape": {
+                        setTabpopping(false);
                         listref.current?.focus();
                         return;
                     }
@@ -1074,6 +1088,17 @@ const Tabsview: FC<{
                     navigate(`/tab/${id}`);
                     break;
                 }
+                case "t": {
+                    if (!tab) break;
+                    setTabpopping(s => !s);
+                    // overwriting tabedit on closing is redundant but acceptable.
+                    setTabedit(JSON.stringify(typeof tab.filter === "string" ? noswk!.getFilter(tab.filter) : tab.filter, undefined, 1));
+                    break;
+                }
+                case "T": {
+                    // TODO: hashtag manager
+                    break;
+                }
                 case ",": {
                     navigate("/preferences");
                     break;
@@ -1087,7 +1112,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder, tabpopping]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -1095,6 +1120,9 @@ const Tabsview: FC<{
             }
             if (!profpopref.current?.contains(e.nativeEvent.target as any)) {
                 setProfpopping(false);
+            }
+            if (!tabpopref.current?.contains(e.nativeEvent.target as any)) {
+                setTabpopping(false);
             }
             if (!linkpopref.current?.contains(e.nativeEvent.target as any)) {
                 setLinkpop([]);
@@ -1177,12 +1205,42 @@ const Tabsview: FC<{
                 }}>
                     <div style={{ flex: "1", display: "flex", alignItems: "flex-start", overflow: "visible" }}>
                         {tabs.map(t =>
-                            <Tab key={t.name} active={t.id === tab?.id} onClick={() => navigate(`/tab/${t.id}`)}>
-                                {/* TODO: nunreads refresh only on active tab... */}
-                                <div style={{ color: 0 < streams!.getPostStream(t.id)!.nunreads ? "red" : undefined }}>
-                                    {t.name}
+                            <Tab key={t.name} style={{ overflow: "visible", padding: t.id === tab?.id ? `2px 2px 3px` : `1px 0 0` }} active={t.id === tab?.id} onClick={() => navigate(`/tab/${t.id}`)}>
+                                <div style={{ position: "relative", padding: "0 0.5em" }}>
+                                    {/* TODO: nunreads refresh only on active tab... */}
+                                    <div style={{ position: "relative", color: 0 < streams!.getPostStream(t.id)!.nunreads ? "red" : undefined }}>
+                                        {t.name}
+                                    </div>
+                                    {!tabpopping || t.id !== tab?.id ? null : <div ref={tabpopref} style={{
+                                        position: "absolute",
+                                        left: "0",
+                                        bottom: "100%",
+                                        border: "2px outset",
+                                        padding: "3px",
+                                        background: coloruibg,
+                                        color: coloruitext,
+                                        font: fontui,
+                                    }}>
+                                        <div>history:{0 < closedtabs.length ? "" : " (none)"}</div>
+                                        {closedtabs.map(t => <div key={t.id}>{t.name}</div>)}
+                                        <hr style={{ margin: "2px 0" }} />
+                                        <div>{t.name}</div>
+                                        <TextInput
+                                            value={tabedit}
+                                            size={71}
+                                            wrap={"off"}
+                                            style={{
+                                                font: fontui,
+                                                fontFamily: "monospace",
+                                                maxHeight: "5em",
+                                            }}
+                                            onChange={text => { setTabedit(text); }} />
+                                        <div>open new</div>
+                                        <div style={{ textDecoration: typeof t.filter === "string" ? "line-through" : undefined }}>overwrite</div>
+                                    </div>}
                                 </div>
-                            </Tab>)}
+                            </Tab>
+                        )}
                     </div>
                     <div>
                         <Link to="/preferences" style={{
