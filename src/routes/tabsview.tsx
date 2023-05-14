@@ -1268,7 +1268,13 @@ const Tabsview: FC<{
                                     {/* <div style={{ textAlign: "right" }}>follow/unfollow, show TL, block/unblock</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>desc...</div>
-                                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", maxHeight: "3em", /* ugh... */ display: "-webkit-box", WebkitLineClamp: "3", WebkitBoxOrient: "vertical" }}>{p?.about}</div>
+                                    <div style={{
+                                        overflow: "hidden", /* textOverflow: "ellipsis", does not work for multiline... */
+                                        maxHeight: "3.7em",
+                                        // nasty prefix hell
+                                        maskImage: "linear-gradient(to bottom, #000f 3em, #0000 3.5em)",
+                                        WebkitMaskImage: "linear-gradient(to bottom, #000f 3em, #0000 3.5em)",
+                                    }}>{p?.about}</div>
                                     {/* <div style={{ textAlign: "right" }}>recent note</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>followings, followers:</div>
