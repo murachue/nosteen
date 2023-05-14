@@ -173,6 +173,8 @@ export class MuxPool {
         });
 
         const add = (relay: string) => (async () => {
+            if (killed) return;
+
             let eosed = false;
             function handleEose() {
                 if (eosed) return;
