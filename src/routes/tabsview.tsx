@@ -564,7 +564,7 @@ const Tabsview: FC<{
                     // TODO: relay from nprofile
                     const newt: Tabdef = {
                         id: `p/${pk}`,
-                        name: pk.slice(0, 8),
+                        name: `p/${pk.slice(0, 8)}`,
                         filter: [{ authors: [pk], kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 50 }],
                     };
                     setTabs([...tabs, newt]);
@@ -591,7 +591,7 @@ const Tabsview: FC<{
                     // TODO: relay from nevent
                     const newt: Tabdef = {
                         id: `e/${nid}`,
-                        name: nid.slice(0, 8),
+                        name: `e/${nid.slice(0, 8)}`,
                         filter: [{ ids: [nid], /* kinds: [Kinds.post], */ limit: 1 }],
                     };
                     setTabs([...tabs, newt]);
@@ -1205,7 +1205,7 @@ const Tabsview: FC<{
                 }}>
                     <div style={{ flex: "1", display: "flex", alignItems: "flex-start", overflow: "visible" }}>
                         {tabs.map(t =>
-                            <Tab key={t.name} style={{ overflow: "visible", padding: t.id === tab?.id ? `2px 2px 3px` : `1px 0 0` }} active={t.id === tab?.id} onClick={() => navigate(`/tab/${t.id}`)}>
+                            <Tab key={t.id} style={{ overflow: "visible", padding: t.id === tab?.id ? `2px 2px 3px` : `1px 0 0` }} active={t.id === tab?.id} onClick={() => navigate(`/tab/${t.id}`)}>
                                 <div style={{ position: "relative", padding: "0 0.5em" }}>
                                     {/* TODO: nunreads refresh only on active tab... */}
                                     <div style={{ position: "relative", color: 0 < streams!.getPostStream(t.id)!.nunreads ? "red" : undefined }}>
@@ -1224,7 +1224,11 @@ const Tabsview: FC<{
                                         <div>history:{0 < closedtabs.length ? "" : " (none)"}</div>
                                         {closedtabs.map(t => <div key={t.id}>{t.name}</div>)}
                                         <hr style={{ margin: "2px 0" }} />
-                                        <div>{t.name}</div>
+                                        <div><input
+                                            value={t.name}
+                                            style={{ font: fontui }}
+                                            onChange={e => setTabs(produce<Tabdef[]>(draft => { draft.find(t => t.id === tab?.id)!.name = e.target.value; }))}
+                                        /></div>
                                         <TextInput
                                             value={tabedit}
                                             size={71}
