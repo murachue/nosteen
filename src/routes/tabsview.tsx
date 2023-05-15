@@ -1064,7 +1064,7 @@ const Tabsview: FC<{
                         if (tryclosetab.tid === tab.id && Date.now() < tryclosetab.time + 700) {
                             setTabs(tabs.filter(t => t.id !== tab.id));
                             setTabstates(produce(draft => { draft.delete(tab.id); }));
-                            setClosedtabs([tab, ...closedtabs.slice(0, 4)]);
+                            setClosedtabs([tab, ...closedtabs.filter(t => t.id !== tab.id).slice(0, 4)]);  // "unreads" etc. may dupe
                             const newzorder = tabzorder.filter(t => t !== tab.id);
                             setTabzorder(newzorder);
                             navigate(`/tab/${newzorder[newzorder.length - 1] || tabs[0].id}`);
@@ -1222,7 +1222,7 @@ const Tabsview: FC<{
                                         font: fontui,
                                     }}>
                                         <div>history:{0 < closedtabs.length ? "" : " (none)"}</div>
-                                        {closedtabs.map(t => <div key={t.id}>{t.name}</div>)}
+                                        {[...closedtabs].reverse().map(t => <div key={t.id}>{t.name}</div>)}
                                         <hr style={{ margin: "2px 0" }} />
                                         <div><input
                                             value={t.name}

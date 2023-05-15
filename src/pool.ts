@@ -172,9 +172,10 @@ export class MuxPool {
             },
         });
 
-        const add = (relay: string) => (async () => {
+        const add = (urelay: string) => (async () => {
             if (killed) return;
 
+            const relay = utils.normalizeURL(urelay);
             let eosed = false;
             function handleEose() {
                 if (eosed) return;

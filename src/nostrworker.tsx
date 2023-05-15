@@ -202,7 +202,7 @@ export class FetchId extends FetchPred {
         super(uncached);
         this.ids = [id];
     }
-    filter() { return [{ ids: this.ids }]; }
+    filter() { return [{ ids: this.ids, limit: this.ids.length }]; }
     merge(other: FetchPred) {
         if (!(other instanceof FetchId)) return null;
         const p = new FetchId(this.ids[0]);
@@ -216,7 +216,7 @@ export class FetchProfile extends FetchPred {
         super(uncached);
         this.pks = [pk];
     }
-    filter() { return [{ authors: this.pks, kinds: [Kinds.profile] }]; };
+    filter() { return [{ authors: this.pks, kinds: [Kinds.profile], limit: this.pks.length }]; };
     merge(other: FetchPred) {
         if (!(other instanceof FetchProfile)) return null;
         const p = new FetchProfile(this.pks[0]);
@@ -230,7 +230,7 @@ export class FetchContacts extends FetchPred {
         super(uncached);
         this.pks = [pk];
     }
-    filter() { return [{ authors: this.pks, kinds: [Kinds.contacts] }]; };
+    filter() { return [{ authors: this.pks, kinds: [Kinds.contacts], limit: this.pks.length }]; };
     merge(other: FetchPred) {
         if (!(other instanceof FetchContacts)) return null;
         const p = new FetchContacts(this.pks[0]);
@@ -242,7 +242,7 @@ export class FetchFollowers extends FetchPred {
     constructor(/* private */public pk: string, uncached?: boolean) {
         super(uncached);
     }
-    filter() { return [{ "#p": [this.pk], kinds: [Kinds.contacts] }]; };
+    filter() { return [{ "#p": [this.pk], kinds: [Kinds.contacts] /* no limit... nostream? */ }]; };
     merge(other: FetchPred) {
         // if (!(other instanceof FetchFollowers)) return null;
         return null;
@@ -341,7 +341,7 @@ export class NostrWorker {
             // XXX: sub on here is ugly
             this.profsid = this.mux.sub(
                 [...this.relays.values()].filter(r => r.read).map(r => r.url),
-                [{ authors: [pubkey], kinds: [Kinds.contacts] }],
+                [{ authors: [pubkey], kinds: [Kinds.contacts], limit: 1 /* for each relay. some relays (ex. nostream) notice "limit must be <=500" */ }],
                 { skipVerification: true },
             );
             this.profsid.on("event", receives => this.enqueueVerify(receives, r => {

@@ -97,14 +97,6 @@ const idgenerator = () => {
     };
 };
 
-const newListeners = (): { [TK in keyof RelayEvent]: RelayEvent[TK][] } => ({
-    connect: [],
-    disconnect: [],
-    error: [],
-    notice: [],
-    auth: []
-});
-
 export function relayInit(
     url: string,
     options: {
@@ -116,8 +108,14 @@ export function relayInit(
     let { listTimeout = 3000, getTimeout = 3000, countTimeout = 3000 } = options;
 
     let ws: WebSocket | undefined;
+    const listeners: { [TK in keyof RelayEvent]: RelayEvent[TK][] } = {
+        connect: [],
+        disconnect: [],
+        error: [],
+        notice: [],
+        auth: []
+    };
     let openSubs: { [id: string]: { filters: Filter[]; } & SubscriptionOptions; } = {};
-    let listeners = newListeners();
     let subListeners: {
         [subid: string]: { [TK in keyof SubEvent]: SubEvent[TK][] };
     } = {};
@@ -129,7 +127,7 @@ export function relayInit(
     function reset() {
         connectionPromise = undefined;
         openSubs = {};
-        listeners = newListeners();
+        // XXX: sub/pub listeners also must listen for disconnect...
         subListeners = {};
         pubListeners = {};
         idgen = idgenerator();
@@ -151,13 +149,13 @@ export function relayInit(
                 resolve();
             };
             ws.onerror = (ev) => {
-                reset();
                 listeners.error.forEach(cb => cb(ev));
+                reset();
                 reject();
             };
             ws.onclose = async () => {
-                reset();
                 listeners.disconnect.forEach(cb => cb());
+                reset();
             };
 
             const incomingMessageQueue: string[] = [];
@@ -245,6 +243,26 @@ export function relayInit(
         return connectionPromise;
     }
 
+    const on = <T extends keyof RelayEvent, U extends RelayEvent[T]>(
+        type: T,
+        cb: U
+    ): void => {
+        listeners[type].push(cb);
+        if (type === 'connect' && ws?.readyState === 1) {
+            // i would love to know why we need this
+            ; (cb as () => void)();
+        }
+    };
+
+    const off = <T extends keyof RelayEvent, U extends RelayEvent[T]>(
+        type: T,
+        cb: U
+    ): void => {
+        let index = listeners[type].indexOf(cb);
+        if (index !== -1)
+            listeners[type].splice(index, 1);
+    };
+
     function connected() {
         return ws?.readyState === WebSocket.OPEN;
     }
@@ -255,7 +273,7 @@ export function relayInit(
     }
 
     async function trySend(params: [string, ...any], onerror: (err: unknown) => void | Promise<void>) {
-        let msg = JSON.stringify(params);
+        const msg = JSON.stringify(params);
         if (!connected()) {
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (!connected()) {
@@ -279,7 +297,8 @@ export function relayInit(
             id = idgen.get()
         }: SubscriptionOptions = {}
     ): Sub => {
-        let subid = id;
+        const subid = id;
+        let killed = false;
 
         openSubs[subid] = {
             id: subid,
@@ -294,6 +313,10 @@ export function relayInit(
             eose: [],
             error: []
         };
+        const disconhandler = () => {
+            killed = true;
+        };
+        on("disconnect", disconhandler);
         trySend([verb, subid, ...filters], err => {
             subListeners[subid].error.forEach(cb => cb(err));
             delete openSubs[subid];
@@ -302,18 +325,26 @@ export function relayInit(
         });
 
         return {
-            sub: (newFilters, newOpts = {}) =>
-                sub(newFilters || filters, {
+            sub: (newFilters, newOpts = {}) => {
+                if (killed) {
+                    throw new Error(`subscription already killed: ${subid} ${url}`);
+                }
+                killed = true;
+                off("disconnect", disconhandler);
+                return sub(newFilters || filters, {
                     skipVerification: newOpts.skipVerification ?? skipVerification,
                     id: subid
                     // no verb.
-                }),
+                });
+            },
             unsub: () => {
                 const subLn = subListeners[subid];
                 if (!subLn) {
                     console.error(new Error("unsub could not find subListeneres?"));
                     return;
                 }
+                killed = true;
+                off("disconnect", disconhandler);
                 const errlisteners = subLn.error; // keep before delete
                 delete openSubs[subid];
                 delete subListeners[subid];
@@ -341,7 +372,7 @@ export function relayInit(
 
     function _publishEvent(event: Event, type: string): Pub {
         if (!event.id) throw new Error(`event ${event} has no id`);
-        let id = event.id;
+        const id = event.id;
 
         trySend([type, event], err => {
             const listeners = pubListeners[id];
@@ -358,9 +389,9 @@ export function relayInit(
                 pubListeners[id][event].push(listener);
             },
             off: (event, listener) => {
-                let listeners = pubListeners[id];
+                const listeners = pubListeners[id];
                 if (!listeners) return;
-                let idx = listeners[event].indexOf(listener);
+                const idx = listeners[event].indexOf(listener);
                 if (idx >= 0) listeners[event].splice(idx, 1);
             },
             // for the case of a relay does not support NIP-20.
@@ -373,23 +404,8 @@ export function relayInit(
     return {
         url,
         sub,
-        on: <T extends keyof RelayEvent, U extends RelayEvent[T]>(
-            type: T,
-            cb: U
-        ): void => {
-            listeners[type].push(cb);
-            if (type === 'connect' && ws?.readyState === 1) {
-                // i would love to know why we need this
-                ; (cb as () => void)();
-            }
-        },
-        off: <T extends keyof RelayEvent, U extends RelayEvent[T]>(
-            type: T,
-            cb: U
-        ): void => {
-            let index = listeners[type].indexOf(cb);
-            if (index !== -1) listeners[type].splice(index, 1);
-        },
+        on,
+        off,
         list: (filters: Filter[], opts?: SubscriptionOptions): Promise<Event[]> =>
             new Promise((resolve, reject) => {
                 const s = sub(filters, opts);
