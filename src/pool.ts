@@ -42,6 +42,7 @@ export type MuxSub = {
 type MuxPubEvent = {
     ok: (receives: MuxedOk[]) => void;
     failed: (failure: MuxedError) => void;
+    forget: () => void;
 };
 export type MuxPub = {
     on: ListenerModifier<MuxPubEvent>;
@@ -52,7 +53,7 @@ export type MuxPub = {
 // TODO: reconnect with exp-time
 export class MuxPool {
     private _conn: { [url: string]: Relay; };
-    private subListeners: ListenersContainer<MuxEvent> = {
+    private listeners: ListenersContainer<MuxEvent> = {
         health: [],
     };
 
@@ -80,9 +81,9 @@ export class MuxPool {
                 getTimeout: this.getTimeout * 0.9,
                 listTimeout: this.getTimeout * 0.9
             });
-            r.on('connect', () => this.subListeners.health.forEach(cb => cb({ relay: r, event: 'connected' })));
-            r.on('error', reason => this.subListeners.health.forEach(cb => cb({ relay: r, event: 'disconnected', reason })));
-            r.on('disconnect', () => this.subListeners.health.forEach(cb => cb({ relay: r, event: 'disconnected' })));
+            r.on('connect', () => this.listeners.health.forEach(cb => cb({ relay: r, event: 'connected' })));
+            r.on('error', reason => this.listeners.health.forEach(cb => cb({ relay: r, event: 'disconnected', reason })));
+            r.on('disconnect', () => this.listeners.health.forEach(cb => cb({ relay: r, event: 'disconnected' })));
             this._conn[nm] = r;
         }
 
@@ -92,11 +93,11 @@ export class MuxPool {
     }
 
     on: ListenerModifier<MuxEvent> = (event, listener) => {
-        this.subListeners[event].push(listener);
+        this.listeners[event].push(listener);
     };
     off: ListenerModifier<MuxEvent> = (event, listener) => {
-        let idx = this.subListeners[event].indexOf(listener);
-        if (idx >= 0) this.subListeners[event].splice(idx, 1);
+        let idx = this.listeners[event].indexOf(listener);
+        if (idx >= 0) this.listeners[event].splice(idx, 1);
     };
 
     sub(relays: string[], filters: Filter[], opts?: MuxSubscriptionOptions): MuxSub {
@@ -329,60 +330,63 @@ export class MuxPool {
     publish(relays: string[], event: Event): MuxPub {
         // we maintain listeners ourself for both make-easier and quick-return without switching microtask.
         let pubListeners: Map<string, ListenersContainer<MuxPubEvent>> = new Map();
-        let unlinker = () => { };  // hacky...
 
-        relays.forEach(relay => (async () => {
-            try {
-                const r = await this.ensureRelay(relay);
-                const pub = r.publish(event);
-                const okhandler = (reason: string): void => {
-                    const listeners = pubListeners.get(relay);
-                    if (listeners) {
-                        listeners.ok.forEach(cb => cb([{ relay: r, reason }]));
-                        pubListeners.delete(relay);
-                    }
-                    if (pubListeners.size === 0) {
-                        unlinker();
-                    }
-                };
-                const failedhandler = (reason: unknown): void => {
-                    const listeners = pubListeners.get(relay);
-                    if (listeners) {
-                        listeners.failed.forEach(cb => cb({ relay, reason }));
-                        pubListeners.delete(relay);
-                    }
-                    if (pubListeners.size === 0) {
-                        unlinker();
-                    }
-                };
-                unlinker = () => {
-                    pub.off('ok', okhandler);
-                    pub.off('failed', failedhandler);
-                };
-                pub.on('ok', okhandler);
-                pub.on('failed', failedhandler);
-            } catch (reason) {
-                pubListeners.forEach(lns => lns.failed.forEach(cb => cb({ relay, reason })));
-            }
-        })().catch(console.error));
+        relays.forEach(relay => {
+            const plns: ListenersContainer<MuxPubEvent> = { ok: [], failed: [], forget: [] };
+            pubListeners.set(relay, plns);
+            (async () => {
+                try {
+                    const r = await this.ensureRelay(relay);
+                    const pub = r.publish(event);
+                    let unlinker: (() => void) | undefined;  // hacky...
+                    const okhandler = (reason: string): void => {
+                        const listeners = pubListeners.get(relay);
+                        if (listeners) {
+                            listeners.ok.forEach(cb => cb([{ relay: r, reason }]));
+                            pubListeners.delete(relay);
+                        }
+                        unlinker?.();
+                    };
+                    const failedhandler = (reason: unknown): void => {
+                        const listeners = pubListeners.get(relay);
+                        if (listeners) {
+                            listeners.failed.forEach(cb => cb({ relay, reason }));
+                            pubListeners.delete(relay);
+                        }
+                        unlinker?.();
+                    };
+                    unlinker = () => {
+                        pub.off('ok', okhandler);
+                        pub.off('failed', failedhandler);
+
+                        const ls = plns.forget;
+                        let idx = ls.indexOf(unlinker!);
+                        if (idx >= 0) ls.splice(idx, 1);
+                    };
+                    pub.on('ok', okhandler);
+                    pub.on('failed', failedhandler);
+                    plns.forget.push(unlinker);
+                } catch (reason) {
+                    pubListeners.forEach(lns => lns.failed.forEach(cb => cb({ relay, reason })));
+                }
+            })().catch(console.error);
+        });
 
         return {
             on(event, listener) {
                 // XXX: on()'ed after complete will not be invoked.
-                relays.forEach(async (relay, i) => {
-                    getmk(pubListeners, relay, () => ({ ok: [], failed: [] }))[event].push(listener);
-                });
+                pubListeners.forEach(lns => lns[event].push(listener));
             },
             off(event, listener) {
-                relays.forEach(async (relay, i) => {
-                    const lns = getmk(pubListeners, relay, () => ({ ok: [], failed: [] }))[event];
-                    let idx = lns.indexOf(listener);
-                    if (idx >= 0) lns.splice(idx, 1);
+                pubListeners.forEach(lns => {
+                    const ls = lns[event];
+                    let idx = ls.indexOf(listener);
+                    if (idx >= 0) ls.splice(idx, 1);
                 });
             },
             forget() {
+                pubListeners.forEach(lns => lns.forget.forEach(cb => cb()));
                 pubListeners.clear();
-                unlinker();
             }
         };
     }
