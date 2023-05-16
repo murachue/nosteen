@@ -265,7 +265,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
 const timefmt0 = (v: number, t: string) => v.toString().padStart(t.length, "0");
 const timefmt = (date: Date, fmt: string) => {
     let str = "";
-    const re = /Y+|M+|D+|h+|m+|s+|[^YMDhms]+/g;
+    const re = /Y+|M+|D+|h+|m+|s+|S+|[^YMDhmsS]+/g;
     while (true) {
         const grp = re.exec(fmt);
         if (!grp) return str;
@@ -295,12 +295,36 @@ const timefmt = (date: Date, fmt: string) => {
                 str += timefmt0(date.getSeconds(), token);
                 break;
             }
+            case "S": {
+                str += Math.floor(date.getMilliseconds() / 1000 * (10 ** token.length));
+                break;
+            }
             default: {
                 str += token;
                 break;
             }
         }
     }
+};
+
+const reltime = (from: number, to: number) => {
+    const bidelta = to - from;
+    const delta = Math.abs(bidelta);
+    return (bidelta < 0 ? "-" : "+") + (() => {
+        if (delta < 1000) {
+            return `${delta}ms`;
+        } else if (delta < 10 * 1000) {
+            return `${(delta / 1000).toFixed(2)}s`;
+        } else if (delta < 60 * 1000) {
+            return `${(delta / 1000).toFixed(1)}s`;
+        } else if (delta < 60 * 60 * 1000) {
+            return `${(delta / 60 / 1000).toFixed(1)}m`;
+        } else if (delta < 24 * 60 * 60 * 1000) {
+            return `${(delta / 60 / 60 / 1000).toFixed(1)}h`;
+        } else {
+            return `${(delta / 24 / 60 / 60 / 1000).toFixed(1)}d`;
+        }
+    })();
 };
 
 class PostStreamWrapper {
@@ -1509,7 +1533,7 @@ const Tabsview: FC<{
                                 if (!selpost) return undefined;
 
                                 const rev = selpost.event!.event!;
-                                const froms = [...rev.receivedfrom.values()].map(r => r.url);
+                                const froms = [...rev.receivedfrom.keys()].map(r => r.url);
                                 const ev = rev.event;
                                 return <div
                                     ref={evinfopopref}
@@ -1523,16 +1547,27 @@ const Tabsview: FC<{
                                         border: "2px outset",
                                         background: coloruibg,
                                         color: coloruitext,
-                                        gridTemplateColumns: "max-content 20em",
+                                        gridTemplateColumns: "max-content 25em",
                                         columnGap: "0.5em",
                                     }}
                                 >
-                                    <div style={{ textAlign: "right" }}>received from:</div><div>
-                                        {[...rev.receivedfrom.values()].map(r => (<div key={r.url}>{r.url}</div>))}
+                                    <div style={{ textAlign: "right" }}>seen on:</div>
+                                    <div>
+                                        {(() => {
+                                            const rf = [...rev.receivedfrom.entries()].sort((a, b) => a[1] - b[1]);
+                                            const catms = ev.created_at * 1000;
+                                            const i0 = bsearchi(rf, r => catms <= r[1]);
+                                            const i = rf.length <= i0 ? 0 : i0;  // choose first if event is in future.
+                                            const rfirst = rf[i];
+                                            return rf.map(r => <div key={r[0].url} style={{ display: "flex", flexDirection: "row" }}>
+                                                <div key={`u:${r[0].url}`} style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", flex: "1" }}>{r[0].url}</div>
+                                                <div key={`a:${r[0].url}`} style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{r === rfirst ? timefmt(new Date(r[1]), "YYYY-MM-DD hh:mm:ss.SSS") : reltime(rfirst[1], r[1])}</div>
+                                            </div>);
+                                        })()}
                                     </div>
                                     <div style={{ textAlign: "right" }}>note id:</div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{ev.id}</div>
                                     <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{nip19.noteEncode(ev.id)}</div>
-                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: froms })}</div>
+                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: [froms[0]] })}</div>
                                     <div style={{ textAlign: "right" }}>json:</div><div style={{ overflow: "hidden", whiteSpace: "pre", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{[
                                         selpost.event!.event!.event,
                                         selpost.event?.deleteevent?.event,

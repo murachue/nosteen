@@ -3,8 +3,7 @@ import { Relay } from "./relay";
 
 export type ReceivedEvent = {
     event: Event;
-    receivedfrom: Set<Relay>;
-    lastreceivedat: number;
+    receivedfrom: Map<Relay, number>;
 };
 
 export type DeletableEvent = {

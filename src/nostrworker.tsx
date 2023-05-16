@@ -895,7 +895,7 @@ export class NostrWorker {
                     //                         same sig: treat other properties also same, use VERIFIED event.
                     //                         diff sig: treat as bad. (same id can have other sig though...)
                     if (event.sig === dev.deleteevent.event.sig) {
-                        dev.deleteevent.receivedfrom.add(relay);
+                        getmk(dev.deleteevent.receivedfrom, relay, () => receivedAt);
                         ok.add(dev); // update my tab too
                     } else {
                         ng.push(event);
@@ -955,11 +955,9 @@ export class NostrWorker {
 
                     tdev.deleteevent ||= {
                         event,
-                        receivedfrom: new Set(),
-                        lastreceivedat: 0,
+                        receivedfrom: new Map(),
                     };
-                    tdev.deleteevent.receivedfrom.add(relay);
-                    tdev.deleteevent.lastreceivedat = receivedAt;
+                    getmk(tdev.deleteevent.receivedfrom, relay, () => receivedAt);
 
                     // delete event is for multi events...
                     // put to okrecv? but not kind6 subevent??
@@ -974,7 +972,7 @@ export class NostrWorker {
                     //                         same sig: treat other properties also same, use VERIFIED event.
                     //                         diff sig: treat as bad. (same id can have other sig though...)
                     if (event.sig === dev.event.event.sig) {
-                        dev.event.receivedfrom.add(relay);
+                        getmk(dev.event.receivedfrom, relay, () => receivedAt);
                         ok.add(dev); // update my tab too
                     } else {
                         ng.push(event);
@@ -997,11 +995,9 @@ export class NostrWorker {
 
                 tdev.event ||= {
                     event,
-                    receivedfrom: new Set(),
-                    lastreceivedat: 0,
+                    receivedfrom: new Map(),
                 };
-                tdev.event.receivedfrom.add(relay);
-                tdev.event.lastreceivedat = receivedAt;
+                getmk(tdev.event.receivedfrom, relay, () => receivedAt);
 
                 if (tdev.deleteevent && tdev.deleteevent.event.pubkey !== event.pubkey) {
                     // reject liar on first receive. nullify the delete event.
@@ -1038,7 +1034,7 @@ export class NostrWorker {
                         //                         same sig: treat other properties also same, use VERIFIED event.
                         //                         diff sig: treat as bad. (same id can have other sig though...)
                         if (subevent.sig === sdev.event.event.sig) {
-                            sdev.event.receivedfrom.add(relay);
+                            getmk(sdev.event.receivedfrom, relay, () => receivedAt);
                             ok.add(sdev); // update my tab too
                         }
                         // else badrecv?
@@ -1060,11 +1056,9 @@ export class NostrWorker {
 
                     stdev.event ||= {
                         event: subevent,
-                        receivedfrom: new Set(),
-                        lastreceivedat: 0,
+                        receivedfrom: new Map(),
                     };
-                    stdev.event.receivedfrom.add(relay); // ?
-                    stdev.event.lastreceivedat = receivedAt;
+                    getmk(stdev.event.receivedfrom, relay, () => receivedAt);  // really received from?
 
                     if (stdev.deleteevent && stdev.deleteevent.event.pubkey !== subevent.pubkey) {
                         // reject liar on first receive. nullify the delete event.
