@@ -1,13 +1,23 @@
 import { produce } from "immer";
 import { useAtom } from "jotai";
 import { generatePrivateKey, getPublicKey, nip19 } from "nostr-tools";
-import { useCallback, useState } from "react";
+import { FC, useCallback, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
+import TextInput from "../components/textinput";
 import { useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { expectn, rescue } from "../util";
-import { TextInput } from "../components/textinput";
+
+const MultiInput: FC<Omit<Parameters<typeof TextInput>[0], "value" | "onChange"> & {
+    value: string | string[];
+    onChange: (lines: string[]) => void;
+}> =
+    ({ value, onChange, ...props }) => <TextInput
+        {...props}
+        value={Array.isArray(value) ? value.join("\n") : value}
+        onChange={text => onChange(text.split("\n"))}
+    />;
 
 export default () => {
     const mux = useNostrWorker();
@@ -76,12 +86,12 @@ export default () => {
     ]);
     const [muteRegexlocal, setMuteRegexlocal] = useState(prefMuteRegexlocal.map(pattern => ({ pattern, added: false, removed: false })));
 
-    const [url, setUrl] = useState("");
+    const [url, setUrl] = useState([""]);
     const [npub, setNpub] = useState(normb32(prefaccount?.pubkey || "", "npub"));
     const [nsec, setNsec] = useState(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec"));
     const [nsecmask, setNsecmask] = useState(true);
-    const [mutepk, setMutepk] = useState("");
-    const [mutepat, setMutepat] = useState("");
+    const [mutepk, setMutepk] = useState([""]);
+    const [mutepat, setMutepat] = useState([""]);
 
     const navigate = useNavigate();
 
@@ -116,14 +126,17 @@ export default () => {
                     }));
                 }}>{rly.removed ? "Undo" : "Remove"}</button>
             </>)}
-            <div style={{ display: "flex" }}><input type="text" placeholder="wss://..." /* pattern="^wss?://.+" */ value={url} onChange={e => setUrl(e.target.value)} style={{ flex: "1" }} /></div>
+            <div style={{ display: "flex" }}>
+                <MultiInput placeholder="wss://..." value={url} onChange={lines => setUrl(lines)} style={{ flex: "1" }} />
+            </div>
             <div>
-                <button style={{ width: "100%" }} disabled={!/^wss?:\/\/.+/.exec(url)} onClick={e => {
+                <button style={{ width: "100%" }} disabled={!url.every(url => /^wss?:\/\/.+/.exec(url))} onClick={e => {
                     setRelays(produce(draft => {
-                        if (draft.find(r => r.url === url)) return;
-                        draft.push({ url, read: true, write: true, public: true, added: true, removed: false });
+                        draft.push(...url
+                            .filter(url => !draft.find(r => r.url === url))
+                            .map(url => ({ url, read: true, write: true, public: true, added: true, removed: false })));
                     }));
-                    setUrl("");
+                    setUrl([""]);
                 }}>Add</button>
             </div>
         </div>
@@ -258,18 +271,18 @@ export default () => {
                 </div>
             </>)}
             <div>
-                <TextInput value={mutepk} placeholder="npub or hex..." style={{ fontFamily: "monospace" }} size={64} onChange={s => {
-                    setMutepk(s.split("\n").map(s => normb32(s, "npub")).join("\n"));
+                <MultiInput value={mutepk} placeholder="npub or hex..." style={{ fontFamily: "monospace" }} size={64} onChange={s => {
+                    setMutepk(s.map(s => normb32(s, "npub")));
                 }} />
             </div>
             <div style={{ marginLeft: "1em", display: "flex" }}>
-                <button style={{ flex: 1 }} disabled={mutepk.split("\n").some(p => !expectn(p, "npub"))} onClick={e => setMuteUsers(produce(draft => {
-                    const pks = mutepk.split("\n").filter(p => !draft.find(r => r.pk === p));
+                <button style={{ flex: 1 }} disabled={mutepk.some(p => !expectn(p, "npub"))} onClick={e => setMuteUsers(produce(draft => {
+                    const pks = mutepk.filter(p => !draft.find(r => r.pk === p));
                     if (pks.length === 0) {
                         return;
                     }
                     draft.push(...pks.map(pk => ({ pk, scope: "private", added: true } as const)));
-                    setMutepk("");
+                    setMutepk([""]);
                 }))}>add</button>
             </div>
         </div>
@@ -296,16 +309,16 @@ export default () => {
                 </div>
             </>)}
             <div>
-                <TextInput value={mutepat} placeholder="regex..." style={{ fontFamily: "monospace" }} size={50} onChange={s => setMutepat(s)} />
+                <MultiInput value={mutepat} placeholder="regex..." style={{ fontFamily: "monospace" }} size={50} onChange={s => setMutepat(s)} />
             </div>
             <div style={{ marginLeft: "1em", display: "flex" }}>
-                <button style={{ flex: 1 }} disabled={mutepat.split("\n").some(s => s === "")} onClick={e => setMuteRegexlocal(produce(draft => {
-                    const rs = mutepat.split("\n").filter(mp => !draft.find(r => r.pattern === mp));
+                <button style={{ flex: 1 }} disabled={mutepat.some(s => s === "")} onClick={e => setMuteRegexlocal(produce(draft => {
+                    const rs = mutepat.filter(mp => !draft.find(r => r.pattern === mp));
                     if (rs.length === 0) {
                         return;
                     }
                     draft.push(...rs.map(r => ({ pattern: r, added: true, removed: false } as const)));
-                    setMutepat("");
+                    setMutepat([""]);
                 }))}>add</button>
             </div>
         </div>

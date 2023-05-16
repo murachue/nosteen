@@ -242,7 +242,7 @@ export class FetchFollowers extends FetchPred {
     constructor(/* private */public pk: string, uncached?: boolean) {
         super(uncached);
     }
-    filter() { return [{ "#p": [this.pk], kinds: [Kinds.contacts] /* no limit... nostream? */ }]; };
+    filter() { return [{ "#p": [this.pk], kinds: [Kinds.contacts] /* no limit... nostr-filter? */ }]; };
     merge(other: FetchPred) {
         // if (!(other instanceof FetchFollowers)) return null;
         return null;
@@ -341,7 +341,7 @@ export class NostrWorker {
             // XXX: sub on here is ugly
             this.profsid = this.mux.sub(
                 [...this.relays.values()].filter(r => r.read).map(r => r.url),
-                [{ authors: [pubkey], kinds: [Kinds.contacts], limit: 1 /* for each relay. some relays (ex. nostream) notice "limit must be <=500" */ }],
+                [{ authors: [pubkey], kinds: [Kinds.contacts], limit: 1 /* for each relay. some relays (ex. nostr-filter) notice "limit must be <=500" */ }],
                 { skipVerification: true },
             );
             this.profsid.on("event", receives => this.enqueueVerify(receives, r => {

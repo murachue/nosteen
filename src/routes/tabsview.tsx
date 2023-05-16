@@ -12,7 +12,7 @@ import { Relay } from "../relay";
 import state, { Tabdef, newtabstate } from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
-import { TextInput } from "../components/textinput";
+import TextInput from "../components/textinput";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
@@ -518,7 +518,8 @@ const Tabsview: FC<{
     const [tabnameedit, setTabnameedit] = useState<string | null>(null);
     const [tabedit, setTabedit] = useState<string>("");
     const tabpopref = useRef<HTMLDivElement>(null);
-    const [tabpopsel, setTabpopsel] = useState(0);
+    const [tabpopsel, setTabpopsel] = useState(-999);
+    const [tabpopseldelay, setTabpopseldelay] = useState(-999);  // FIXME: SUPER hacky
     const tabpopselref = useRef<HTMLDivElement>(null);
     const tabnameeditref = useRef<HTMLInputElement>(null);
     const [status, setStatus] = useState("status...");
@@ -658,11 +659,14 @@ const Tabsview: FC<{
         el.focus();
     }, [linksel]);  // !!
     useEffect(() => {
+        // FIXME: SUPER hacky
+        setTabpopseldelay(tabpopsel);
+    }, [tabpopsel]);
+    useEffect(() => {
         const el = tabpopselref.current;
         if (!el) return;
-        // FIXME: it steals focus from tabedit when UI updates (ex. note arriving)
         el.focus();
-    }, [tabpopselref.current]);
+    }, [tabpopseldelay]);  // !!!!
     useEffect(() => {
         const el = tabnameeditref.current;
         if (!el) return;
@@ -690,8 +694,11 @@ const Tabsview: FC<{
             return;
         }
         setClosedtabs(produce(draft => { draft.splice(tabpopsel - 1, 1); }));
+        setTabpopping(false);
+        setTabpopsel(-999);
         setTabs(tabs => [...tabs, t]);
         navigate(`/tab/${t.id}`);
+        listref.current?.focus();
     }, [closedtabs, tabpopsel]);
     useEffect(() => {
         setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -709,6 +716,7 @@ const Tabsview: FC<{
                 switch (e.key) {
                     case "Escape": {
                         setTabpopping(false);
+                        setTabpopsel(-999);
                         listref.current?.focus();
                         break;
                     }
@@ -729,14 +737,14 @@ const Tabsview: FC<{
                             setTabnameedit(tab!.name);
                         } else if (tabpopsel === -1) {
                             setTabpopping(false);
+                            setTabpopsel(-999);
                             listref.current?.focus();
                         } else if (tabpopsel === -2) {
                             setTabpopping(false);
+                            setTabpopsel(-999);
                             listref.current?.focus();
                         } else {
                             restoretab();
-                            setTabpopping(false);
-                            listref.current?.focus();
                         }
                         break;
                     }
@@ -804,16 +812,6 @@ const Tabsview: FC<{
                 switch (e.key) {
                     case "Escape": {
                         setEvinfopopping(false);
-                        listref.current?.focus();
-                        return;
-                    }
-                }
-                // return;
-            }
-            if (tabpopping) {
-                switch (e.key) {
-                    case "Escape": {
-                        setTabpopping(false);
                         listref.current?.focus();
                         return;
                     }
@@ -1154,12 +1152,16 @@ const Tabsview: FC<{
                 case "t": {
                     if (!tab) break;
                     setTabpopping(s => !s);
-                    setTabpopsel(0);
-                    // overwriting tabedit on closing is redundant but acceptable.
-                    const ft = tab.filter === null
-                        ? ""
-                        : JSON.stringify(typeof tab.filter === "string" ? noswk!.getFilter(tab.filter) : tab.filter, undefined, 1);
-                    setTabedit(ft);
+                    if (!tabpopping) {
+                        // tabpop is about to be shown
+                        setTabpopsel(0);
+                        const ft = tab.filter === null
+                            ? ""
+                            : JSON.stringify(typeof tab.filter === "string" ? noswk!.getFilter(tab.filter) : tab.filter, undefined, 1);
+                        setTabedit(ft);
+                    } else {
+                        setTabpopsel(-999);
+                    }
                     break;
                 }
                 case "T": {
@@ -1190,6 +1192,7 @@ const Tabsview: FC<{
             }
             if (!tabpopref.current?.contains(e.nativeEvent.target as any)) {
                 setTabpopping(false);
+                setTabpopsel(-999);
             }
             if (!linkpopref.current?.contains(e.nativeEvent.target as any)) {
                 setLinkpop([]);
