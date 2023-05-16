@@ -2,7 +2,7 @@ import Identicon from "identicon.js";
 import produce from "immer";
 import { useAtom } from "jotai";
 import { Event, Kind, nip19 } from "nostr-tools";
-import { FC, ForwardedRef, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { FC, ForwardedRef, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, CSSProperties, memo, ReactHTMLElement } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
@@ -515,8 +515,12 @@ const Tabsview: FC<{
     const [rpauthor, setRpauthor] = useState<MetadataContent | null>(null);
     const [prof, setProf] = useState<{ metadata?: DeletableEvent | null; contacts?: DeletableEvent | null; }>({});
     const [tabpopping, setTabpopping] = useState(false);
-    const [tabedit, setTabedit] = useState("");
+    const [tabnameedit, setTabnameedit] = useState<string | null>(null);
+    const [tabedit, setTabedit] = useState<string>("");
     const tabpopref = useRef<HTMLDivElement>(null);
+    const [tabpopsel, setTabpopsel] = useState(0);
+    const tabpopselref = useRef<HTMLDivElement>(null);
+    const tabnameeditref = useRef<HTMLInputElement>(null);
     const [status, setStatus] = useState("status...");
 
     const relayinfo = useSyncExternalStore(
@@ -652,7 +656,18 @@ const Tabsview: FC<{
         const el = linkselref.current;
         if (!el) return;
         el.focus();
-    }, [linksel]);
+    }, [linksel]);  // !!
+    useEffect(() => {
+        const el = tabpopselref.current;
+        if (!el) return;
+        // FIXME: it steals focus from tabedit when UI updates (ex. note arriving)
+        el.focus();
+    }, [tabpopselref.current]);
+    useEffect(() => {
+        const el = tabnameeditref.current;
+        if (!el) return;
+        el.focus();
+    }, [tabnameedit]);  // !!
     const nextunread = useCallback(() => {
         // TODO: search other tabs, jump to last note of first tab if all tabs has read.
         if (!tap) return false;
@@ -668,6 +683,16 @@ const Tabsview: FC<{
         }
         return true;
     }, [tap]);
+    const restoretab = useCallback(() => {
+        const t = closedtabs[tabpopsel - 1];
+        if (!t) {
+            debugger;
+            return;
+        }
+        setClosedtabs(produce(draft => { draft.splice(tabpopsel - 1, 1); }));
+        setTabs(tabs => [...tabs, t]);
+        navigate(`/tab/${t.id}`);
+    }, [closedtabs, tabpopsel]);
     useEffect(() => {
         setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
@@ -678,6 +703,44 @@ const Tabsview: FC<{
                 return;
             }
             if (e.nativeEvent.isComposing) {
+                return;
+            }
+            if (tabpopping) {
+                switch (e.key) {
+                    case "Escape": {
+                        setTabpopping(false);
+                        listref.current?.focus();
+                        break;
+                    }
+                    case "j": {
+                        if (-2 < tabpopsel) {
+                            setTabpopsel(tabpopsel - 1);
+                        }
+                        break;
+                    }
+                    case "k": {
+                        if (tabpopsel < closedtabs.length) {
+                            setTabpopsel(tabpopsel + 1);
+                        }
+                        break;
+                    }
+                    case "Enter": {
+                        if (tabpopsel === 0) {
+                            setTabnameedit(tab!.name);
+                        } else if (tabpopsel === -1) {
+                            setTabpopping(false);
+                            listref.current?.focus();
+                        } else if (tabpopsel === -2) {
+                            setTabpopping(false);
+                            listref.current?.focus();
+                        } else {
+                            restoretab();
+                            setTabpopping(false);
+                            listref.current?.focus();
+                        }
+                        break;
+                    }
+                }
                 return;
             }
             if (0 < linkpop.length) {
@@ -1091,8 +1154,12 @@ const Tabsview: FC<{
                 case "t": {
                     if (!tab) break;
                     setTabpopping(s => !s);
+                    setTabpopsel(0);
                     // overwriting tabedit on closing is redundant but acceptable.
-                    setTabedit(JSON.stringify(typeof tab.filter === "string" ? noswk!.getFilter(tab.filter) : tab.filter, undefined, 1));
+                    const ft = tab.filter === null
+                        ? ""
+                        : JSON.stringify(typeof tab.filter === "string" ? noswk!.getFilter(tab.filter) : tab.filter, undefined, 1);
+                    setTabedit(ft);
                     break;
                 }
                 case "T": {
@@ -1112,7 +1179,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder, tabpopping]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -1211,37 +1278,80 @@ const Tabsview: FC<{
                                     <div style={{ position: "relative", color: 0 < streams!.getPostStream(t.id)!.nunreads ? "red" : undefined }}>
                                         {t.name}
                                     </div>
-                                    {!tabpopping || t.id !== tab?.id ? null : <div ref={tabpopref} style={{
-                                        position: "absolute",
-                                        left: "0",
-                                        bottom: "100%",
-                                        border: "2px outset",
-                                        padding: "3px",
-                                        background: coloruibg,
-                                        color: coloruitext,
-                                        font: fontui,
-                                    }}>
-                                        <div>history:{0 < closedtabs.length ? "" : " (none)"}</div>
-                                        {[...closedtabs].reverse().map(t => <div key={t.id}>{t.name}</div>)}
-                                        <hr style={{ margin: "2px 0" }} />
-                                        <div><input
-                                            value={t.name}
-                                            style={{ font: fontui }}
-                                            onChange={e => setTabs(produce<Tabdef[]>(draft => { draft.find(t => t.id === tab?.id)!.name = e.target.value; }))}
-                                        /></div>
-                                        <TextInput
-                                            value={tabedit}
-                                            size={71}
-                                            wrap={"off"}
-                                            style={{
-                                                font: fontui,
-                                                fontFamily: "monospace",
-                                                maxHeight: "5em",
-                                            }}
-                                            onChange={text => { setTabedit(text); }} />
-                                        <div>open new</div>
-                                        <div style={{ textDecoration: typeof t.filter === "string" ? "line-through" : undefined }}>overwrite</div>
-                                    </div>}
+                                    {!tabpopping || t.id !== tab?.id ? null : (() => {
+                                        const Tabln: FC<{ caption: string; i: number; style?: CSSProperties; onClick?: ReactHTMLElement<HTMLDivElement>["props"]["onClick"]; }> = ({ caption, i, style, onClick }) => {
+                                            const selected = i === tabpopsel;
+                                            return <div
+                                                ref={selected ? tabpopselref : undefined}
+                                                style={{
+                                                    padding: "2px",
+                                                    background: selected ? "highlight" : undefined,
+                                                    color: selected ? "highlighttext" : undefined,
+                                                    ...style
+                                                }}
+                                                tabIndex={0}
+                                                onPointerDown={e => setTabpopsel(i)}
+                                                onClick={onClick}
+                                                onFocus={e => setTabpopsel(i)}
+                                            >{caption}</div>;
+                                        };
+
+                                        return <div ref={tabpopref} style={{
+                                            position: "absolute",
+                                            left: "0",
+                                            bottom: "100%",
+                                            border: "2px outset",
+                                            padding: "3px",
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            background: coloruibg,
+                                            color: coloruitext,
+                                            font: fontui,
+                                        }}>
+                                            <div>history:{0 < closedtabs.length ? "" : " (none)"}</div>
+                                            {closedtabs
+                                                .map((e, i) => [e, i + 1] as const)
+                                                .reverse()
+                                                .map(([t, i]) => <Tabln key={t.id} caption={t.name} i={i} onClick={e => restoretab()} />)}
+                                            <hr style={{ margin: "2px 0" }} />
+                                            <div>{
+                                                tabnameedit === null
+                                                    ? <Tabln caption={t.name} i={0} />
+                                                    : <input
+                                                        ref={tabnameeditref}
+                                                        value={tabnameedit}
+                                                        style={{ font: fontui }}
+                                                        onChange={e => setTabnameedit(e.target.value)}
+                                                        onKeyDown={e => {
+                                                            if (e.ctrlKey || e.altKey || e.metaKey) {
+                                                                return;
+                                                            }
+                                                            if (e.key === "Escape") {
+                                                                setTabnameedit(null);
+                                                            }
+                                                            if (e.key === "Enter") {
+                                                                setTabs(produce<Tabdef[]>(draft => { draft.find(t => t.id === tab.id)!.name = tabnameedit; }));
+                                                                setTabnameedit(null);
+                                                            }
+                                                        }}
+                                                        onBlur={e => setTabnameedit(null)}
+                                                    />
+                                            }</div>
+                                            <TextInput
+                                                value={tabedit}
+                                                size={71}
+                                                wrap={"off"}
+                                                style={{
+                                                    font: fontui,
+                                                    fontFamily: "monospace",
+                                                    maxHeight: "5em",
+                                                }}
+                                                onChange={text => { setTabedit(text); }}
+                                            />
+                                            <Tabln caption="open new" i={-1} />
+                                            <Tabln caption="overwrite" i={-2} style={{ textDecoration: typeof t.filter === "string" ? "line-through" : undefined }} />
+                                        </div>;
+                                    })()}
                                 </div>
                             </Tab>
                         )}
