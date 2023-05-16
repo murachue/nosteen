@@ -700,6 +700,26 @@ const Tabsview: FC<{
         navigate(`/tab/${t.id}`);
         listref.current?.focus();
     }, [closedtabs, tabpopsel]);
+    const overwritetab = useCallback(() => {
+        if (!tab) return;
+        if (typeof tab.filter === "string" || tab.filter === null) {
+            setFlash({ msg: "cannot overwrite this tab", bang: true });
+            return;
+        }
+        setTabpopping(false);
+        setTabpopsel(-999);
+        setTabs(produce<Tabdef[]>(draft => { draft.find(t => t.id === tab.id)!.filter = JSON.parse(tabedit); }));
+        listref.current?.focus();
+    }, [tabedit]);
+    const newtab = useCallback(() => {
+        setTabpopping(false);
+        setTabpopsel(-999);
+        const id = crypto.randomUUID();
+        const t = { id, name: id.slice(0, 8), filter: JSON.parse(tabedit) };
+        setTabs([...tabs, t]);
+        navigate(`/tab/${t.id}`);
+        listref.current?.focus();
+    }, [tabs, tabedit]);
     useEffect(() => {
         setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
@@ -736,13 +756,9 @@ const Tabsview: FC<{
                         if (tabpopsel === 0) {
                             setTabnameedit(tab!.name);
                         } else if (tabpopsel === -1) {
-                            setTabpopping(false);
-                            setTabpopsel(-999);
-                            listref.current?.focus();
+                            newtab();
                         } else if (tabpopsel === -2) {
-                            setTabpopping(false);
-                            setTabpopsel(-999);
-                            listref.current?.focus();
+                            overwritetab();
                         } else {
                             restoretab();
                         }
@@ -1181,7 +1197,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -1319,7 +1335,7 @@ const Tabsview: FC<{
                                             <hr style={{ margin: "2px 0" }} />
                                             <div>{
                                                 tabnameedit === null
-                                                    ? <Tabln caption={t.name} i={0} />
+                                                    ? <Tabln caption={t.name} i={0} onClick={e => setTabnameedit(t.name)} />
                                                     : <input
                                                         ref={tabnameeditref}
                                                         value={tabnameedit}
@@ -1351,8 +1367,8 @@ const Tabsview: FC<{
                                                 }}
                                                 onChange={text => { setTabedit(text); }}
                                             />
-                                            <Tabln caption="open new" i={-1} />
-                                            <Tabln caption="overwrite" i={-2} style={{ textDecoration: typeof t.filter === "string" ? "line-through" : undefined }} />
+                                            <Tabln caption="open new" i={-1} onClick={newtab} />
+                                            <Tabln caption="overwrite" i={-2} style={{ textDecoration: typeof t.filter === "string" ? "line-through" : undefined }} onClick={overwritetab} />
                                         </div>;
                                     })()}
                                 </div>
