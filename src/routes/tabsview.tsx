@@ -71,11 +71,11 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
             const evpub = ev.pubkey;
             const evid = ev.id;
             const selev = !selected ? undefined : (selected.reposttarget || selected.event)?.event?.event;
-            const selpub = selev?.pubkey;
-            if (derefev && derefev.event && derefev.event.event.pubkey === selpub) {
+            const selpub = selected?.event?.event?.event?.pubkey;
+            if (selpub && evpub === selpub) {
                 bg = colorthempost;
             }
-            if (evpub === mypubkey) {
+            if (mypubkey && evpub === mypubkey) {
                 bg = colormypost;
             }
             // XXX: O(NM) is heavy
@@ -90,7 +90,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
         return [bg, text];
     })();
 
-    return <div ref={ref} style={{ display: "flex", width: "100%", overflow: "hidden", alignItems: "center", background: bg, color: text, font: fonttext }}>
+    return <div ref={ref} style={{ display: "flex", overflow: "hidden", alignItems: "center", background: bg, color: text, font: fonttext }}>
         <TR>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
@@ -103,23 +103,25 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                     {post.hasread ? "" : "★"}
                 </div>
             </TD>
-            <TD>
-                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {!derefev?.event ? null : <img style={{ maxWidth: "16px" }} src={identiconStore.png(derefev.event.event.pubkey)} />}
+            <TD style={{ display: "flex", alignItems: "center" }}>
+                {!derefev?.event ? null : <img style={{ height: "max(1em,16px)" }} src={identiconStore.png(derefev.event.event.pubkey)} />}
+            </TD>
+            {/* name and text are ugly. must be shorter that is enough to emoji and nip36 */}
+            <TD style={{ alignSelf: "stretch", display: "flex", alignItems: "center" }}>
+                <div style={{ flex: "1", maxHeight: "1em", overflow: "hidden", display: "flex", alignItems: "center" }}>
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {post.reposttarget
+                            ? `${author?.name || post.reposttarget.event?.event?.pubkey} (RP: ${rpauthor?.name || ev?.pubkey})`
+                            : (author?.name || ev?.pubkey)
+                        }
+                    </div>
                 </div>
             </TD>
-            <TD style={{ maxHeight: "1em", position: "relative", /* alignSelf: "stretch", */ display: "flex", alignItems: "center" }}>
-                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {post.reposttarget
-                        ? `${author?.name || post.reposttarget.event?.event?.pubkey} (RP: ${rpauthor?.name || ev?.pubkey})`
-                        : (author?.name || ev?.pubkey)
-                    }
-                </div>
-            </TD>
-            <TD style={{ maxHeight: "1em", position: "relative", /* alignSelf: "stretch", */ display: "flex", alignItems: "center" }}>
-                {/* <div style={{ position: "relative" }}> */}
-                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {derefev?.event?.event?.content}
+            <TD style={{ alignSelf: "stretch", display: "flex", alignItems: "center", position: "relative" }}>
+                <div style={{ flex: "1", maxHeight: "1em", overflow: "hidden", display: "flex", alignItems: "center" }}>
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {derefev?.event?.event?.content}
+                    </div>
                 </div>
                 {(() => {
                     const cw = derefev?.event?.event?.tags?.find(t => t[0] === "content-warning");
@@ -136,7 +138,6 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                         <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cw[1]}</div>
                     </div>;
                 })()}
-                {/* </div> */}
             </TD>
         </TR>
     </div>;
