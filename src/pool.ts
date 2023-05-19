@@ -24,7 +24,7 @@ export class RelayWrap {
             this.died();
         });
         this.relay.on("connect", () => {
-            console.debug(`connected ${this.ndied} ${this.nfail} ${this.relay.url}`);
+            console.debug(`${new Date().toISOString()} connected ${this.ndied} ${this.nfail} ${this.relay.url}`);
             this.connectedat = Date.now();
             this.disconnectedat = undefined;
             this.nfail = 0;
@@ -70,7 +70,7 @@ export class RelayWrap {
         }
         this.unsched();
         this.dead = false;
-        console.debug(`connecting ${this.ndied} ${this.nfail} ${this.relay.url}`);
+        console.debug(`${new Date().toISOString()} connecting ${this.ndied} ${this.nfail} ${this.relay.url}`);
         return await this.relay.connect();  // reconnection is handled on "error" handler.
     }
 
@@ -78,7 +78,7 @@ export class RelayWrap {
         // prepared for twice: error=>disconnect
         if (this.dead) return;
         this.dead = true;
-        console.debug(`died ${this.ndied} ${this.nfail} ${this.relay.url}`);
+        console.debug(`${new Date().toISOString()} died ${this.ndied} ${this.nfail} ${this.relay.url}`);
         this.ndied++;
         this.disconnectedat = Date.now();
         if (!this.wantonline) return;
