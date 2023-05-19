@@ -1,6 +1,8 @@
 /* global WebSocket */
 
 // based on nostr-tools@1.10.1
+// it may drop REQ/EVENT. also don't clear openSubs on disconnect.
+// and also have unnecessary alreadyHaveEvent. we should (re-/de-)impl that.
 
 import { Event, Filter, matchFilters, validateEvent, verifySignature } from 'nostr-tools';
 

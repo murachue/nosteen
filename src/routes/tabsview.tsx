@@ -42,12 +42,12 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
 
     const [author, setAuthor] = useState(() => {
         if (!derefev?.event) return undefined;
-        const cached = noswk!.getProfile(derefev.event.event.pubkey, Kinds.profile, ev => setAuthor(metadatajsoncontent(ev)));
+        const cached = noswk.getProfile(derefev.event.event.pubkey, Kinds.profile, ev => setAuthor(metadatajsoncontent(ev)));
         return cached && metadatajsoncontent(cached);
     });
     const [rpauthor, setRpauthor] = useState(() => {
         if (!post.reposttarget || !ev) return null;
-        const cached = noswk!.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(metadatajsoncontent(ev)));
+        const cached = noswk.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(metadatajsoncontent(ev)));
         return cached && metadatajsoncontent(cached);
     });
 
@@ -557,13 +557,13 @@ const Tabsview: FC<{
     const relayinfo = useSyncExternalStore(
         useCallback(storeChange => {
             const handler = (ev: MuxRelayEvent): void => storeChange();
-            noswk!.onHealthy.on("", handler);
-            return () => { noswk!.onHealthy.off("", handler); };
+            noswk.onHealthy.on("", handler);
+            return () => { noswk.onHealthy.off("", handler); };
         }, []),
         useCallback((() => {
             let v: { all: number, healthy: number; } | null = null;
             return () => {
-                const rs = noswk!.getRelays();
+                const rs = noswk.getRelays();
                 const all = rs.length;
                 const healthy = rs.filter(r => r.healthy).length;
                 if (!v || v.all !== all || v.healthy !== healthy) {
@@ -670,7 +670,7 @@ const Tabsview: FC<{
     const onselect = useCallback((i: number, toTop?: boolean) => {
         if (!tab || !tap) return;
         if (tap) {
-            noswk!.setHasread({ id: tap.posts[i].id }, true);
+            noswk.setHasread({ id: tap.posts[i].id }, true);
         }
         setTabstates(produce(draft => {
             getmk(draft, tab.id, newtabstate).selected = i;
@@ -935,7 +935,7 @@ const Tabsview: FC<{
                     const etag = ev.event!.event.tags.reduce<string[] | undefined>((p, c) => c[0] !== "e" ? p : p?.[3] === "reply" ? p : c, undefined);
                     const replye = etag?.[1];
                     if (!replye) break;
-                    const lp = noswk!.getPost(replye);
+                    const lp = noswk.getPost(replye);
                     if (!lp) break;
 
                     let rp = [...tas.replypath];
@@ -998,7 +998,7 @@ const Tabsview: FC<{
                         break;
                     }
 
-                    const lp = noswk!.getPost(lid);
+                    const lp = noswk.getPost(lid);
                     if (!lp) break;
                     const ei = postindex(tap.posts, lp.event!.event!.event);
                     if (ei === null) break;  // TODO: may move tab? what if already closed?
@@ -1145,14 +1145,14 @@ const Tabsview: FC<{
                     if (!tas || !tab) break;
                     if (tas.selected === null) break;
                     // TODO: bug with mute
-                    noswk!.setHasread({ stream: tab.id, afterIndex: tas.selected }, false);
+                    noswk.setHasread({ stream: tab.id, afterIndex: tas.selected }, false);
                     break;
                 }
                 case "B": {
                     if (!tas || !tab) break;
                     if (tas.selected === null) break;
                     // TODO: bug with mute
-                    noswk!.setHasread({ stream: tab.id, beforeIndex: tas.selected }, true);
+                    noswk.setHasread({ stream: tab.id, beforeIndex: tas.selected }, true);
                     break;
                 }
                 case "u": {
@@ -1195,7 +1195,7 @@ const Tabsview: FC<{
                         filter: null,
                     }]);
                     setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
-                    noswk!.overwritePosts(id, tap!.posts.filter(p => !p.hasread));
+                    noswk.overwritePosts(id, tap!.posts.filter(p => !p.hasread));
                     navigate(`/tab/${id}`);
                     break;
                 }
@@ -1207,7 +1207,7 @@ const Tabsview: FC<{
                         setTabpopsel(0);
                         const ft = tab.filter === null
                             ? ""
-                            : JSON.stringify(typeof tab.filter === "string" ? noswk!.getFilter(tab.filter) : tab.filter, undefined, 1);
+                            : JSON.stringify(typeof tab.filter === "string" ? noswk.getFilter(tab.filter) : tab.filter, undefined, 1);
                         setTabedit(ft);
                     } else {
                         setTabpopsel(-999);
@@ -1253,13 +1253,13 @@ const Tabsview: FC<{
     }, []);
     useEffect(() => {
         if (selev?.event) {
-            const cachedauthor = noswk!.getProfile(selev.event.event.pubkey, Kinds.profile, ev => {
+            const cachedauthor = noswk.getProfile(selev.event.event.pubkey, Kinds.profile, ev => {
                 setAuthor(jsoncontent(ev));
             });
             setAuthor(cachedauthor && jsoncontent(cachedauthor));
             let cachedrpauthor: DeletableEvent | null | undefined;
             if (selrpev?.event) {
-                cachedrpauthor = noswk!.getProfile(selrpev.event.event.pubkey, Kinds.profile, ev => {
+                cachedrpauthor = noswk.getProfile(selrpev.event.event.pubkey, Kinds.profile, ev => {
                     setRpauthor(jsoncontent(ev));
                 });
                 setRpauthor(cachedrpauthor && jsoncontent(cachedrpauthor));
@@ -1272,7 +1272,7 @@ const Tabsview: FC<{
                     setProf(p => ({ ...p, metadata: null, contacts: null }));
                 }
 
-                const cachedcontacts = noswk!.getProfile(selev.event.event.pubkey, Kinds.contacts, ev => {
+                const cachedcontacts = noswk.getProfile(selev.event.event.pubkey, Kinds.contacts, ev => {
                     setProf(p => ({ ...p, contacts: ev }));
                 });
                 setProf(p => ({ ...p, contacts: cachedcontacts }));
@@ -1504,7 +1504,7 @@ const Tabsview: FC<{
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{
                                         !account?.pubkey
                                             ? ""
-                                            : noswk!.tryGetProfile(account.pubkey, Kind.Contacts)?.event?.event?.event?.tags?.some(t => t[0] === "p" && t[1] === prof.metadata?.event?.event?.pubkey)
+                                            : noswk.tryGetProfile(account.pubkey, Kind.Contacts)?.event?.event?.event?.tags?.some(t => t[0] === "p" && t[1] === prof.metadata?.event?.event?.pubkey)
                                                 ? "Following"
                                                 : "NOT following"
                                     } / {

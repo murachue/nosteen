@@ -24,17 +24,17 @@ const App = () => {
     const noswk = useNostrWorker();
 
     useEffect(() => {
-        noswk!.setRelays(prefrelays);
+        noswk.setRelays(prefrelays);
     }, [prefrelays]);
     // TODO: unsub on unload, but useEffect.return is overkill
     useEffect(() => {
         const pk = prefaccount?.pubkey;
-        noswk!.setIdentity(pk || null);
+        noswk.setIdentity(pk || null);
         const setsub = () => {
-            noswk!.setSubscribes(new Map(tabs
+            noswk.setSubscribes(new Map(tabs
                 .map<[string, FilledFilters | null]>(e => [
                     e.id,
-                    typeof e.filter === "string" ? (noswk!.getFilter(e.filter) || null) : (e.filter as FilledFilters)
+                    typeof e.filter === "string" ? (noswk.getFilter(e.filter) || null) : (e.filter as FilledFilters)
                 ])
                 .filter((e): e is [string, FilledFilters] => !!e[1])));
         };
@@ -42,8 +42,8 @@ const App = () => {
         const onMyContacts: (contacts: DeletableEvent) => void = contacts => {
             setsub();
         };
-        noswk!.onMyContacts.on("", onMyContacts);
-        return () => { noswk!.onMyContacts.off("", onMyContacts); };
+        noswk.onMyContacts.on("", onMyContacts);
+        return () => { noswk.onMyContacts.off("", onMyContacts); };
     }, [tabs, prefaccount]);
 
     return <HashRouter>

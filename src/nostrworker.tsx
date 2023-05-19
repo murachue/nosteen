@@ -1,13 +1,13 @@
 import { Event, Filter, Kind, UnsignedEvent, finishEvent, matchFilter, validateEvent, verifySignature } from "nostr-tools";
 import { FC, PropsWithChildren, createContext, useContext } from "react";
 import invariant from "tiny-invariant";
+import { MuxPool, RelayWrap } from "./pool";
+import { Relay } from "./relay";
 import { DeletableEvent, EventMessageFromRelay, FilledFilters, Kinds, Post } from "./types";
 import { SimpleEmitter, getmk, postindex, postupsertindex, rescue } from "./util";
-import { MuxPool } from "./pool";
-import { Relay } from "./relay";
 
 export type RelayWithMode = {
-    relay: Relay | null;
+    relay: RelayWrap;
     url: string;  // relay is nullable... have a copy
     read: boolean;
     write: boolean;
@@ -18,11 +18,6 @@ export type MuxRelayEvent = {
     relay: Relay;
     event: "connected" | "disconnected";
     reason?: unknown;
-} | {
-    mux: MuxPool;
-    relayurl: string;
-    event: "disconnected";
-    reason: unknown;
 };
 
 // quick deep(?) equality that requires same order for arrays
@@ -261,10 +256,7 @@ type VerifiedHandler = (result: {
     ng: Event[];
 } | null) => void;
 
-// TODO: nostr-tools's SimplePool does not have reconnect/resub/resend. (nostr-mux have though)
-//       also SimplePool have redundant "seenOn"... we should re-impl that.
-// TODO: nostr-tools's Relay may drop REQ/EVENT. also don't clear openSubs on disconnect.
-//       and also have unnecessary alreadyHaveEvent. we should re-impl that.
+// MuxPool with mutating note pool of subs, maintaining relays/subs in idenpotent style.
 export class NostrWorker {
     mux = new MuxPool();
     relays = new Map<string, RelayWithMode>();
@@ -289,7 +281,7 @@ export class NostrWorker {
         });
     }
     getRelays() {
-        return [...this.relays.values()].map(r => ({ ...r, healthy: r.relay?.status === WebSocket.OPEN }));
+        return [...this.relays.values()].map(r => ({ ...r, healthy: r.relay.relay.status === WebSocket.OPEN }));
     }
     setRelays(newrelays: { url: string, read: boolean, write: boolean; }[]) {
         const pre = new Map(this.relays); // taking a (shallow) copy for direct modify
@@ -299,15 +291,10 @@ export class NostrWorker {
         for (const [url, relopt] of cur.entries()) {
             if (pre.has(url)) continue;
 
-            const rm: RelayWithMode = { relay: null, url, read: relopt.read, write: relopt.write };
+            const relay = this.mux.getrelay(relopt.url);
+            const rm: RelayWithMode = { relay: relay, url, read: relopt.read, write: relopt.write };
             this.relays.set(relopt.url, rm);
-            // TODO: apply subs
-            // XXX: async...
-            this.mux.ensureRelay(relopt.url).then(relay => {
-                rm.relay = relay;
-            }, reason => {
-                this.onHealthy.emit("", { mux: this.mux, relayurl: url, reason, event: "disconnected" });
-            });
+            relay.wantweak();
         }
 
         // removed
@@ -408,7 +395,7 @@ export class NostrWorker {
                 return [
                     {
                         "#p": [this.pubkey],
-                        kinds: [Kinds.post, Kinds.delete, Kinds.repost],
+                        kinds: [Kinds.post, Kinds.delete],
                         limit: 30,
                     },
                 ];
@@ -1035,7 +1022,7 @@ export class NostrWorker {
                         //                         diff sig: treat as bad. (same id can have other sig though...)
                         if (subevent.sig === sdev.event.event.sig) {
                             getmk(sdev.event.receivedfrom, relay, () => receivedAt);
-                            ok.add(sdev); // update my tab too
+                            // but no okrecv.
                         }
                         // else badrecv?
                         continue;
@@ -1084,5 +1071,7 @@ export const NostrWorkerProvider: FC<PropsWithChildren<{}>> = ({ children }) => 
     return <NostrWorkerContext.Provider value={GlobalNostrWorker}>{children}</NostrWorkerContext.Provider>;
 };
 export const useNostrWorker = () => {
-    return useContext(NostrWorkerContext);
+    const wk = useContext(NostrWorkerContext);
+    if (!wk) throw new Error("useNostrWorker without NostrWorkerProvider");
+    return wk;
 };

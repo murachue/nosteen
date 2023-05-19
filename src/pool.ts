@@ -1,8 +1,105 @@
 // based on nostr-tools@1.10.1
+// nostr-tools's SimplePool does not have reconnect/resub/resend. (nostr-mux have though)
+// also SimplePool have redundant "seenOn"... we should re-(/de-)impl that.
 
 import { Event, Filter, utils } from 'nostr-tools';
 import { Relay, Sub, SubscriptionOptions, relayInit } from './relay';
 import { getmk } from './util';
+
+// reconnecting and stats wrapper.
+export class RelayWrap {
+    /* readonly */ relay: Relay;
+    /* readonly */ wantonline = false;
+    private dead = false;
+    /* readonly */ ndied = 0;
+    /* readonly */ nfail = 0;
+    /* readonly */ disconnectedat: number | undefined;
+    /* readonly */ connectedat: number | undefined;
+    /* readonly */ reconnectat: number | undefined;
+    /* readonly */ reconnecttimer: ReturnType<typeof setTimeout> | undefined;
+
+    constructor(...args: Parameters<typeof relayInit>) {
+        this.relay = relayInit(...args);
+        this.relay.on("disconnect", () => {
+            this.died();
+        });
+        this.relay.on("connect", () => {
+            console.debug(`connected ${this.ndied} ${this.nfail} ${this.relay.url}`);
+            this.connectedat = Date.now();
+            this.disconnectedat = undefined;
+            this.nfail = 0;
+            this.unsched();
+        });
+        this.relay.on("error", () => {
+            // error then disconnect is called...?
+            this.died();
+        });
+    }
+
+    close() {
+        if (!this.wantonline) return;
+        this.forget();
+        this.relay.close();  // for connecting
+    }
+
+    private forget() {
+        if (!this.wantonline) return;
+        this.wantonline = false;
+        this.unsched();  // for reconnecting
+    }
+
+    wantweak() {
+        this.want()?.catch(e => console.error(e));
+    }
+
+    async want() {
+        if (this.wantonline) return;
+        this.wantonline = true;
+        this.ndied = 0;
+        if (this.reconnecttimer !== undefined) {
+            // do nothing on waiting for reconnect (listener.connected may called on reconnect)
+            return undefined;
+        }
+        return await this.must();
+    }
+
+    async must() {
+        if (!this.wantonline) {
+            this.wantonline = true;
+            this.ndied = 0;
+        }
+        this.unsched();
+        this.dead = false;
+        console.debug(`connecting ${this.ndied} ${this.nfail} ${this.relay.url}`);
+        return await this.relay.connect();  // reconnection is handled on "error" handler.
+    }
+
+    private died() {
+        // prepared for twice: error=>disconnect
+        if (this.dead) return;
+        this.dead = true;
+        console.debug(`died ${this.ndied} ${this.nfail} ${this.relay.url}`);
+        this.ndied++;
+        this.disconnectedat = Date.now();
+        if (!this.wantonline) return;
+        this.nfail++;
+        this.sched();
+    }
+
+    private sched() {
+        this.unsched();
+        const t = 1000 * (2 ** this.nfail);
+        this.reconnecttimer = setTimeout(() => this.must(), t);
+        this.reconnectat = Date.now() + t;
+    }
+
+    private unsched() {
+        if (this.reconnecttimer !== undefined) return;
+        clearTimeout(this.reconnecttimer);
+        this.reconnecttimer = undefined;
+        this.reconnectat = undefined;
+    }
+}
 
 export type MuxedEvent = {
     relay: Relay;
@@ -50,9 +147,8 @@ export type MuxPub = {
     forget: () => void;
 };
 
-// TODO: reconnect with exp-time
 export class MuxPool {
-    private _conn: { [url: string]: Relay; };
+    private _conn: { [url: string]: RelayWrap; };
     private listeners: ListenersContainer<MuxEvent> = {
         health: [],
     };
@@ -70,25 +166,30 @@ export class MuxPool {
         relays.forEach(url => {
             let relay = this._conn[utils.normalizeURL(url)];
             if (relay) relay.close();
+            // TODO: also unsub or forget pub on close for that relay!
         });
     }
 
-    async ensureRelay(url: string): Promise<Relay> {
+    getrelay(url: string): RelayWrap {
         const nm = utils.normalizeURL(url);
 
         if (!this._conn[nm]) {
-            const r = relayInit(nm, {
+            const r = new RelayWrap(nm, {
                 getTimeout: this.getTimeout * 0.9,
                 listTimeout: this.getTimeout * 0.9
             });
-            r.on('connect', () => this.listeners.health.forEach(cb => cb({ relay: r, event: 'connected' })));
-            r.on('error', reason => this.listeners.health.forEach(cb => cb({ relay: r, event: 'disconnected', reason })));
-            r.on('disconnect', () => this.listeners.health.forEach(cb => cb({ relay: r, event: 'disconnected' })));
+            r.relay.on('connect', () => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'connected' })));
+            r.relay.on('error', reason => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'disconnected', reason })));
+            r.relay.on('disconnect', () => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'disconnected' })));
             this._conn[nm] = r;
         }
 
-        const relay = this._conn[nm];
-        await relay.connect();
+        return this._conn[nm];
+    }
+
+    async ensureRelay(url: string): Promise<RelayWrap> {
+        const relay = this.getrelay(url);
+        await relay.must();
         return relay;
     }
 
@@ -105,18 +206,18 @@ export class MuxPool {
         const subs = new Map<string, {
             relay: Relay;
             sub: Sub;
-            disconnectl: () => void | Promise<void>;
             connectl: () => void | Promise<void>;
         }>();
-        let lastfilters = filters; // XXX: ugly... should be capsuled into sub
+        let lastfilters = filters;
         const subListeners: ListenersContainer<MuxSubEvent> = {
             event: [],
             error: [],
             eose: [],
         };
-        // muxed eose; not support on new relay of resubs.
+        // muxed eose. XXX: not support on new relay of resubs.
         let eosesMissing = relays.length;
         let eoseSent = false;
+        // this also treats on relays==[]... HACK.
         const eoseTimeout = setTimeout(() => {
             eoseSent = true;
             subListeners.eose.forEach(cb => cb());
@@ -173,7 +274,7 @@ export class MuxPool {
             },
         });
 
-        const add = (urelay: string) => (async () => {
+        const add = (urelay: string, initial: boolean) => (async () => {
             if (killed) return;
 
             const relay = utils.normalizeURL(urelay);
@@ -183,55 +284,38 @@ export class MuxPool {
                 eosed = true;
                 buffered.onEose();
             }
-            let r: Relay;
-            try {
-                r = await this.ensureRelay(relay);
-            } catch (err) {
-                handleEose();
-                return;
-            }
-            // ugly...
-            let disconnected = false;
-            function subone(filters: Filter[]) {
-                if (killed) return;
+            const r = this.getrelay(relay);
+            // this will be also called on already connected.
+            const connectl = () => {
+                if (killed)
+                    return;
 
-                let s = r.sub(lastfilters, opts);
+                const pps = subs.get(relay);
+                const ft = pps && opts?.refilters?.(relay, lastfilters) || lastfilters;
+
+                let s = r.relay.sub(ft, opts);
                 s.on('event', (event: Event) => {
-                    buffered.onEvent({ relay: r, event });
+                    buffered.onEvent({ relay: r.relay, event });
                 });
                 s.on('eose', () => {
-                    handleEose();
+                    if (initial) handleEose();
                 });
                 s.on('error', err => {
-                    handleEose();
+                    if (initial) handleEose();
                 });
-
-                const ps = subs.get(relay);
-                if (!ps) {
-                    const disconnectl = () => {
-                        handleEose();
-                        disconnected = true;
-                    };
-                    r.on('disconnect', disconnectl);
-                    const connectl = () => {
-                        // relay calls me on first on()... don't fucked with that.
-                        if (!disconnected) return;
-                        disconnected = false;
-                        subone(opts?.refilters?.(relay, lastfilters) || lastfilters);
-                    };
-                    r.on('connect', connectl);
-                    subs.set(relay, { relay: r, sub: s, connectl, disconnectl });
-                } else {
-                    ps.sub = s;
-                }
-            }
-            subone(lastfilters);
+                const ps = getmk(subs, relay, () => ({ relay: r.relay, sub: s, connectl }));
+                ps.sub = s;
+            };
+            r.relay.on("connect", connectl);
+            r.wantweak();
         })().catch(console.error);
-        relays.forEach(add);
+        relays.forEach(url => add(url, true));
 
         let greaterSub: MuxSub = {
-            // TODO: relays
             sub(relays, filters, opts) {
+                if (killed) {
+                    throw new Error(`sub already killed: ${JSON.stringify(lastfilters)}`);
+                }
                 if (filters) {
                     // be prepared to add() use new filters.
                     lastfilters = filters;
@@ -241,7 +325,6 @@ export class MuxPool {
                     if (relays.includes(url)) continue;
                     // removed
                     s.sub.unsub();
-                    s.relay.off('disconnect', s.disconnectl);
                     s.relay.off('connect', s.connectl);
                 }
 
@@ -253,7 +336,7 @@ export class MuxPool {
                         }
                     } else {
                         // added
-                        add(url);
+                        add(url, false);
                     }
                 }
 
@@ -263,7 +346,6 @@ export class MuxPool {
                 killed = true;
                 subs.forEach(s => {
                     s.sub.unsub();
-                    s.relay.off('disconnect', s.disconnectl);
                     s.relay.off('connect', s.connectl);
                 });
             },
@@ -337,12 +419,12 @@ export class MuxPool {
             (async () => {
                 try {
                     const r = await this.ensureRelay(relay);
-                    const pub = r.publish(event);
+                    const pub = r.relay.publish(event);
                     let unlinker: (() => void) | undefined;  // hacky...
                     const okhandler = (reason: string): void => {
                         const listeners = pubListeners.get(relay);
                         if (listeners) {
-                            listeners.ok.forEach(cb => cb([{ relay: r, reason }]));
+                            listeners.ok.forEach(cb => cb([{ relay: r.relay, reason }]));
                             pubListeners.delete(relay);
                         }
                         unlinker?.();
