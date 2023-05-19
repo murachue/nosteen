@@ -1,5 +1,5 @@
 import { produce } from "immer";
-import { Children, createContext, Dispatch, FC, PropsWithChildren, ReactElement, ReactNode, SetStateAction, useContext, useEffect, useState } from "react";
+import { Children, createContext, CSSProperties, Dispatch, FC, PropsWithChildren, ReactElement, ReactNode, SetStateAction, useContext, useEffect, useState } from "react";
 import invariant from "tiny-invariant";
 
 const ColWidths = createContext<[] | [string[]] | [string[], Dispatch<SetStateAction<string[]>>]>([]);
@@ -27,8 +27,9 @@ export const TR: FC<PropsWithChildren<{}>> = ({ children }) =>
 
 export const TD: FC<PropsWithChildren<{
     width?: string;
+    style?: CSSProperties;
     renderNode?: (width: string, children?: ReactNode) => ReactElement | null;
-}>> = ({ width: setwidth, renderNode, children }) => {
+}>> = ({ width: setwidth, style, renderNode, children }) => {
     const [colwidths, setColwidths] = useContext(ColWidths);
     const colindex = useContext(ColIndex);
     invariant(colwidths, "TD is not allowed outside ListView");
@@ -42,7 +43,7 @@ export const TD: FC<PropsWithChildren<{
     const width = setwidth ? setwidth : colwidths[colindex];
     return renderNode
         ? renderNode(width, children)
-        : <div style={{ width }}>{children}</div>;
+        : <div style={{ ...style, width }}>{children}</div>;
 };
 
 const ListView: FC<PropsWithChildren<{}>> = ({ children }) => {

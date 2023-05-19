@@ -37,15 +37,16 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [identiconStore] = useAtom(state.identiconStore);
 
-    const ev = post.event!.event!.event;
-    const derefev = post.reposttarget || post.event!;
+    const ev = post.event?.event?.event;
+    const derefev = post.reposttarget || post.event;
 
     const [author, setAuthor] = useState(() => {
-        const cached = noswk!.getProfile(derefev.event!.event.pubkey, Kinds.profile, ev => setAuthor(metadatajsoncontent(ev)));
+        if (!derefev?.event) return undefined;
+        const cached = noswk!.getProfile(derefev.event.event.pubkey, Kinds.profile, ev => setAuthor(metadatajsoncontent(ev)));
         return cached && metadatajsoncontent(cached);
     });
     const [rpauthor, setRpauthor] = useState(() => {
-        if (!post.reposttarget) return null;
+        if (!post.reposttarget || !ev) return null;
         const cached = noswk!.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(metadatajsoncontent(ev)));
         return cached && metadatajsoncontent(cached);
     });
@@ -58,7 +59,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
         let bg = undefined;
         let text = colornormal;
 
-        if (post.event!.event!.event.kind === (6 as Kind)) {
+        if (post.event?.event && post.event.event.event.kind === (6 as Kind)) {
             text = colorrepost;
         }
         if (post.myreaction?.event) {
@@ -66,33 +67,35 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
             // TODO: also check for reposted
         }
 
-        const evpub = ev.pubkey;
-        const evid = ev.id;
-        const selev = !selected ? undefined : (selected.reposttarget || selected.event!).event!.event;
-        const selpub = selev?.pubkey;
-        if (derefev.event!.event.pubkey === selpub) {
-            bg = colorthempost;
-        }
-        if (evpub === mypubkey) {
-            bg = colormypost;
-        }
-        // XXX: O(NM) is heavy
-        if (selev && selev.tags.findIndex(t => t[0] === "e" && t[1] === evid) !== -1) {
-            bg = colorthemreplyto;
-        }
-        if (ev.tags.findIndex(t => t[0] === "p" && t[1] === mypubkey) !== -1) {
-            bg = colorreplytome;
+        if (ev) {
+            const evpub = ev.pubkey;
+            const evid = ev.id;
+            const selev = !selected ? undefined : (selected.reposttarget || selected.event)?.event?.event;
+            const selpub = selev?.pubkey;
+            if (derefev && derefev.event && derefev.event.event.pubkey === selpub) {
+                bg = colorthempost;
+            }
+            if (evpub === mypubkey) {
+                bg = colormypost;
+            }
+            // XXX: O(NM) is heavy
+            if (selev && selev.tags.findIndex(t => t[0] === "e" && t[1] === evid) !== -1) {
+                bg = colorthemreplyto;
+            }
+            if (ev.tags.findIndex(t => t[0] === "p" && t[1] === mypubkey) !== -1) {
+                bg = colorreplytome;
+            }
         }
 
         return [bg, text];
     })();
 
-    return <div ref={ref} style={{ display: "flex", width: "100%", alignItems: "center", background: bg, color: text, font: fonttext }}>
+    return <div ref={ref} style={{ display: "flex", width: "100%", overflow: "hidden", alignItems: "center", background: bg, color: text, font: fonttext }}>
         <TR>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
-                    {ev.tags.find(t => t[0] === "p" || t[0] === "e") ? "→" : ""}
-                    {post.event!.deleteevent ? "×" : ""}
+                    {derefev && derefev.event?.event?.tags?.find(t => t[0] === "p" || t[0] === "e") ? "→" : ""}
+                    {(post.event!.deleteevent || post.reposttarget?.deleteevent) ? "×" : ""}
                 </div>
             </TD>
             <TD>
@@ -102,24 +105,24 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
             </TD>
             <TD>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {<img style={{ maxWidth: "16px" }} src={identiconStore.png(derefev.event!.event.pubkey)} />}
+                    {!derefev?.event ? null : <img style={{ maxWidth: "16px" }} src={identiconStore.png(derefev.event.event.pubkey)} />}
                 </div>
             </TD>
-            <TD>
+            <TD style={{ maxHeight: "1em", position: "relative", /* alignSelf: "stretch", */ display: "flex", alignItems: "center" }}>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {post.reposttarget
-                        ? `${author?.name || post.reposttarget.event!.event.pubkey} (RP: ${rpauthor?.name || ev.pubkey})`
-                        : (author?.name || ev.pubkey)
+                        ? `${author?.name || post.reposttarget.event?.event?.pubkey} (RP: ${rpauthor?.name || ev?.pubkey})`
+                        : (author?.name || ev?.pubkey)
                     }
                 </div>
             </TD>
-            <TD renderNode={(width, children) => <div style={{ width, position: "relative", alignSelf: "stretch", display: "flex", alignItems: "center" }}>{children}</div>}>
+            <TD style={{ maxHeight: "1em", position: "relative", /* alignSelf: "stretch", */ display: "flex", alignItems: "center" }}>
                 {/* <div style={{ position: "relative" }}> */}
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {derefev.event!.event.content}
+                    {derefev?.event?.event?.content}
                 </div>
                 {(() => {
-                    const cw = derefev.event!.event.tags.find(t => t[0] === "content-warning");
+                    const cw = derefev?.event?.event?.tags?.find(t => t[0] === "content-warning");
                     return !cw ? null : <div style={{
                         position: "absolute",
                         top: "0",
@@ -246,7 +249,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                     <TBody>
                         {posts.slice(Math.floor(scrollTop / rowh), Math.floor(scrollTop + clientHeight) / rowh).map((p, ri) => {
                             const i = ri + Math.floor(scrollTop / rowh);
-                            const evid = p.event!.event!.event.id;
+                            const evid = p.event?.event?.event?.id || ri;
                             return <div
                                 key={evid}
                                 onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}
@@ -327,6 +330,7 @@ const reltime = (from: number, to: number) => {
     })();
 };
 
+// NostrWorker wrapper with immutable subs store that is friendly for React.
 class PostStreamWrapper {
     private readonly listeners = new Map<string, Map<(msg: NostrWorkerListenerMessage) => void, (msg: NostrWorkerListenerMessage) => void>>();
     private readonly streams = new Map<string, ReturnType<typeof NostrWorker.prototype.getPostStream>>();
@@ -391,7 +395,8 @@ class PostStreamWrapper {
             return this.emptystream;
         }
         const filteredPosts = stream.posts.filter(p => {
-            const ev = p.event!.event!.event;
+            const ev = p.event?.event?.event;
+            if (!ev) return true;  // XXX ?
             if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) {
                 return false;
             }
@@ -892,9 +897,11 @@ const Tabsview: FC<{
                 case "h": {
                     if (!tas || !tap) break;
                     if (tas.selected === null) break;
-                    const pk = tap.posts[tas.selected].event!.event!.event.pubkey;
+                    const ev = tap.posts[tas.selected].event?.event;
+                    if (!ev) break;
+                    const pk = ev.event.pubkey;
                     for (let i = tas.selected - 1; 0 <= i; i--) {
-                        if (tap.posts[i].event!.event!.event.pubkey === pk) {
+                        if (tap.posts[i].event?.event?.event?.pubkey === pk) {
                             onselect(i);
                             break;
                         }
@@ -905,9 +912,11 @@ const Tabsview: FC<{
                     if (!tas || !tap) break;
                     if (tas.selected === null) break;
                     const l = tap.posts.length;
-                    const pk = tap.posts[tas.selected].event!.event!.event.pubkey;
+                    const ev = tap.posts[tas.selected].event?.event;
+                    if (!ev) break;
+                    const pk = ev.event.pubkey;
                     for (let i = tas.selected + 1; i < l; i++) {
-                        if (tap.posts[i].event!.event!.event.pubkey === pk) {
+                        if (tap.posts[i].event?.event?.event?.pubkey === pk) {
                             onselect(i);
                             break;
                         }
@@ -1242,14 +1251,14 @@ const Tabsview: FC<{
         return () => setGlobalOnPointerDown(undefined);
     }, []);
     useEffect(() => {
-        if (selev) {
-            const cachedauthor = noswk!.getProfile(selev.event!.event.pubkey, Kinds.profile, ev => {
+        if (selev?.event) {
+            const cachedauthor = noswk!.getProfile(selev.event.event.pubkey, Kinds.profile, ev => {
                 setAuthor(jsoncontent(ev));
             });
             setAuthor(cachedauthor && jsoncontent(cachedauthor));
             let cachedrpauthor: DeletableEvent | null | undefined;
-            if (selrpev) {
-                cachedrpauthor = noswk!.getProfile(selrpev.event!.event.pubkey, Kinds.profile, ev => {
+            if (selrpev?.event) {
+                cachedrpauthor = noswk!.getProfile(selrpev.event.event.pubkey, Kinds.profile, ev => {
                     setRpauthor(jsoncontent(ev));
                 });
                 setRpauthor(cachedrpauthor && jsoncontent(cachedrpauthor));
@@ -1262,7 +1271,7 @@ const Tabsview: FC<{
                     setProf(p => ({ ...p, metadata: null, contacts: null }));
                 }
 
-                const cachedcontacts = noswk!.getProfile(selev.event!.event.pubkey, Kinds.contacts, ev => {
+                const cachedcontacts = noswk!.getProfile(selev.event.event.pubkey, Kinds.contacts, ev => {
                     setProf(p => ({ ...p, contacts: ev }));
                 });
                 setProf(p => ({ ...p, contacts: cachedcontacts }));
@@ -1433,8 +1442,8 @@ const Tabsview: FC<{
                             <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} onClick={e => setProfpopping(s => !s)}>
                                 {!selev ? "name..." : (
                                     selpost.reposttarget
-                                        ? `${rpauthor ? `${rpauthor.name}/${rpauthor.display_name}` : selpost.reposttarget.event!.event.pubkey} (RP: ${author ? `${author.name}/${author.display_name}` : selev.event!.event.pubkey})`
-                                        : (author ? `${author.name}/${author.display_name}` : selev.event!.event.pubkey)
+                                        ? `${rpauthor ? `${rpauthor.name}/${rpauthor.display_name}` : selpost.reposttarget.event?.event?.pubkey} (RP: ${author ? `${author.name}/${author.display_name}` : selev.event?.event?.pubkey})`
+                                        : (author ? `${author.name}/${author.display_name}` : selev.event?.event?.pubkey)
                                 )}
                             </div>
                             {!selev || !profpopping ? null : (() => {
@@ -1475,21 +1484,21 @@ const Tabsview: FC<{
                                         })()}</div>
                                     </div>
                                     <div style={{ textAlign: "right" }}>name:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.name}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.name)}</div>
                                     <div style={{ textAlign: "right" }}>display_name:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.display_name}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.display_name)}</div>
                                     <div style={{ textAlign: "right" }}>last updated at (created_at):</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{!prof.metadata ? "?" : timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
                                     <div style={{ textAlign: "right" }}>picture:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.picture}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.picture)}</div>
                                     <div style={{ textAlign: "right" }}>banner:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.banner}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.banner)}</div>
                                     <div style={{ textAlign: "right" }}>website:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.website}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.website)}</div>
                                     <div style={{ textAlign: "right" }}>nip05:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.nip05}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.nip05)}</div>
                                     <div style={{ textAlign: "right" }}>lud06/16:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.lud16 || p?.lud06}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.lud16 || p?.lud06)}</div>
                                     <div style={{ textAlign: "right" }}>following?, followed?</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{
                                         !account?.pubkey
@@ -1513,7 +1522,7 @@ const Tabsview: FC<{
                                         // nasty prefix hell
                                         maskImage: "linear-gradient(to bottom, #000f 3em, #0000 3.5em)",
                                         WebkitMaskImage: "linear-gradient(to bottom, #000f 3em, #0000 3.5em)",
-                                    }}>{p?.about}</div>
+                                    }}>{String(p?.about)}</div>
                                     {/* <div style={{ textAlign: "right" }}>recent note</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>followings, followers:</div>
@@ -1528,7 +1537,8 @@ const Tabsview: FC<{
                         <div style={{ position: "relative" }}>
                             <div style={{ cursor: "pointer" }} onClick={e => setEvinfopopping(s => !s)}>
                                 {!selev ? "time..." : (() => {
-                                    const t = selrpev ? selrpev.event!.event.created_at : selev.event!.event.created_at;
+                                    const t = selrpev ? selrpev.event?.event?.created_at : selev.event?.event?.created_at;
+                                    if (t === undefined) return "unknown";
                                     const d = new Date(t * 1000);
                                     return timefmt(d, "YYYY-MM-DD hh:mm:ss");
                                 })()}
@@ -1536,7 +1546,8 @@ const Tabsview: FC<{
                             {(() => {
                                 if (!selpost) return undefined;
 
-                                const rev = selpost.event!.event!;
+                                const rev = selpost.event?.event;
+                                if (!rev) return <div></div>;
                                 const froms = [...rev.receivedfrom.keys()].map(r => r.url);
                                 const ev = rev.event;
                                 return <div
@@ -1638,7 +1649,9 @@ const Tabsview: FC<{
                             <div>
                                 {/* TODO: twemoji? */}
                                 {!selev ? "text..." : (() => {
-                                    return spans((selrpev || selev).event!.event).map((s, i) => {
+                                    const ev = (selrpev || selev).event?.event;
+                                    if (!ev) return [];
+                                    return spans(ev).map((s, i) => {
                                         switch (s.type) {
                                             case "url": {
                                                 return <a key={i} href={s.href} style={{ color: colorlinktext, textDecoration: s.auto ? "underline dotted" : "underline" }} tabIndex={-1}>{s.href}</a>;
