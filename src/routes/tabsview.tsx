@@ -1460,15 +1460,19 @@ const Tabsview: FC<{
                                 >
                                     <div style={{ textAlign: "right" }}>pubkey:</div>
                                     <div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{selev.event!.event.pubkey}</div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{nip19.npubEncode(selev.event!.event.pubkey)}</div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{
-                                            (() => {
-                                                const pk: Relay | undefined = selev.event!.receivedfrom.values().next().value;
-                                                // should we use kind0's receivedfrom or kind10002? but using kind1's receivedfrom that is _real_/_in use_
-                                                return nip19.nprofileEncode({ pubkey: selev.event!.event.pubkey, relays: pk ? [pk.url] : undefined });
-                                            })()
-                                        }</div>
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{(selrpev || selev).event?.event?.pubkey}</div>
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{(() => {
+                                            const rev = (selrpev || selev).event;
+                                            if (!rev) return "";
+                                            return nip19.npubEncode(rev.event.pubkey);
+                                        })()}</div>
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{(() => {
+                                            const rev = (selrpev || selev).event;
+                                            if (!rev) return "";
+                                            const pk: Relay | undefined = rev.receivedfrom.values().next().value;
+                                            // should we use kind0's receivedfrom or kind10002? but using kind1's receivedfrom that is _real_/_in use_
+                                            return nip19.nprofileEncode({ pubkey: rev.event.pubkey, relays: pk ? [pk.url] : undefined });
+                                        })()}</div>
                                     </div>
                                     <div style={{ textAlign: "right" }}>name:</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p?.name}</div>
