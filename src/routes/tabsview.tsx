@@ -1200,17 +1200,25 @@ const Tabsview: FC<{
                     break;
                 }
                 case "b": {
-                    if (!tas || !tab) break;
+                    if (!tas || !tab || !tap) break;
                     if (tas.selected === null) break;
-                    // TODO: bug with mute
-                    noswk.setHasread({ stream: tab.id, afterIndex: tas.selected }, false);
+                    const ev = tap.posts[tas.selected].event?.event?.event;
+                    if (!ev) break;
+                    // index may not match between noswk.stream and noswkwrapper.posts
+                    const i = postindex(noswk.getPostStream(tab.id)?.posts || [], ev);
+                    if (i === null) break;
+                    noswk.setHasread({ stream: tab.id, afterIndex: i }, false);
                     break;
                 }
                 case "B": {
-                    if (!tas || !tab) break;
+                    if (!tas || !tab || !tap) break;
                     if (tas.selected === null) break;
-                    // TODO: bug with mute
-                    noswk.setHasread({ stream: tab.id, beforeIndex: tas.selected }, true);
+                    const ev = tap.posts[tas.selected].event?.event?.event;
+                    if (!ev) break;
+                    // index may not match between noswk.stream and noswkwrapper.posts
+                    const i = postindex(noswk.getPostStream(tab.id)?.posts || [], ev);
+                    if (i === null) break;
+                    noswk.setHasread({ stream: tab.id, beforeIndex: i }, true);
                     break;
                 }
                 case "u": {
