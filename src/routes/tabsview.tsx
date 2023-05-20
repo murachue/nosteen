@@ -478,7 +478,7 @@ const spans = (tev: Event): (
         const mhash = t.match(/^#(\S+)/);
         if (mhash) {
             // hashtag t-tag may be normalized to smallcase
-            const tag = tev.tags.find(t => t[0] === "t" && t[1].localeCompare(mhash[1]) === 0);
+            const tag = tev.tags.find(t => t[0] === "t" && t[1].localeCompare(mhash[1], undefined, { sensitivity: "base" }) === 0);
             return { rawtext: t, type: "hashtag", text: mhash[1], tagtext: tag?.[1] || mhash[1], auto: !tag } as const;
         }
         const mnostr = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
@@ -1121,35 +1121,6 @@ const Tabsview: FC<{
                     const ss = spans(tev);
                     const specials = ss.filter(s => s.type !== "text");
                     const ls = new Map();
-                    specials.forEach(s => {
-                        switch (s.type) {
-                            case "url": {
-                                const text = s.href;
-                                ls.set(text, { text, auto: s.auto });
-                                break;
-                            }
-                            case "ref": {
-                                const text = s.text || s.tag?.[1] || "";
-                                ls.set(text, { text, auto: false });
-                                break;
-                            }
-                            case "hashtag": {
-                                const text = `#${s.tagtext || s.text}`;
-                                ls.set(text, { text, auto: s.auto });
-                                break;
-                            }
-                            case "nip19": {
-                                const text = s.text;
-                                ls.set(text, { text, auto: s.auto });
-                                break;
-                            }
-                            case "text": {
-                                const text = s.text;
-                                ls.set(text, { text, auto: false });
-                                break;
-                            }
-                        }
-                    });
                     tev.tags.forEach(t => {
                         switch (t[0]) {
                             case "p": {
@@ -1165,6 +1136,41 @@ const Tabsview: FC<{
                             case "t": {
                                 // doubled but why? (hashtag span key is tagtext which looks good?)
                                 const text = `#${t[1]}`;
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                            case "r": {
+                                // usually URL but not guaranteed.
+                                const text = t[1];
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                        }
+                    });
+                    specials.forEach(s => {
+                        switch (s.type) {
+                            case "url": {
+                                const text = s.href;
+                                ls.set(text, { text, auto: s.auto });
+                                break;
+                            }
+                            case "ref": {
+                                const text = s.text || s.tag?.[1] || "";
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                            case "hashtag": {
+                                const text = `#${s.tagtext || s.text}`;
+                                ls.set(text, { text: `#${s.text}`, auto: s.auto });
+                                break;
+                            }
+                            case "nip19": {
+                                const text = s.text;
+                                ls.set(text, { text, auto: s.auto });
+                                break;
+                            }
+                            case "text": {
+                                const text = s.text;
                                 ls.set(text, { text, auto: false });
                                 break;
                             }
