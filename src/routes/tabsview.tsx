@@ -1250,7 +1250,7 @@ const Tabsview: FC<{
                     if (!tas || !tap) break;
                     if (tas.selected === null) break;
                     const post = tap.posts[tas.selected];
-                    const rootid = (post?.event?.event?.event?.tags || []).reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
+                    const rootid = ((post?.reposttarget?.event || post?.event?.event)?.event?.tags || []).reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
                     const evid = rootid || post.id;
                     const id = `thread/${evid}`;
                     setTabs([...tabs.filter(t => t.id !== id), {
