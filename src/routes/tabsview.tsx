@@ -13,6 +13,7 @@ import { Relay } from "../relay";
 import state, { Tabdef, newtabstate } from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
+import { RelayWrap } from "../pool";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
@@ -317,8 +318,7 @@ const timefmt = (date: Date, fmt: string) => {
     }
 };
 
-const reltime = (from: number, to: number) => {
-    const bidelta = to - from;
+const reltime = (bidelta: number) => {
     const delta = Math.abs(bidelta);
     return (bidelta < 0 ? "-" : "+") + (() => {
         if (delta < 1000) {
@@ -567,6 +567,8 @@ const Tabsview: FC<{
     const [tabpopseldelay, setTabpopseldelay] = useState(-999);  // FIXME: SUPER hacky
     const tabpopselref = useRef<HTMLDivElement>(null);
     const tabnameeditref = useRef<HTMLInputElement>(null);
+    const [relaypopping, setRelaypopping] = useState(false);
+    const relaypopref = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState("status...");
 
     const relayinfo = useSyncExternalStore(
@@ -576,13 +578,13 @@ const Tabsview: FC<{
             return () => { noswk.onHealthy.off("", handler); };
         }, []),
         useCallback((() => {
-            let v: { all: number, healthy: number; } | null = null;
+            let v: { all: number; healthy: number; relays: RelayWrap[]; } | null = null;
             return () => {
                 const rs = noswk.getRelays();
                 const all = rs.length;
                 const healthy = rs.filter(r => r.healthy).length;
                 if (!v || v.all !== all || v.healthy !== healthy) {
-                    v = { all, healthy };
+                    v = { all, healthy, relays: rs.map(r => r.relay) };
                 }
                 return v;
             };
@@ -904,6 +906,16 @@ const Tabsview: FC<{
                 switch (e.key) {
                     case "Escape": {
                         setEvinfopopping(false);
+                        listref.current?.focus();
+                        return;
+                    }
+                }
+                // return;
+            }
+            if (relaypopping) {
+                switch (e.key) {
+                    case "Escape": {
+                        setRelaypopping(false);
                         listref.current?.focus();
                         return;
                     }
@@ -1264,6 +1276,10 @@ const Tabsview: FC<{
                     // TODO: hashtag manager
                     break;
                 }
+                case "y": {
+                    setRelaypopping(s => !s);
+                    break;
+                }
                 case ",": {
                     navigate("/preferences");
                     break;
@@ -1277,7 +1293,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -1293,6 +1309,9 @@ const Tabsview: FC<{
             if (!linkpopref.current?.contains(e.nativeEvent.target as any)) {
                 setLinkpop([]);
                 setLinksel(null);
+            }
+            if (!relaypopref.current?.contains(e.nativeEvent.target as any)) {
+                setRelaypopping(false);
             }
         });
         return () => setGlobalOnPointerDown(undefined);
@@ -1624,7 +1643,7 @@ const Tabsview: FC<{
                                             const rfirst = rf[i];
                                             return rf.map(r => <div key={r[0].url} style={{ display: "flex", flexDirection: "row" }}>
                                                 <div key={`u:${r[0].url}`} style={{ ...shortstyle, flex: "1" }}>{r[0].url}</div>
-                                                <div key={`a:${r[0].url}`} style={shortstyle}>{r === rfirst ? timefmt(new Date(r[1]), "YYYY-MM-DD hh:mm:ss.SSS") : reltime(rfirst[1], r[1])}</div>
+                                                <div key={`a:${r[0].url}`} style={shortstyle}>{r === rfirst ? timefmt(new Date(r[1]), "YYYY-MM-DD hh:mm:ss.SSS") : reltime(r[1] - rfirst[1])}</div>
                                             </div>);
                                         })()}
                                     </div>
@@ -1774,12 +1793,48 @@ const Tabsview: FC<{
             </div>
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
                 <div style={{ flex: "1", height: "1em", display: "flex", alignItems: "center", overflow: "hidden" }}>
-                    <div style={{ flex: "1" }}>
+                    <div style={{ ...shortstyle, flex: "1" }}>
                         ∃{tap?.nunreads}/{tap?.posts?.length} ∀{streams?.getNunreads()}/{streams?.getAllPosts()?.size} | 💬{speeds.mypostph}/⭐{speeds.reactph}/🌊{speeds.allnoteph}/h | {status}
                     </div>
                 </div>
                 <div style={{ padding: "0 0.5em" }}>-</div>
-                <div style={{ padding: "0 0.5em" }}>{relayinfo.healthy}/{relayinfo.all}</div>
+                <div style={{ padding: "0 0.5em", position: "relative" }}>
+                    <div style={{ cursor: "pointer" }} onClick={e => setRelaypopping(s => !s)}>{relayinfo.healthy}/{relayinfo.all}</div>
+                    {!relaypopping ? null : <div
+                        ref={relaypopref}
+                        style={{
+                            display: "grid",
+                            position: "absolute",
+                            right: "0",
+                            bottom: "100%",
+                            padding: "5px",
+                            maxHeight: "30em",
+                            overflowY: "auto",
+                            border: "2px outset",
+                            background: coloruibg,
+                            color: coloruitext,
+                            font: fontui,
+                            gridTemplateColumns: "3em 15em 3em",  // FIXME: want to auto-resizing...
+                            alignItems: "baseline",
+                            columnGap: "0.5em",
+                        }}
+                    >{(() => {
+                        const now = Date.now();
+                        return [...relayinfo.relays]
+                            .sort((a, b) => a.relay.url.localeCompare(b.relay.url))
+                            .map(r => <>
+                                <div>{0 < r.nfail ? "⚠" : "♻"}{r.ndied}</div>
+                                <div style={{ ...shortstyle, maxWidth: "15em" }}>{r.relay.url}</div >
+                                <div style={{ textAlign: "right" }}>{r.disconnectedat ? reltime(r.disconnectedat - now) : r.connectedat ? reltime(now - r.connectedat) : "-"}</div>
+                                {(noswk.recentNotices.get(r.relay) || []).map(n =>
+                                    <div style={{ gridColumn: "span 3", paddingLeft: "1em", display: "flex", flexDirection: "row" }}>
+                                        <div style={{ ...shortstyle, flex: "1" }}>{n.msg}</div>
+                                        <div>{reltime(n.receivedAt - now)}</div>
+                                    </div>
+                                )}
+                            </>);
+                    })()}</div>}
+                </div>
                 {/* <div style={{ position: "relative" }}>
                     #hashtag
                     <div style={{ display: "none", position: "absolute", bottom: "100%", right: "0px", padding: "5px", minWidth: "10em", border: "2px outset", background: coloruibg, color: coloruitext }}>
@@ -1821,7 +1876,7 @@ const Tabsview: FC<{
                     {flash?.msg}
                 </div>
             </div>
-        </div>
+        </div >
     </>;
 };
 export default Tabsview;
