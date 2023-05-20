@@ -1,7 +1,7 @@
 import Identicon from "identicon.js";
 import produce from "immer";
 import { useAtom } from "jotai";
-import { Event, Kind, nip19 } from "nostr-tools";
+import { Event, Kind, nip13, nip19 } from "nostr-tools";
 import { CSSProperties, FC, ForwardedRef, PropsWithChildren, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -1518,7 +1518,7 @@ const Tabsview: FC<{
                                 return <div
                                     ref={profpopref}
                                     style={{
-                                        display: profpopping ? "grid" : "none",
+                                        display: "grid",
                                         // flexDirection: "column",
                                         position: "absolute",
                                         left: "0",
@@ -1773,6 +1773,15 @@ const Tabsview: FC<{
                                             {t.length <= 2 ? null : <div style={{ padding: "0 0.3em", borderLeft: "1px solid", borderLeftColor: colornormal }}>{JSON.stringify(t.slice(2))}</div>}
                                         </div>
                                     </div>)}
+                                    {(() => {
+                                        const ev = (selrpev || selev);
+                                        if (!ev) return null;
+                                        return <div style={{ display: "flex", flexDirection: "row", gap: "2px" }}>
+                                            <div style={{ border: "1px solid", borderColor: colornormal, borderRadius: "2px", padding: "0 0.3em" }}>kind {ev.event?.event?.kind}</div>
+                                            {/* note: it's really called "difficulty" but PoW is very short. other idea? */}
+                                            <div style={{ border: "1px solid", borderColor: colornormal, borderRadius: "2px", padding: "0 0.3em" }}>PoW {nip13.getPow(ev.event?.event?.id || "f".repeat(64))}</div>
+                                        </div>;
+                                    })()}
                                 </div>}
                         </div>
                     </div>
