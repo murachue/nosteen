@@ -2,17 +2,17 @@ import Identicon from "identicon.js";
 import produce from "immer";
 import { useAtom } from "jotai";
 import { Event, Kind, nip19 } from "nostr-tools";
-import { FC, ForwardedRef, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, CSSProperties, memo, ReactHTMLElement } from "react";
+import { CSSProperties, FC, ForwardedRef, PropsWithChildren, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
+import TextInput from "../components/textinput";
 import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import { Relay } from "../relay";
 import state, { Tabdef, newtabstate } from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
-import TextInput from "../components/textinput";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
@@ -21,6 +21,12 @@ const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
         return json as MetadataContent;
     }
     return null;
+};
+
+const shortstyle: CSSProperties = {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
 };
 
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
@@ -93,13 +99,13 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
     return <div ref={ref} style={{ display: "flex", overflow: "hidden", alignItems: "center", background: bg, color: text, font: fonttext }}>
         <TR>
             <TD>
-                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
+                <div style={{ ...shortstyle, textAlign: "right" }}>
                     {derefev && derefev.event?.event?.tags?.find(t => t[0] === "p" || t[0] === "e") ? "→" : ""}
                     {(post.event!.deleteevent || post.reposttarget?.deleteevent) ? "×" : ""}
                 </div>
             </TD>
             <TD>
-                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
+                <div style={{ ...shortstyle, textAlign: "right" }}>
                     {post.hasread ? "" : "★"}
                 </div>
             </TD>
@@ -109,7 +115,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
             {/* name and text are ugly. must be shorter that is enough to emoji and nip36 */}
             <TD style={{ alignSelf: "stretch", display: "flex", alignItems: "center" }}>
                 <div style={{ flex: "1", maxHeight: "1em", overflow: "hidden", display: "flex", alignItems: "center" }}>
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={shortstyle}>
                         {post.reposttarget
                             ? `${author?.name || post.reposttarget.event?.event?.pubkey} (RP: ${rpauthor?.name || ev?.pubkey})`
                             : (author?.name || ev?.pubkey)
@@ -119,7 +125,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
             </TD>
             <TD style={{ alignSelf: "stretch", display: "flex", alignItems: "center", position: "relative" }}>
                 <div style={{ flex: "1", maxHeight: "1em", overflow: "hidden", display: "flex", alignItems: "center" }}>
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={shortstyle}>
                         {derefev?.event?.event?.content}
                     </div>
                 </div>
@@ -135,7 +141,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                         display: "flex",
                         alignItems: "center",
                     }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cw[1]}</div>
+                        <div style={shortstyle}>{cw[1]}</div>
                     </div>;
                 })()}
             </TD>
@@ -428,6 +434,14 @@ const seleltext = (el: HTMLElement) => {
     selection.removeAllRanges();
     selection.addRange(range);
 };
+
+const TabText: FC<PropsWithChildren<{ style?: CSSProperties; }>> = ({ style, children }) =>
+    <div
+        style={style}
+        tabIndex={0}
+        onFocus={e => seleltext(e.target)}
+        onBlur={e => window.getSelection()?.removeAllRanges()}
+    >{children}</div>;
 
 const spans = (tev: Event): (
     { rawtext: string; type: "url"; href: string; auto: boolean; }
@@ -1472,7 +1486,7 @@ const Tabsview: FC<{
                 <div style={{ flex: "1", minWidth: "0", /* display: "flex", flexDirection: "column" */ }}>
                     <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex" }}>
                         <div style={{ flex: "1", minWidth: "0", position: "relative", height: "1em", display: "flex", alignItems: "center" }}>
-                            <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} onClick={e => setProfpopping(s => !s)}>
+                            <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, ...shortstyle }} onClick={e => setProfpopping(s => !s)}>
                                 {!selev ? "name..." : (
                                     selpost.reposttarget
                                         ? `${rpauthor ? `${rpauthor.name}/${rpauthor.display_name}` : selpost.reposttarget.event?.event?.pubkey} (RP: ${author ? `${author.name}/${author.display_name}` : selev.event?.event?.pubkey})`
@@ -1502,38 +1516,38 @@ const Tabsview: FC<{
                                 >
                                     <div style={{ textAlign: "right" }}>pubkey:</div>
                                     <div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0}>{(selrpev || selev).event?.event?.pubkey}</div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0}>{(() => {
+                                        <TabText style={shortstyle}>{(() => {
                                             const rev = (selrpev || selev).event;
                                             if (!rev) return "";
                                             return nip19.npubEncode(rev.event.pubkey);
-                                        })()}</div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0}>{(() => {
+                                        })()}</TabText>
+                                        <TabText style={shortstyle}>{(() => {
                                             const rev = (selrpev || selev).event;
                                             if (!rev) return "";
                                             const pk: Relay | undefined = rev.receivedfrom.values().next().value;
                                             // should we use kind0's receivedfrom or kind10002? but using kind1's receivedfrom that is _real_/_in use_
                                             return nip19.nprofileEncode({ pubkey: rev.event.pubkey, relays: pk ? [pk.url] : undefined });
-                                        })()}</div>
+                                        })()}</TabText>
+                                        <TabText style={shortstyle}>{(selrpev || selev).event?.event?.pubkey}</TabText>
                                     </div>
                                     <div style={{ textAlign: "right" }}>name:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.name)}</div>
+                                    <div style={shortstyle}>{String(p?.name)}</div>
                                     <div style={{ textAlign: "right" }}>display_name:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.display_name)}</div>
+                                    <div style={shortstyle}>{String(p?.display_name)}</div>
                                     <div style={{ textAlign: "right" }}>last updated at (created_at):</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{!prof.metadata ? "?" : timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
+                                    <div style={shortstyle}>{!prof.metadata ? "?" : timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
                                     <div style={{ textAlign: "right" }}>picture:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.picture)}</div>
+                                    <div style={shortstyle}>{String(p?.picture)}</div>
                                     <div style={{ textAlign: "right" }}>banner:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.banner)}</div>
+                                    <div style={shortstyle}>{String(p?.banner)}</div>
                                     <div style={{ textAlign: "right" }}>website:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.website)}</div>
+                                    <div style={shortstyle}>{String(p?.website)}</div>
                                     <div style={{ textAlign: "right" }}>nip05:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.nip05)}</div>
+                                    <div style={shortstyle}>{String(p?.nip05)}</div>
                                     <div style={{ textAlign: "right" }}>lud06/16:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{String(p?.lud16 || p?.lud06)}</div>
+                                    <div style={shortstyle}>{String(p?.lud16 || p?.lud06)}</div>
                                     <div style={{ textAlign: "right" }}>following?, followed?</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{
+                                    <div style={shortstyle}>{
                                         !account?.pubkey
                                             ? "-"
                                             : noswk.tryGetProfile(account.pubkey, Kind.Contacts)?.event?.event?.event?.tags?.some(t => t[0] === "p" && t[1] === prof.metadata?.event?.event?.pubkey)
@@ -1547,7 +1561,7 @@ const Tabsview: FC<{
                                                     : "NOT followed")
                                         }</div>
                                     {/* <div style={{ textAlign: "right" }}>follow/unfollow, show TL, block/unblock</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
+                                    <div style={shortstyle}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>desc...</div>
                                     <div style={{
                                         overflow: "hidden", /* textOverflow: "ellipsis", does not work for multiline... */
@@ -1557,13 +1571,13 @@ const Tabsview: FC<{
                                         WebkitMaskImage: "linear-gradient(to bottom, #000f 3em, #0000 3.5em)",
                                     }}>{String(p?.about)}</div>
                                     {/* <div style={{ textAlign: "right" }}>recent note</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
+                                    <div style={shortstyle}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>followings, followers:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{prof.contacts?.event ? prof.contacts.event.event.tags.filter(t => t[0] === "p").length : "?"} / ENOTIMPL</div>
+                                    <div style={shortstyle}>{prof.contacts?.event ? prof.contacts.event.event.tags.filter(t => t[0] === "p").length : "?"} / ENOTIMPL</div>
                                     {/* <div style={{ textAlign: "right" }}>notes, reactions</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
+                                    <div style={shortstyle}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>json:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: "20em" }} tabIndex={0}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</div>
+                                    <TabText style={{ ...shortstyle, maxWidth: "20em" }}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</TabText>
                                 </div>;
                             })()}
                         </div>
@@ -1608,22 +1622,26 @@ const Tabsview: FC<{
                                             const i = rf.length <= i0 ? rf.length - 1 : i0;  // choose last if event is in future.
                                             const rfirst = rf[i];
                                             return rf.map(r => <div key={r[0].url} style={{ display: "flex", flexDirection: "row" }}>
-                                                <div key={`u:${r[0].url}`} style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", flex: "1" }}>{r[0].url}</div>
-                                                <div key={`a:${r[0].url}`} style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{r === rfirst ? timefmt(new Date(r[1]), "YYYY-MM-DD hh:mm:ss.SSS") : reltime(rfirst[1], r[1])}</div>
+                                                <div key={`u:${r[0].url}`} style={{ ...shortstyle, flex: "1" }}>{r[0].url}</div>
+                                                <div key={`a:${r[0].url}`} style={shortstyle}>{r === rfirst ? timefmt(new Date(r[1]), "YYYY-MM-DD hh:mm:ss.SSS") : reltime(rfirst[1], r[1])}</div>
                                             </div>);
                                         })()}
                                     </div>
-                                    <div style={{ textAlign: "right" }}>note id:</div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{ev.id}</div>
-                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{nip19.noteEncode(ev.id)}</div>
-                                    <div style={{ textAlign: "right" }}></div><div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: [froms[0]] })}</div>
-                                    <div style={{ textAlign: "right" }}>json:</div><div style={{ overflow: "hidden", whiteSpace: "pre", textOverflow: "ellipsis" }} tabIndex={0} onFocus={e => seleltext(e.target)}>{[
+                                    <div style={{ textAlign: "right" }}>note id:</div>
+                                    <div style={{ display: "flex", flexDirection: "column" }}>
+                                        <TabText style={shortstyle}>{nip19.noteEncode(ev.id)}</TabText>
+                                        <TabText style={shortstyle}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: [froms[0]] })}</TabText>
+                                        <TabText style={shortstyle}>{ev.id}</TabText>
+                                    </div>
+                                    <div style={{ textAlign: "right" }}>json:</div>
+                                    <TabText style={{ overflow: "hidden", whiteSpace: "pre" }}>{[
                                         selpost.event!.event!.event,
                                         selpost.event?.deleteevent?.event,
                                         selpost.reposttarget?.event?.event,
                                         selpost.reposttarget?.deleteevent?.event,
                                         selpost.myreaction?.event?.event,
                                         selpost.myreaction?.deleteevent?.event,
-                                    ].filter(e => e).map(e => `${JSON.stringify(e)}\n`)}</div>
+                                    ].filter(e => e).map(e => `${JSON.stringify(e)}\n`)}</TabText>
                                 </div>;
                             })()}
                         </div>
@@ -1653,10 +1671,8 @@ const Tabsview: FC<{
                                     key={i}
                                     ref={i === linksel ? linkselref : null}
                                     style={{
+                                        ...shortstyle,
                                         textDecoration: l.auto ? "underline dotted" : undefined,
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
                                         width: "100%",
                                         color: i === linksel ? "highlighttext" : undefined,
                                         background: i === linksel ? "highlight" : undefined,
@@ -1692,13 +1708,11 @@ const Tabsview: FC<{
                                             case "ref": {
                                                 if (s.text) {
                                                     return <span key={i} style={{
+                                                        ...shortstyle,
                                                         display: "inline-block",
                                                         textDecoration: "underline",
                                                         width: "8em",
                                                         height: "1em",
-                                                        overflow: "hidden",
-                                                        whiteSpace: "nowrap",
-                                                        textOverflow: "ellipsis",
                                                         verticalAlign: "text-bottom"
                                                     }}>{s.text}</span>;
                                                 } else {
@@ -1710,13 +1724,11 @@ const Tabsview: FC<{
                                             }
                                             case "nip19": {
                                                 return <span key={i} style={{
+                                                    ...shortstyle,
                                                     display: "inline-block",
                                                     textDecoration: s.auto ? "underline dotted" : "underline",
                                                     width: "8em",
                                                     height: "1em",
-                                                    overflow: "hidden",
-                                                    whiteSpace: "nowrap",
-                                                    textOverflow: "ellipsis",
                                                     verticalAlign: "text-bottom",
                                                 }}>{s.text}</span>;
                                             }
