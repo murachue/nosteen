@@ -525,7 +525,7 @@ const Tabsview: FC<{
     const [muteuserlocal] = useAtom(state.preferences.mute.userlocal);
     const [muteregexlocal] = useAtom(state.preferences.mute.regexlocal);
     const noswk = useNostrWorker();
-    const streams = useMemo(() => noswk && new PostStreamWrapper(noswk), [noswk]);
+    const streams = useMemo(() => new PostStreamWrapper(noswk), [noswk]);  // memo??
     const listref = useRef<HTMLDivElement>(null);
     const textref = useRef<HTMLDivElement>(null);
     const [postdraft, setPostdraft] = useState("");
@@ -642,12 +642,12 @@ const Tabsview: FC<{
         useCallback((onStoreChange) => {
             if (!tab) return () => { };
             const onChange = (msg: NostrWorkerListenerMessage) => { msg.type !== "eose" && msg.name === tab.id && onStoreChange(); };
-            streams!.addListener(tab.id, onChange);
-            return () => streams!.removeListener(tab.id, onChange);
+            streams.addListener(tab.id, onChange);
+            return () => streams.removeListener(tab.id, onChange);
         }, [streams, tab?.id]),
         useCallback(() => {
             if (!tab) return undefined;
-            return streams!.getPostStream(tab.id);
+            return streams.getPostStream(tab.id);
         }, [streams, tab?.id]),
     );
     useEffect(() => {
@@ -657,16 +657,47 @@ const Tabsview: FC<{
             if (msg.name !== tab.id) return;
             setListscrollto({ lastIfVisible: true });
         };
-        streams!.addListener(tab.id, onChange);
-        return () => streams!.removeListener(tab.id, onChange);
+        streams.addListener(tab.id, onChange);
+        return () => streams.removeListener(tab.id, onChange);
     }, [streams, tab?.id]);
     useEffect(() => {
-        streams!.setMutes({ users: [...muteuserpublic, ...muteuserprivate, ...muteuserlocal], regexs: muteregexlocal });
+        const lnr = ({ relay, msg }: { relay: Relay; msg: string; }) => {
+            setStatus(`${msg} (${relay.url})`);
+        };
+        noswk.onNotice.on("", lnr);
+        return () => noswk.onNotice.off("", lnr);
+    });
+    useEffect(() => {
+        const lnr = ({ relay, challenge }: { relay: Relay; challenge: string; }) => {
+            setStatus(`needs auth ENOTIMPL: ${relay.url}`);
+        };
+        noswk.onAuth.on("", lnr);
+        return () => noswk.onAuth.off("", lnr);
+    });
+    useEffect(() => {
+        streams.setMutes({ users: [...muteuserpublic, ...muteuserprivate, ...muteuserlocal], regexs: muteregexlocal });
     }, [streams, muteuserpublic, muteuserprivate, muteuserlocal, muteregexlocal]);
     const tas = !tab ? undefined : tabstates.get(tab.id);
     const selpost = (tas?.selected ?? null) === null ? undefined : tap?.posts[tas!.selected!];
     const selev = selpost?.event;
     const selrpev = selpost?.reposttarget;
+    const speeds = useCallback((() => {
+        let sp = { mypostph: 0, reactph: 0, allnoteph: 0, name: "" as string | undefined, at: 0 };
+        return (name: string | undefined, posts: Post[] | undefined) => {
+            const now = Date.now();
+            if ((sp.name !== name || sp.at + 60000 < now) && posts) {
+                sp.name = name;
+                const hourago = now - 3600000;
+                const hagosec = hourago / 1000;
+                const i = bsearchi(posts, p => hagosec <= p.event!.event!.event.created_at);
+                const hourposts = posts.slice(i);
+                sp.mypostph = hourposts.filter(p => p.event!.event!.event.pubkey === account?.pubkey).length;
+                sp.reactph = hourposts.filter(p => p.myreaction).length;
+                sp.allnoteph = hourposts.length;
+            }
+            return sp;
+        };
+    })(), [])(tab?.id, tap?.posts);
     const onselect = useCallback((i: number, toTop?: boolean) => {
         if (!tab || !tap) return;
         if (tap) {
@@ -1289,6 +1320,7 @@ const Tabsview: FC<{
     useEffect(() => {
         if (!tab) {
             // redirect to first
+            // need to in useEffect
             navigate(`/tab/${tabs[0].id}`, { replace: true });
             console.log(tab, tabs[0]);
         }
@@ -1328,7 +1360,7 @@ const Tabsview: FC<{
                             <Tab key={t.id} style={{ overflow: "visible", padding: t.id === tab?.id ? `2px 2px 3px` : `1px 0 0` }} active={t.id === tab?.id} onClick={() => navigate(`/tab/${t.id}`)}>
                                 <div style={{ position: "relative", padding: "0 0.5em" }}>
                                     {/* TODO: nunreads refresh only on active tab... */}
-                                    <div style={{ position: "relative", color: 0 < streams!.getPostStream(t.id)!.nunreads ? "red" : undefined }}>
+                                    <div style={{ position: "relative", color: 0 < streams.getPostStream(t.id)!.nunreads ? "red" : undefined }}>
                                         {t.name}
                                     </div>
                                     {!tabpopping || t.id !== tab?.id ? null : (() => {
@@ -1470,13 +1502,13 @@ const Tabsview: FC<{
                                 >
                                     <div style={{ textAlign: "right" }}>pubkey:</div>
                                     <div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{(selrpev || selev).event?.event?.pubkey}</div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{(() => {
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0}>{(selrpev || selev).event?.event?.pubkey}</div>
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0}>{(() => {
                                             const rev = (selrpev || selev).event;
                                             if (!rev) return "";
                                             return nip19.npubEncode(rev.event.pubkey);
                                         })()}</div>
-                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{(() => {
+                                        <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }} tabIndex={0}>{(() => {
                                             const rev = (selrpev || selev).event;
                                             if (!rev) return "";
                                             const pk: Relay | undefined = rev.receivedfrom.values().next().value;
@@ -1503,7 +1535,7 @@ const Tabsview: FC<{
                                     <div style={{ textAlign: "right" }}>following?, followed?</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{
                                         !account?.pubkey
-                                            ? ""
+                                            ? "-"
                                             : noswk.tryGetProfile(account.pubkey, Kind.Contacts)?.event?.event?.event?.tags?.some(t => t[0] === "p" && t[1] === prof.metadata?.event?.event?.pubkey)
                                                 ? "Following"
                                                 : "NOT following"
@@ -1531,7 +1563,7 @@ const Tabsview: FC<{
                                     {/* <div style={{ textAlign: "right" }}>notes, reactions</div>
                                     <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>json:</div>
-                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: "20em" }}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</div>
+                                    <div style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", maxWidth: "20em" }} tabIndex={0}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</div>
                                 </div>;
                             })()}
                         </div>
@@ -1573,7 +1605,7 @@ const Tabsview: FC<{
                                             const rf = [...rev.receivedfrom.entries()].sort((a, b) => a[1] - b[1]);
                                             const catms = ev.created_at * 1000;
                                             const i0 = bsearchi(rf, r => catms <= r[1]);
-                                            const i = rf.length <= i0 ? 0 : i0;  // choose first if event is in future.
+                                            const i = rf.length <= i0 ? rf.length - 1 : i0;  // choose last if event is in future.
                                             const rfirst = rf[i];
                                             return rf.map(r => <div key={r[0].url} style={{ display: "flex", flexDirection: "row" }}>
                                                 <div key={`u:${r[0].url}`} style={{ overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", flex: "1" }}>{r[0].url}</div>
@@ -1728,7 +1760,11 @@ const Tabsview: FC<{
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
-                <div style={{ flex: "1" }}>tab {tap?.nunreads}/{tap?.posts?.length}, all {streams?.getNunreads()}/{streams?.getAllPosts()?.size} | post/fav/note /h | {status}</div>
+                <div style={{ flex: "1", height: "1em", display: "flex", alignItems: "center", overflow: "hidden" }}>
+                    <div style={{ flex: "1" }}>
+                        ∃{tap?.nunreads}/{tap?.posts?.length} ∀{streams?.getNunreads()}/{streams?.getAllPosts()?.size} | 💬{speeds.mypostph}/⭐{speeds.reactph}/🌊{speeds.allnoteph}/h | {status}
+                    </div>
+                </div>
                 <div style={{ padding: "0 0.5em" }}>-</div>
                 <div style={{ padding: "0 0.5em" }}>{relayinfo.healthy}/{relayinfo.all}</div>
                 {/* <div style={{ position: "relative" }}>

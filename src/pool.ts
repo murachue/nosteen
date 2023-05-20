@@ -24,7 +24,6 @@ export class RelayWrap {
             this.died();
         });
         this.relay.on("connect", () => {
-            console.debug(`${new Date().toISOString()} connected ${this.ndied} ${this.nfail} ${this.relay.url}`);
             this.connectedat = Date.now();
             this.disconnectedat = undefined;
             this.nfail = 0;
@@ -70,15 +69,14 @@ export class RelayWrap {
         }
         this.unsched();
         this.dead = false;
-        console.debug(`${new Date().toISOString()} connecting ${this.ndied} ${this.nfail} ${this.relay.url}`);
         return await this.relay.connect();  // reconnection is handled on "error" handler.
     }
 
     private died() {
         // prepared for twice: error=>disconnect
         if (this.dead) return;
+
         this.dead = true;
-        console.debug(`${new Date().toISOString()} died ${this.ndied} ${this.nfail} ${this.relay.url}`);
         this.ndied++;
         this.disconnectedat = Date.now();
         if (!this.wantonline) return;
@@ -119,6 +117,8 @@ type ListenersContainer<E> = { [TK in keyof E]: E[TK][] };
 
 type MuxEvent = {
     health: (event: { relay: Relay; event: 'connected' | 'disconnected'; reason?: unknown; }) => void | Promise<void>;
+    auth: (event: { relay: Relay; challenge: string; }) => void | Promise<void>;
+    notice: (event: { relay: Relay; msg: string; }) => void | Promise<void>;
 };
 
 type MuxSubEvent = {
@@ -151,6 +151,8 @@ export class MuxPool {
     private _conn: { [url: string]: RelayWrap; };
     private listeners: ListenersContainer<MuxEvent> = {
         health: [],
+        auth: [],
+        notice: [],
     };
 
     private eoseSubTimeout: number;
@@ -181,6 +183,8 @@ export class MuxPool {
             r.relay.on('connect', () => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'connected' })));
             r.relay.on('error', reason => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'disconnected', reason })));
             r.relay.on('disconnect', () => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'disconnected' })));
+            r.relay.on('auth', challenge => this.listeners.auth.forEach(cb => cb({ relay: r.relay, challenge })));
+            r.relay.on('notice', msg => this.listeners.notice.forEach(cb => cb({ relay: r.relay, msg })));
             this._conn[nm] = r;
         }
 

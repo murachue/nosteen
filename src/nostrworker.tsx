@@ -271,6 +271,9 @@ export class NostrWorker {
     profsid: ReturnType<MuxPool["sub"]> | null = null;
     onHealthy = new SimpleEmitter<MuxRelayEvent>();
     onMyContacts = new SimpleEmitter<DeletableEvent>();
+    onAuth = new SimpleEmitter<{ relay: Relay; challenge: string; }>();
+    onNotice = new SimpleEmitter<{ relay: Relay; msg: string; }>();
+    recentNotices = new Map<Relay, { msg: string, receivedAt: number; }[]>();
     receiveEmitter = new Map<string, SimpleEmitter<NostrWorkerListenerMessage>>();
     verifyq: { receivedAt: number; messages: EventMessageFromRelay[] | null; onVerified: VerifiedHandler; }[] = [];
     fetchq: FetchWill[] = [];
@@ -279,9 +282,23 @@ export class NostrWorker {
         this.mux.on("health", ({ relay, event, reason }) => {
             this.onHealthy.emit("", { mux: this.mux, relay, event, reason });
         });
+        this.mux.on("auth", ev => {
+            // TODO: some auth?
+            this.onAuth.emit("", ev);
+        });
+        this.mux.on("notice", ev => {
+            const rns = getmk(this.recentNotices, ev.relay, () => []);
+            rns.splice(4);
+            rns.unshift({ msg: ev.msg, receivedAt: Date.now() });
+            this.onNotice.emit("", ev);
+        });
     }
     getRelays() {
-        return [...this.relays.values()].map(r => ({ ...r, healthy: r.relay.relay.status === WebSocket.OPEN }));
+        return [...this.relays.values()].map(r => ({
+            ...r,
+            healthy: r.relay.relay.status === WebSocket.OPEN,
+            recentNotices: this.recentNotices.get(r.relay.relay) || [],
+        }));
     }
     setRelays(newrelays: { url: string, read: boolean, write: boolean; }[]) {
         const pre = new Map(this.relays); // taking a (shallow) copy for direct modify
