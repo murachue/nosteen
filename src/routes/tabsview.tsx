@@ -1328,13 +1328,13 @@ const Tabsview: FC<{
         if (selev?.event) {
             const cachedauthor = noswk.getProfile(selev.event.event.pubkey, Kinds.profile, ev => {
                 setAuthor(jsoncontent(ev));
-            });
+            }, undefined, profpopping ? 5 * 60 * 1000 : undefined);
             setAuthor(cachedauthor && jsoncontent(cachedauthor));
             let cachedrpauthor: DeletableEvent | null | undefined;
             if (selrpev?.event) {
                 cachedrpauthor = noswk.getProfile(selrpev.event.event.pubkey, Kinds.profile, ev => {
                     setRpauthor(jsoncontent(ev));
-                });
+                }, undefined, profpopping ? 5 * 60 * 1000 : undefined);
                 setRpauthor(cachedrpauthor && jsoncontent(cachedrpauthor));
             }
 
@@ -1574,7 +1574,7 @@ const Tabsview: FC<{
                                     <div style={shortstyle}>{String(p?.nip05)}</div>
                                     <div style={{ textAlign: "right" }}>lud06/16:</div>
                                     <div style={shortstyle}>{String(p?.lud16 || p?.lud06)}</div>
-                                    <div style={{ textAlign: "right" }}>following?, followed?</div>
+                                    <div style={{ textAlign: "right" }}>following? followed?</div>
                                     <div style={shortstyle}>{
                                         !account?.pubkey
                                             ? "-"
@@ -1590,7 +1590,7 @@ const Tabsview: FC<{
                                         }</div>
                                     {/* <div style={{ textAlign: "right" }}>follow/unfollow, show TL, block/unblock</div>
                                     <div style={shortstyle}>{ }</div> */}
-                                    <div style={{ textAlign: "right" }}>desc...</div>
+                                    <div style={{ textAlign: "right" }}>about:</div>
                                     <div style={{
                                         overflow: "hidden", /* textOverflow: "ellipsis", does not work for multiline... */
                                         maxHeight: "3.7em",
