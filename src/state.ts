@@ -22,7 +22,7 @@ const initTabdef: Tabdef[] = [
     { id: "reply", name: "Reply", filter: "reply" },
     { id: "dm", name: "DM", filter: "dm" },
     { id: "favs", name: "Favs", filter: "favs" },
-    { id: "global", name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }] },
+    // { id: "global", name: "global", filter: [{ kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 100 }] },
 ];
 
 type Tabstate = {

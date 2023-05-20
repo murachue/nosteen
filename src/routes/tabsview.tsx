@@ -553,7 +553,6 @@ const Tabsview: FC<{
     const [linksel, setLinksel] = useState<number | null>(null);
     const linkselref = useRef<HTMLDivElement>(null);
     const [flash, setFlash] = useState<{ msg: string, bang: boolean; } | null>(null);
-    const [tryclosetab, setTryclosetab] = useState({ tid: "", time: 0 });
     const [profpopping, setProfpopping] = useState(false);
     const profpopref = useRef<HTMLDivElement>(null);
     const [author, setAuthor] = useState<MetadataContent | null>(null);
@@ -1275,17 +1274,12 @@ const Tabsview: FC<{
                     if (typeof tab.filter === "string") {
                         setFlash({ msg: "Cannot close system tabs", bang: true });
                     } else {
-                        if (tryclosetab.tid === tab.id && Date.now() < tryclosetab.time + 700) {
-                            setTabs(tabs.filter(t => t.id !== tab.id));
-                            setTabstates(produce(draft => { draft.delete(tab.id); }));
-                            setClosedtabs([tab, ...closedtabs.filter(t => t.id !== tab.id).slice(0, 4)]);  // "unreads" etc. may dupe
-                            const newzorder = tabzorder.filter(t => t !== tab.id);
-                            setTabzorder(newzorder);
-                            navigate(`/tab/${newzorder[newzorder.length - 1] || tabs[0].id}`);
-                        } else {
-                            setTryclosetab({ tid: tab.id, time: Date.now() });
-                            setFlash({ msg: "One more to close the tab", bang: true });
-                        }
+                        setTabs(tabs.filter(t => t.id !== tab.id));
+                        setTabstates(produce(draft => { draft.delete(tab.id); }));
+                        setClosedtabs([tab, ...closedtabs.filter(t => t.id !== tab.id).slice(0, 4)]);  // "unreads" etc. may dupe
+                        const newzorder = tabzorder.filter(t => t !== tab.id);
+                        setTabzorder(newzorder);
+                        navigate(`/tab/${newzorder[newzorder.length - 1] || tabs[0].id}`);
                     }
                     break;
                 }
@@ -1338,7 +1332,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, tryclosetab, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
