@@ -1240,6 +1240,22 @@ const Tabsview: FC<{
                     navigate(`/tab/p/${pk}`);
                     break;
                 }
+                case "I": {
+                    if (!tas || !tap) break;
+                    if (tas.selected === null) break;
+                    const post = tap.posts[tas.selected];
+                    const rootid = (post?.event?.event?.event?.tags || []).reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
+                    const evid = rootid || post.id;
+                    const id = `thread/${evid}`;
+                    setTabs([...tabs.filter(t => t.id !== id), {
+                        id,
+                        name: `t/${evid.slice(0, 8)}`,
+                        filter: [{ ids: [evid], limit: 1 }, { "#e": [evid] }],
+                    }]);
+                    setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
+                    navigate(`/tab/${id}`);
+                    break;
+                }
                 case "W": {
                     if (!tab) break;
                     if (typeof tab.filter === "string") {
