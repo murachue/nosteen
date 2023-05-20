@@ -678,6 +678,13 @@ const Tabsview: FC<{
         return () => streams.removeListener(tab.id, onChange);
     }, [streams, tab?.id]);
     useEffect(() => {
+        const handler = (ev: MuxRelayEvent): void => {
+            setStatus(ev.event === "connected" ? `connected: ${ev.relay.url}` : `disconnected:${ev.reason ? `${String(ev.reason)}: ` : ""} ${ev.relay.url}`);
+        };
+        noswk.onHealthy.on("", handler);
+        return () => { noswk.onHealthy.off("", handler); };
+    }, []);
+    useEffect(() => {
         const lnr = ({ relay, msg }: { relay: Relay; msg: string; }) => {
             setStatus(`${msg} (${relay.url})`);
         };
