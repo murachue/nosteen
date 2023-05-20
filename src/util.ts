@@ -1,6 +1,8 @@
 import { WritableDraft } from "immer/dist/internal";
 import { Event, nip19 } from "nostr-tools";
 import { Post } from "./types";
+import { sha256 } from "@noble/hashes/sha256";
+import { bytesToHex } from "@noble/hashes/utils";
 
 export const bsearchi = <T>(arr: T[], comp: (x: T) => boolean): number => {
     let left = 0;
@@ -95,6 +97,9 @@ export const binarystringToUint8array = (bs: string): Uint8Array => {
     }
     return ab;
 };
+
+const utf8encoder = new TextEncoder();
+export const sha256str = (str: string) => bytesToHex(sha256(utf8encoder.encode(str)));
 
 export const NeverMatch = /(?!)/;
 

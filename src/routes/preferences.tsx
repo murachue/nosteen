@@ -7,7 +7,7 @@ import invariant from "tiny-invariant";
 import TextInput from "../components/textinput";
 import { useNostrWorker } from "../nostrworker";
 import state from "../state";
-import { expectn, rescue } from "../util";
+import { expectn, rescue, sha256str } from "../util";
 
 const MultiInput: FC<Omit<Parameters<typeof TextInput>[0], "value" | "onChange"> & {
     value: string | string[];
@@ -21,6 +21,7 @@ const MultiInput: FC<Omit<Parameters<typeof TextInput>[0], "value" | "onChange">
 
 export default () => {
     const mux = useNostrWorker();
+    const [identiconStore] = useAtom(state.identiconStore);
 
     // TODO: open this pref page directly cause lost-load pref values
     const [prefrelays, setPrefrelays] = useAtom(state.preferences.relays);
@@ -113,7 +114,10 @@ export default () => {
         <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "max-content max-content", columnGap: "0.5em" }}>
             {relays.map((rly, i) => <>
                 <div key={`l:${rly.url}`} style={{ display: "flex", gap: "0.5em" }}>
-                    <div style={{ ...(rly.removed ? { textDecoration: "line-through" } : rly.added ? { fontStyle: "italic" } : {}), flex: "1", marginRight: "1em" }}>{rly.url}</div>
+                    <div style={{ ...(rly.removed ? { textDecoration: "line-through" } : rly.added ? { fontStyle: "italic" } : {}), flex: "1", marginRight: "1em", display: "flex" }}>
+                        <div style={{ alignSelf: "center", height: "1em" }}>{<img src={identiconStore.png(sha256str(rly.url))} style={{ height: "100%" }} />}</div>
+                        <div>{rly.url}</div>
+                    </div>
                     <div><label><input type="checkbox" checked={rly.read} onChange={e => setRelays(produce(draft => { draft[i].read = e.target.checked; }))} />read</label></div>
                     <div><label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label></div>
                     <div><label><input type="checkbox" checked={rly.public} onChange={e => setRelays(produce(draft => { draft[i].public = e.target.checked; }))} />publish?</label></div>

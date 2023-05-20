@@ -1,4 +1,3 @@
-import Identicon from "identicon.js";
 import produce from "immer";
 import { useAtom } from "jotai";
 import { Event, Kind, nip13, nip19 } from "nostr-tools";
@@ -9,11 +8,11 @@ import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import TextInput from "../components/textinput";
 import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
+import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { Tabdef, newtabstate } from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
-import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue } from "../util";
-import { RelayWrap } from "../pool";
+import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue, sha256str } from "../util";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
@@ -541,6 +540,7 @@ const Tabsview: FC<{
     const [muteregexlocal] = useAtom(state.preferences.mute.regexlocal);
     const noswk = useNostrWorker();
     const streams = useMemo(() => new PostStreamWrapper(noswk), [noswk]);  // memo??
+    const [identiconStore] = useAtom(state.identiconStore);
     const listref = useRef<HTMLDivElement>(null);
     const textref = useRef<HTMLDivElement>(null);
     const [postdraft, setPostdraft] = useState("");
@@ -1565,7 +1565,7 @@ const Tabsview: FC<{
                 <div>
                     <div style={{ width: "48px", height: "48px", border: "1px solid", borderColor: coloruitext, margin: "2px" }}>
                         {/* npubhex identicon makes icon samely for vanity... */}
-                        {!selev ? <></> : <img style={{ maxWidth: "100%" }} src={`data:image/png;base64,${new Identicon(selrpev?.event?.event?.pubkey || selev.event!.event.pubkey, { background: [0, 0, 0, 0] }).toString()}`} />}
+                        {!selev ? <></> : <img style={{ maxWidth: "100%" }} src={identiconStore.png(selrpev?.event?.event?.pubkey || selev.event!.event.pubkey)} />}
                     </div>
                 </div>
                 <div style={{ flex: "1", minWidth: "0", /* display: "flex", flexDirection: "column" */ }}>
@@ -1707,7 +1707,10 @@ const Tabsview: FC<{
                                             const i = rf.length <= i0 ? rf.length - 1 : i0;  // choose last if event is in future.
                                             const rfirst = rf[i];
                                             return rf.map(r => <div key={r[0].url} style={{ display: "flex", flexDirection: "row" }}>
-                                                <div key={`u:${r[0].url}`} style={{ ...shortstyle, flex: "1" }}>{r[0].url}</div>
+                                                <div key={`u:${r[0].url}`} style={{ flex: "1", display: "flex", alignItems: "baseline" }}>
+                                                    <div style={{ alignSelf: "flex-end", height: "1em" }}>{<img src={identiconStore.png(sha256str(r[0].url))} style={{ height: "100%" }} />}</div>
+                                                    <div style={{ ...shortstyle, flex: "1" }}>{r[0].url}</div>
+                                                </div>
                                                 <div key={`a:${r[0].url}`} style={shortstyle}>{r === rfirst ? timefmt(new Date(r[1]), "YYYY-MM-DD hh:mm:ss.SSS") : reltime(r[1] - rfirst[1])}</div>
                                             </div>);
                                         })()}
@@ -1899,7 +1902,10 @@ const Tabsview: FC<{
                             .sort((a, b) => a.relay.url.localeCompare(b.relay.url))
                             .map(r => <>
                                 <div key={`f:${r.relay.url}`}>{0 < r.nfail ? "⚠" : "♻"}{r.ndied}</div>
-                                <div key={`u:${r.relay.url}`} style={{ ...shortstyle, maxWidth: "15em" }}>{r.relay.url}</div >
+                                <div key={`u:${r.relay.url}`} style={{ maxWidth: "15em", display: "flex", alignItems: "baseline" }}>
+                                    <div style={{ alignSelf: "flex-end", height: "1em" }}>{<img src={identiconStore.png(sha256str(r.relay.url))} style={{ height: "100%" }} />}</div>
+                                    <div style={{ ...shortstyle, flex: "1" }}>{r.relay.url}</div>
+                                </div>
                                 <div key={`d:${r.relay.url}`} style={{ textAlign: "right" }}>{r.disconnectedat ? reltime(r.disconnectedat - now) : r.connectedat ? reltime(now - r.connectedat) : "-"}</div>
                                 {(noswk.recentNotices.get(r.relay) || []).map(n =>
                                     <div key={`n:${n}:${r.relay.url}`} style={{ gridColumn: "span 3", paddingLeft: "1em", display: "flex", flexDirection: "row" }}>
@@ -1951,7 +1957,7 @@ const Tabsview: FC<{
                     {flash?.msg}
                 </div>
             </div>
-        </div >
+        </div>
     </>;
 };
 export default Tabsview;
