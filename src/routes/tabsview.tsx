@@ -164,7 +164,7 @@ type TheListProps = {
     mypubkey: string | undefined;
     selection: number | null;
     onSelect?: (i: number) => void;
-    onScroll?: React.DOMAttributes<HTMLDivElement>["onScroll"];
+    onScroll?: React.HTMLAttributes<HTMLDivElement>["onScroll"];
     scrollTo?: { pixel: number; } | { index: number; toTop?: boolean; } | { lastIfVisible: boolean; };
 };
 const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, selection, onSelect, onScroll, scrollTo }, ref) => {
@@ -435,12 +435,13 @@ const seleltext = (el: HTMLElement) => {
     selection.addRange(range);
 };
 
-const TabText: FC<PropsWithChildren<{ style?: CSSProperties; }>> = ({ style, children }) =>
+const TabText: FC<PropsWithChildren<React.HTMLAttributes<HTMLDivElement>>> = ({ children, onFocus, onBlur, onCopy, ...props }) =>
     <div
-        style={style}
         tabIndex={0}
-        onFocus={e => seleltext(e.target)}
-        onBlur={e => window.getSelection()?.removeAllRanges()}
+        onFocus={e => { seleltext(e.target); onFocus?.(e); }}
+        onCopy={e => { navigator.clipboard.writeText(window.getSelection()?.toString() ?? ""); onCopy?.(e); }}
+        onBlur={e => { window.getSelection()?.removeAllRanges(); onBlur?.(e); }}
+        {...props}
     >{children}</div>;
 
 const spans = (tev: Event): (
@@ -515,8 +516,8 @@ const spans = (tev: Event): (
 };
 
 const Tabsview: FC<{
-    setGlobalOnKeyDown: React.Dispatch<React.SetStateAction<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>>;
-    setGlobalOnPointerDown: React.Dispatch<React.SetStateAction<React.DOMAttributes<HTMLDivElement>["onPointerDown"]>>;
+    setGlobalOnKeyDown: React.Dispatch<React.SetStateAction<React.HTMLAttributes<HTMLDivElement>["onKeyDown"]>>;
+    setGlobalOnPointerDown: React.Dispatch<React.SetStateAction<React.HTMLAttributes<HTMLDivElement>["onPointerDown"]>>;
 }> = ({ setGlobalOnKeyDown, setGlobalOnPointerDown }) => {
     const navigate = useNavigate();
     const data = useParams();
@@ -1516,19 +1517,19 @@ const Tabsview: FC<{
                                 >
                                     <div style={{ textAlign: "right" }}>pubkey:</div>
                                     <div>
-                                        <TabText style={shortstyle}>{(() => {
+                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(false), listref.current?.focus(); }}>{(() => {
                                             const rev = (selrpev || selev).event;
                                             if (!rev) return "";
                                             return nip19.npubEncode(rev.event.pubkey);
                                         })()}</TabText>
-                                        <TabText style={shortstyle}>{(() => {
+                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(false), listref.current?.focus(); }}>{(() => {
                                             const rev = (selrpev || selev).event;
                                             if (!rev) return "";
                                             const pk: Relay | undefined = rev.receivedfrom.values().next().value;
                                             // should we use kind0's receivedfrom or kind10002? but using kind1's receivedfrom that is _real_/_in use_
                                             return nip19.nprofileEncode({ pubkey: rev.event.pubkey, relays: pk ? [pk.url] : undefined });
                                         })()}</TabText>
-                                        <TabText style={shortstyle}>{(selrpev || selev).event?.event?.pubkey}</TabText>
+                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(false), listref.current?.focus(); }}>{(selrpev || selev).event?.event?.pubkey}</TabText>
                                     </div>
                                     <div style={{ textAlign: "right" }}>name:</div>
                                     <div style={shortstyle}>{String(p?.name)}</div>
@@ -1577,7 +1578,7 @@ const Tabsview: FC<{
                                     {/* <div style={{ textAlign: "right" }}>notes, reactions</div>
                                     <div style={shortstyle}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>json:</div>
-                                    <TabText style={{ ...shortstyle, maxWidth: "20em" }}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</TabText>
+                                    <TabText style={{ ...shortstyle, maxWidth: "20em" }} onCopy={e => { setProfpopping(false), listref.current?.focus(); }}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</TabText>
                                 </div>;
                             })()}
                         </div>
@@ -1629,12 +1630,12 @@ const Tabsview: FC<{
                                     </div>
                                     <div style={{ textAlign: "right" }}>note id:</div>
                                     <div style={{ display: "flex", flexDirection: "column" }}>
-                                        <TabText style={shortstyle}>{nip19.noteEncode(ev.id)}</TabText>
-                                        <TabText style={shortstyle}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: [froms[0]] })}</TabText>
-                                        <TabText style={shortstyle}>{ev.id}</TabText>
+                                        <TabText style={shortstyle} onCopy={e => { setEvinfopopping(false); listref.current?.focus(); }}>{nip19.noteEncode(ev.id)}</TabText>
+                                        <TabText style={shortstyle} onCopy={e => { setEvinfopopping(false); listref.current?.focus(); }}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: [froms[0]] })}</TabText>
+                                        <TabText style={shortstyle} onCopy={e => { setEvinfopopping(false); listref.current?.focus(); }}>{ev.id}</TabText>
                                     </div>
                                     <div style={{ textAlign: "right" }}>json:</div>
-                                    <TabText style={{ overflow: "hidden", whiteSpace: "pre" }}>{[
+                                    <TabText style={{ overflow: "hidden", whiteSpace: "pre" }} onCopy={e => { setEvinfopopping(false); listref.current?.focus(); }}>{[
                                         selpost.event!.event!.event,
                                         selpost.event?.deleteevent?.event,
                                         selpost.reposttarget?.event?.event,
