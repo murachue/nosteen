@@ -273,6 +273,7 @@ export class NostrWorker {
     onMyContacts = new SimpleEmitter<DeletableEvent>();
     onAuth = new SimpleEmitter<{ relay: Relay; challenge: string; }>();
     onNotice = new SimpleEmitter<{ relay: Relay; msg: string; }>();
+    onFetch = new SimpleEmitter<{ length: number; }>();
     recentNotices = new Map<Relay, { msg: string, receivedAt: number; }[]>();
     receiveEmitter = new Map<string, SimpleEmitter<NostrWorkerListenerMessage>>();
     verifyq: { receivedAt: number; messages: EventMessageFromRelay[] | null; onVerified: VerifiedHandler; }[] = [];
@@ -535,6 +536,9 @@ export class NostrWorker {
             });
         }
     }
+    fetchqlen() {
+        return this.fetchq.length;
+    }
     getPost(id: string) {
         return this.posts.get(id);
     }
@@ -615,9 +619,9 @@ export class NostrWorker {
 
         const pred = (() => {
             switch (kind) {
-                case Kinds.profile: return new FetchProfile(pk);
-                case Kinds.contacts: return new FetchContacts(pk);
-                // case Kinds.relays: return new FetchRelays(key);
+                case Kinds.profile: return new FetchProfile(pk, true);
+                case Kinds.contacts: return new FetchContacts(pk, true);
+                // case Kinds.relays: return new FetchRelays(key, true);
                 default: throw new Error(`getprofile pred not supported ${kind}: ${pk}`);
             }
         })();
@@ -642,7 +646,8 @@ export class NostrWorker {
             },
         }]);
 
-        return null;
+        // stale-while-revalidate
+        return pcache?.event || null;
     }
 
     private putProfile(event: DeletableEvent): boolean {
@@ -651,7 +656,8 @@ export class NostrWorker {
         const pf = getmk(this.profiles, ev.pubkey, () => ({ profile: null, contacts: null, relays: null }));
         const k = this.profkey(ev.kind);
         const knownev = pf[k]?.event?.event?.event;
-        if (knownev && ev.created_at <= knownev.created_at) return false;
+        // drop older. accept same for renewing fetchedAt
+        if (knownev && ev.created_at < knownev.created_at) return false;
         pf[k] = { event, fetchedAt: Date.now() };
         return true;
     }
@@ -772,6 +778,7 @@ export class NostrWorker {
                 });
             }
             this.fetchq.splice(0, i);
+            this.onFetch.emit("", { length: this.fetchq.length });
         }
     }
 

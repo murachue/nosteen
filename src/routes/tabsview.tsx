@@ -590,6 +590,14 @@ const Tabsview: FC<{
             };
         })(), [])
     );
+    const fetchqlen = useSyncExternalStore(
+        useCallback(storeChange => {
+            const handler = (ev: { length: number; }): void => storeChange();
+            noswk.onFetch.on("", handler);
+            return () => { noswk.onFetch.off("", handler); };
+        }, []),
+        useCallback(() => noswk.fetchqlen(), [])
+    );
 
     const tab = useCallback(() => {
         const tab = tabs.find(t => t.id === tabid);
@@ -1354,17 +1362,37 @@ const Tabsview: FC<{
         return () => setGlobalOnPointerDown(undefined);
     }, []);
     useEffect(() => {
+        // FIXME: this code block smells.
+        // FIXME: this code breaks when selev changed while fetching.
         if (selev?.event) {
-            const cachedauthor = noswk.getProfile(selev.event.event.pubkey, Kinds.profile, ev => {
-                setAuthor(jsoncontent(ev));
-            }, undefined, profpopping ? 5 * 60 * 1000 : undefined);
-            setAuthor(cachedauthor && jsoncontent(cachedauthor));
             let cachedrpauthor: DeletableEvent | null | undefined;
+            const cachedauthor = noswk.getProfile(selev.event.event.pubkey, Kinds.profile, ev => {
+                setTimeout(() => {
+                    const cachedauthor = ev;
+                    setAuthor(metadatajsoncontent(ev));
+
+                    if (cachedrpauthor || cachedauthor) {
+                        setProf(p => ({ ...p, metadata: cachedrpauthor || cachedauthor }));
+                    } else {
+                        setProf(p => ({ ...p, metadata: null, contacts: null }));
+                    }
+                }, 0);
+            }, undefined, profpopping ? 5 * 60 * 1000 : undefined);
+            setAuthor(cachedauthor && metadatajsoncontent(cachedauthor));
             if (selrpev?.event) {
                 cachedrpauthor = noswk.getProfile(selrpev.event.event.pubkey, Kinds.profile, ev => {
-                    setRpauthor(jsoncontent(ev));
+                    setTimeout(() => {
+                        cachedrpauthor = ev;
+                        setRpauthor(metadatajsoncontent(ev));
+
+                        if (cachedrpauthor || cachedauthor) {
+                            setProf(p => ({ ...p, metadata: cachedrpauthor || cachedauthor }));
+                        } else {
+                            setProf(p => ({ ...p, metadata: null, contacts: null }));
+                        }
+                    }, 0);
                 }, undefined, profpopping ? 5 * 60 * 1000 : undefined);
-                setRpauthor(cachedrpauthor && jsoncontent(cachedrpauthor));
+                setRpauthor(cachedrpauthor && metadatajsoncontent(cachedrpauthor));
             }
 
             if (profpopping) {
@@ -1376,7 +1404,7 @@ const Tabsview: FC<{
 
                 const cachedcontacts = noswk.getProfile(selev.event.event.pubkey, Kinds.contacts, ev => {
                     setProf(p => ({ ...p, contacts: ev }));
-                });
+                }, undefined, 5 * 60 * 1000);
                 setProf(p => ({ ...p, contacts: cachedcontacts }));
             }
         }
@@ -1550,8 +1578,8 @@ const Tabsview: FC<{
                                         : (author ? `${author.name}/${author.display_name}` : selev.event?.event?.pubkey)
                                 )}
                             </div>
-                            {!selev || !profpopping ? null : (() => {
-                                const p: MetadataContent = !prof.metadata ? null : jsoncontent(prof.metadata);
+                            {(!selev || !profpopping) ? null : (() => {
+                                const p = !prof.metadata ? null : metadatajsoncontent(prof.metadata);
                                 return <div
                                     ref={profpopref}
                                     style={{
@@ -1844,6 +1872,7 @@ const Tabsview: FC<{
                     </div>
                 </div>
                 <div style={{ padding: "0 0.5em" }}>-</div>
+                <div style={{ padding: "0 0.5em" }}>{fetchqlen}</div>
                 <div style={{ padding: "0 0.5em", position: "relative" }}>
                     <div style={{ cursor: "pointer" }} onClick={e => setRelaypopping(s => !s)}>{relayinfo.healthy}/{relayinfo.all}</div>
                     {!relaypopping ? null : <div
@@ -1869,11 +1898,11 @@ const Tabsview: FC<{
                         return [...relayinfo.relays]
                             .sort((a, b) => a.relay.url.localeCompare(b.relay.url))
                             .map(r => <>
-                                <div>{0 < r.nfail ? "⚠" : "♻"}{r.ndied}</div>
-                                <div style={{ ...shortstyle, maxWidth: "15em" }}>{r.relay.url}</div >
-                                <div style={{ textAlign: "right" }}>{r.disconnectedat ? reltime(r.disconnectedat - now) : r.connectedat ? reltime(now - r.connectedat) : "-"}</div>
+                                <div key={`f:${r.relay.url}`}>{0 < r.nfail ? "⚠" : "♻"}{r.ndied}</div>
+                                <div key={`u:${r.relay.url}`} style={{ ...shortstyle, maxWidth: "15em" }}>{r.relay.url}</div >
+                                <div key={`d:${r.relay.url}`} style={{ textAlign: "right" }}>{r.disconnectedat ? reltime(r.disconnectedat - now) : r.connectedat ? reltime(now - r.connectedat) : "-"}</div>
                                 {(noswk.recentNotices.get(r.relay) || []).map(n =>
-                                    <div style={{ gridColumn: "span 3", paddingLeft: "1em", display: "flex", flexDirection: "row" }}>
+                                    <div key={`n:${n}:${r.relay.url}`} style={{ gridColumn: "span 3", paddingLeft: "1em", display: "flex", flexDirection: "row" }}>
                                         <div style={{ ...shortstyle, flex: "1" }}>{n.msg}</div>
                                         <div>{reltime(n.receivedAt - now)}</div>
                                     </div>
