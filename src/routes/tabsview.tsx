@@ -1258,7 +1258,7 @@ const Tabsview: FC<{
                     if (tas.selected === null) break;
                     const post = tap.posts[tas.selected];
                     const rootid = ((post?.reposttarget?.event || post?.event?.event)?.event?.tags || []).reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
-                    const evid = rootid || post.id;
+                    const evid = rootid || (post?.reposttarget?.id || post.id);
                     const id = `thread/${evid}`;
                     setTabs([...tabs.filter(t => t.id !== id), {
                         id,
@@ -1396,7 +1396,7 @@ const Tabsview: FC<{
                     setProf(p => ({ ...p, metadata: null, contacts: null }));
                 }
 
-                const cachedcontacts = noswk.getProfile(selev.event.event.pubkey, Kinds.contacts, ev => {
+                const cachedcontacts = noswk.getProfile((selrpev?.event || selev.event).event.pubkey, Kinds.contacts, ev => {
                     setProf(p => ({ ...p, contacts: ev }));
                 }, undefined, 5 * 60 * 1000);
                 setProf(p => ({ ...p, contacts: cachedcontacts }));
@@ -1901,8 +1901,8 @@ const Tabsview: FC<{
                                     <div style={{ ...shortstyle, flex: "1" }}>{r.relay.url}</div>
                                 </div>
                                 <div key={`d:${r.relay.url}`} style={{ textAlign: "right" }}>{r.disconnectedat ? reltime(r.disconnectedat - now) : r.connectedat ? reltime(now - r.connectedat) : "-"}</div>
-                                {(noswk.recentNotices.get(r.relay) || []).map(n =>
-                                    <div key={`n:${n}:${r.relay.url}`} style={{ gridColumn: "span 3", paddingLeft: "1em", display: "flex", flexDirection: "row" }}>
+                                {(noswk.recentNotices.get(r.relay) || []).map((n, i) =>
+                                    <div key={`n:${i}:${r.relay.url}`} style={{ gridColumn: "span 3", paddingLeft: "1em", display: "flex", flexDirection: "row" }}>
                                         <div style={{ ...shortstyle, flex: "1" }}>{n.msg}</div>
                                         <div>{reltime(n.receivedAt - now)}</div>
                                     </div>
