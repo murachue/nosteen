@@ -450,21 +450,62 @@ const spans = (tev: Event): (
     | { rawtext: string; type: "text"; text: string; }
 )[] => {
     const text = tev.content;
-    const ixs = new Set([0]);
-    // TODO: handle domain names? note1asvxwepy2v83mrvfet9yyq0klc4hwsucdn3dlzuvaa9szltw6gqqf5w8p0
-    for (const m of text.matchAll(/\bhttps?:\/\/\S+|#\S+|\b(nostr:)?(note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+/g)) {
-        ixs.add(m.index!);
-        ixs.add(m.index! + m[0].length);
+
+    // https://stackoverflow.com/a/6969486
+    function escapeRegExp(string: string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
     }
-    ixs.add(text.length);
-    const ixa = [...ixs.values()].sort((a, b) => a - b);
-    const tspans = Array(ixs.size - 1).fill(0).map((_, i) => text.slice(ixa[i], ixa[i + 1]));
-    return tspans.map(t => {
-        const murl = t.match(/^https?:\/\/\S+/);
-        if (murl) {
-            const tag = tev.tags.find(t => t[0] === "r" && t[1] === murl[0]);
-            return { rawtext: t, type: "url", href: t, auto: !tag } as const;
+
+    type IndexSpan = {
+        type: "text" | "rurl" | "url" | "rest";
+        from: number;
+        to: number;
+    };
+    const compactspan = (spans: IndexSpan[]) => spans.filter(s => s.from !== s.to);
+    const subspan = (spans: IndexSpan[], rex: RegExp, type: IndexSpan["type"]) => spans.flatMap(span => {
+        if (span.type !== "text") return [span];
+        const span1: IndexSpan[] = [];
+        const slice = text.slice(span.from, span.to);
+        for (const s of slice.matchAll(rex)) {
+            span1.push({ type: "text", from: (span1[span1.length - 1]?.to || 0), to: s.index! });
+            span1.push({ type, from: s.index!, to: s.index! + s[0].length });
+        }
+        span1.push({ type: "text", from: (span1[span1.length - 1]?.to || 0), to: slice.length });
+        return compactspan(span1).map(s => ({ ...s, from: span.from + s.from, to: span.from + s.to }));
+    });
+
+    // #r is very reliable (except some from Amethyst)
+    const span0: IndexSpan[] = [{ type: "text", from: 0, to: text.length }];
+    const rtags = tev.tags.filter(t => t[0] === "r");
+    const span1 = (() => {
+        if (rtags.length === 0) return span0;
+        const rsrex = new RegExp(rtags.map(t => escapeRegExp(t[1])).join("|"), "g");
+        return subspan(span0, rsrex, "rurl");  // this can be []
+    })();
+
+    // url has priority than emoji. consider: "http://[2001:db8::beef:1]/foo has a :beef:" with emoji:beef:xxx
+    // TODO: handle domain names? note1asvxwepy2v83mrvfet9yyq0klc4hwsucdn3dlzuvaa9szltw6gqqf5w8p0
+    const urlrex = /\bhttps?:\/\/\S+/g;
+    const span2 = subspan(span1, urlrex, "url");  // this can be []
+
+    // then rest
+    const restex = /#\S+|\b(nostr:)?(note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+/g;
+    const span3 = subspan(span2, restex, "rest");
+
+    const spanx = span3.map(s => ({ type: s.type, text: text.slice(s.from, s.to) }));
+
+    return spanx.map(s => {
+        const t = s.text;
+        if (s.type === "rurl" || s.type === "url") {
+            // const auto = !tev.tags.find(t => t[0] === "r" && t[1] === s.text);
+            return { rawtext: t, type: "url", href: t, auto: s.type === "url" } as const;
         };
+        if (s.type === "text") {
+            return { rawtext: t, type: "text", text: t } as const;
+        }
+
+        // s.type === "rest"
+
         const mref = t.match(/^#\[(\d+)\]/);
         if (mref) {
             const ti = Number(mref[1]);
@@ -492,10 +533,10 @@ const spans = (tev: Event): (
                         return t => t[0] === "e" && t[1] === d.data.id;
                     }
                     case "naddr": {
-                        return; // TODO
+                        return undefined; // TODO
                     }
                     case "nsec": {
-                        return; // TODO
+                        return undefined; // TODO
                     }
                     case "npub": {
                         return t => t[0] === "p" && t[1] === d.data;
@@ -509,6 +550,7 @@ const spans = (tev: Event): (
             const tag = tt && tev.tags.find(tt);
             return { rawtext: t, type: "nip19", text: mnostr[1], auto: !tag } as const;
         }
+        // should not reached here but last resort.
         return { rawtext: t, type: "text", text: t } as const;
     });
 };
@@ -1127,32 +1169,6 @@ const Tabsview: FC<{
                     const ss = spans(tev);
                     const specials = ss.filter(s => s.type !== "text");
                     const ls = new Map();
-                    tev.tags.forEach(t => {
-                        switch (t[0]) {
-                            case "p": {
-                                const text = nip19.npubEncode(t[1]);
-                                ls.set(text, { text, auto: false });
-                                break;
-                            }
-                            case "e": {
-                                const text = nip19.noteEncode(t[1]);
-                                ls.set(text, { text, auto: false });
-                                break;
-                            }
-                            case "t": {
-                                // doubled but why? (hashtag span key is tagtext which looks good?)
-                                const text = `#${t[1]}`;
-                                ls.set(text, { text, auto: false });
-                                break;
-                            }
-                            case "r": {
-                                // usually URL but not guaranteed.
-                                const text = t[1];
-                                ls.set(text, { text, auto: false });
-                                break;
-                            }
-                        }
-                    });
                     specials.forEach(s => {
                         switch (s.type) {
                             case "url": {
@@ -1177,6 +1193,31 @@ const Tabsview: FC<{
                             }
                             case "text": {
                                 const text = s.text;
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                        }
+                    });
+                    tev.tags.forEach(t => {
+                        switch (t[0]) {
+                            case "p": {
+                                const text = nip19.npubEncode(t[1]);
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                            case "e": {
+                                const text = nip19.noteEncode(t[1]);
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                            case "t": {
+                                const text = `#${t[1]}`;
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                            case "r": {
+                                // usually URL but not guaranteed.
+                                const text = t[1];
                                 ls.set(text, { text, auto: false });
                                 break;
                             }
