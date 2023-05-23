@@ -204,8 +204,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                 return;
             }
             const listScrollBottom = lel.scrollTop + lel.clientHeight;
-            const selOffsetBottom = (ix + 1) * rowh + iel.offsetTop;
-            // TODO: if toTop, just last also scrolled to top. off-by-one.
+            const selOffsetBottom = (ix + 2) * rowh + iel.offsetTop;  // last fully-visible item also scrolls.
             if (listScrollBottom < selOffsetBottom) {
                 if (scrollTo.toTop) {
                     lel.scrollTo(0, ix * rowh);
