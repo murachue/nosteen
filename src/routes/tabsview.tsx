@@ -444,9 +444,9 @@ const TabText: FC<PropsWithChildren<React.HTMLAttributes<HTMLDivElement>>> = ({ 
 
 const spans = (tev: Event): (
     { rawtext: string; type: "url"; href: string; auto: boolean; }
-    | { rawtext: string; type: "ref"; tagindex: number; tag: string[] | undefined; text?: string; }
+    | { rawtext: string; type: "ref"; tagindex: number; tag: string[] | undefined; text?: string; hex: string | null; }
     | { rawtext: string; type: "hashtag"; text: string; tagtext: string | undefined; auto: boolean; }
-    | { rawtext: string; type: "nip19"; text: string; auto: boolean; }
+    | { rawtext: string; type: "nip19"; text: string; hex: string | undefined; auto: boolean; }
     | { rawtext: string; type: "text"; text: string; }
 )[] => {
     const text = tev.content;
@@ -475,6 +475,7 @@ const spans = (tev: Event): (
     });
 
     // #r is very reliable (except some from Amethyst)
+    // TODO: filter that is URL.parse-able for from Amethyst
     const span0: IndexSpan[] = [{ type: "text", from: 0, to: text.length }];
     const rtags = tev.tags.filter(t => t[0] === "r");
     const span1 = (() => {
@@ -510,9 +511,9 @@ const spans = (tev: Event): (
         if (mref) {
             const ti = Number(mref[1]);
             const tag = tev.tags[ti] satisfies string[] as string[] | undefined;
-            if (tag && tag[0] === "p") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.npubEncode(tag[1]) } as const;
-            if (tag && tag[0] === "e") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]) } as const;
-            return { rawtext: t, type: "ref", tagindex: ti, tag } as const;
+            if (tag && tag[0] === "p") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.npubEncode(tag[1]), hex: tag[1] } as const;
+            if (tag && tag[0] === "e") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]), hex: tag[1] } as const;
+            return { rawtext: t, type: "ref", tagindex: ti, tag, hex: null } as const;
         }
         const mhash = t.match(/^#(\S+)/);
         if (mhash) {
@@ -522,15 +523,16 @@ const spans = (tev: Event): (
         }
         const mnostr = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
         if (mnostr) {
-            const tt = ((): (((t: string[]) => boolean) | undefined) => {
+            const tt = ((): ({ hex: string; match: ((t: string[]) => boolean); } | undefined) => {
                 const d = (() => { try { return nip19.decode(mnostr[1]); } catch { return undefined; } })();
-                if (!d) return undefined;
+                if (!d) return undefined;  // bad checksum?
                 switch (d.type) {
                     case "nprofile": {
-                        return t => t[0] === "p" && t[1] === d.data.pubkey;
+                        return { match: t => t[0] === "p" && t[1] === d.data.pubkey, hex: d.data.pubkey };
                     }
                     case "nevent": {
-                        return t => t[0] === "e" && t[1] === d.data.id;
+                        // we don't support Damus' #q
+                        return { match: t => t[0] === "e" && t[1] === d.data.id, hex: d.data.id };
                     }
                     case "naddr": {
                         return undefined; // TODO
@@ -539,16 +541,17 @@ const spans = (tev: Event): (
                         return undefined; // TODO
                     }
                     case "npub": {
-                        return t => t[0] === "p" && t[1] === d.data;
+                        return { match: t => t[0] === "p" && t[1] === d.data, hex: d.data };
                     }
                     case "note": {
-                        return t => t[0] === "e" && t[1] === d.data;
+                        // we don't support Damus' #q
+                        return { match: t => t[0] === "e" && t[1] === d.data, hex: d.data };
                     }
                 }
                 return undefined;
             })();
-            const tag = tt && tev.tags.find(tt);
-            return { rawtext: t, type: "nip19", text: mnostr[1], auto: !tag } as const;
+            const tag = tt && tev.tags.find(tt.match);
+            return { rawtext: t, type: "nip19", text: mnostr[1], hex: tt?.hex, auto: !tag } as const;
         }
         // should not reached here but last resort.
         return { rawtext: t, type: "text", text: t } as const;
@@ -1199,6 +1202,7 @@ const Tabsview: FC<{
                         }
                     });
                     tev.tags.forEach(t => {
+                        // we don't support Damus' #q
                         switch (t[0]) {
                             case "p": {
                                 const text = nip19.npubEncode(t[1]);
@@ -1825,18 +1829,24 @@ const Tabsview: FC<{
                                     return spans(ev).map((s, i) => {
                                         switch (s.type) {
                                             case "url": {
+                                                // TODO: more regular appearance for non-URL.parse-able
                                                 return <a key={i} href={s.href} style={{ color: colorlinktext, textDecoration: s.auto ? "underline dotted" : "underline" }} tabIndex={-1}>{s.href}</a>;
                                             }
                                             case "ref": {
                                                 if (s.text) {
-                                                    return <span key={i} style={{
-                                                        ...shortstyle,
-                                                        display: "inline-block",
-                                                        textDecoration: "underline",
-                                                        width: "8em",
-                                                        height: "1em",
-                                                        verticalAlign: "text-bottom"
-                                                    }}>{s.text}</span>;
+                                                    return <span key={i} style={{ display: "inline-flex" }}>
+                                                        {!s.text.match(/^npub1|^nprofile1/) || !s.hex
+                                                            ? null
+                                                            : <img src={identiconStore.png(s.hex)} style={{ height: "1em" }} />}
+                                                        <span style={{
+                                                            ...shortstyle,
+                                                            display: "inline-block",
+                                                            textDecoration: "underline",
+                                                            width: "8em",
+                                                            height: "1em",
+                                                            verticalAlign: "text-bottom"
+                                                        }}>{s.text}</span>
+                                                    </span>;
                                                 } else {
                                                     return <span key={i} style={{ textDecoration: "underline dotted" }}>{JSON.stringify(s.tag)}</span>; // TODO nice display
                                                 }
@@ -1845,14 +1855,19 @@ const Tabsview: FC<{
                                                 return <span key={i} style={{ textDecoration: s.auto ? "underline dotted" : "underline" }}>#{s.text}</span>;
                                             }
                                             case "nip19": {
-                                                return <span key={i} style={{
-                                                    ...shortstyle,
-                                                    display: "inline-block",
-                                                    textDecoration: s.auto ? "underline dotted" : "underline",
-                                                    width: "8em",
-                                                    height: "1em",
-                                                    verticalAlign: "text-bottom",
-                                                }}>{s.text}</span>;
+                                                return <span key={i} style={{ display: "inline-flex" }}>
+                                                    {!s.text.match(/^npub1|^nprofile1/) || !s.hex
+                                                        ? null
+                                                        : <img src={identiconStore.png(s.hex)} style={{ height: "1em" }} />}
+                                                    <span style={{
+                                                        ...shortstyle,
+                                                        display: "inline-block",
+                                                        textDecoration: s.auto ? "underline dotted" : "underline",
+                                                        width: "8em",
+                                                        height: "1em",
+                                                        verticalAlign: "text-bottom",
+                                                    }}>{s.text}</span>
+                                                </span>;
                                             }
                                             case "text": {
                                                 return s.text;
