@@ -165,9 +165,10 @@ type TheListProps = {
     selection: number | null;
     onSelect?: (i: number) => void;
     onScroll?: React.HTMLAttributes<HTMLDivElement>["onScroll"];
+    onFocus?: React.HTMLAttributes<HTMLDivElement>["onFocus"];
     scrollTo?: { pixel: number; } | { index: number; toTop?: boolean; } | { lastIfVisible: boolean; };
 };
-const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, selection, onSelect, onScroll, scrollTo }, ref) => {
+const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, selection, onSelect, onScroll, onFocus, scrollTo }, ref) => {
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontui] = useAtom(state.preferences.fonts.ui);
@@ -242,6 +243,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                     setScrollTop((e.nativeEvent.target as HTMLDivElement).scrollTop);
                     onScroll && onScroll(e);
                 }}
+                onFocus={onFocus}
             >
                 <div style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg, zIndex: 1 /* ugh */ }}>
                     <TH>
@@ -617,6 +619,9 @@ const Tabsview: FC<{
     const [relaypopping, setRelaypopping] = useState(false);
     const relaypopref = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState("status...");
+    const [edittags, setEdittags] = useState<string[][] | null>(null);
+    const [editingtag, setEditingtag] = useState<[number, number] | null>(null);
+    const editingtagref = useRef<HTMLInputElement>(null);
 
     const relayinfo = useSyncExternalStore(
         useCallback(storeChange => {
@@ -812,6 +817,11 @@ const Tabsview: FC<{
         if (!el) return;
         el.focus();
     }, [tabnameedit]);  // !!
+    useEffect(() => {
+        const el = editingtagref.current;
+        if (!el) return;
+        el.focus();
+    }, [editingtag]);  // !!
     const nextunread = useCallback(() => {
         // TODO: search other tabs, jump to last note of first tab if all tabs has read.
         if (!tap) return false;
@@ -1135,6 +1145,22 @@ const Tabsview: FC<{
                     const ei = postindex(tap.posts, lp.event!.event!.event);
                     if (ei === null) break;  // TODO: may move tab? what if already closed?
                     onselect(ei);
+                    break;
+                }
+                case "Enter": {
+                    if (!selev) break;
+                    // remove root and reply from editing tags
+                    const rooti = (edittags || []).map((e, i) => [i, e] as const).reduce<number | null>((p, [i, c]) =>
+                        (c[0] === "e" && c[3] === "root") || p === null ? i : p, null);
+                    const replyi = (edittags || []).map((e, i) => [i, e] as const).reduce<{ i: number | null, t: string[]; }>((p, [i, t]) =>
+                        !(p.i !== null && p.t[0] === "e" && p.t[3] === "reply") && t[0] === "e" ? { i, t } : p, { i: null, t: [] }).i;
+                    const worrtags = (edittags || []).filter((e, i) => (rooti === null || i !== rooti) && (replyi === null || i !== replyi));
+                    // then combine
+                    const root = ((selrpev || selev)?.event?.event?.tags || []).reduce<string[] | null>((p, c) => (c[0] === "e" && (c[3] === "root" || p === null)) ? c : p, null);
+                    // TODO: relay in tag from receivefrom? really?
+                    setEdittags([(root ? [root[0], root[1], root[2] || "", "root"] : ["e", (selrpev || selev).id, "", "root"]), ...worrtags, ["e", (selrpev || selev).id, "", "reply"]]);
+                    posteditor.current?.focus();
+                    e.preventDefault();
                     break;
                 }
                 case "J": {
@@ -1496,6 +1522,12 @@ const Tabsview: FC<{
                         setTabstates(produce(draft => {
                             getmk(draft, tab.id, newtabstate).scroll = listref.current?.scrollTop || 0; // use event arg?
                         }));
+                    }}
+                    onFocus={e => {
+                        if (postdraft === "") {
+                            setEdittags(null);
+                            setEditingtag(null);
+                        }
                     }}
                     scrollTo={listscrollto}
                 />}
@@ -1933,15 +1965,58 @@ const Tabsview: FC<{
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
-            <div style={{ background: coloruibg, color: coloruitext, font: fontui, padding: "2px", display: "flex" }}>
-                <div style={{ flex: "1", height: "1em", display: "flex", alignItems: "center", overflow: "hidden" }}>
-                    <div style={{ ...shortstyle, flex: "1" }}>
-                        ∃{tap?.nunreads}/{tap?.posts?.length} ∀{streams?.getNunreads()}/{streams?.getAllPosts()?.size} | 💬{speeds.mypostph}/⭐{speeds.reactph}/🌊{speeds.allnoteph}/h | {status}
-                    </div>
-                </div>
-                <div style={{ padding: "0 0.5em" }}>-</div>
-                <div style={{ padding: "0 0.5em" }}>{fetchqlen}</div>
-                <div style={{ padding: "0 0.5em", position: "relative" }}>
+            <div style={{ background: coloruibg, color: coloruitext, font: fontui, display: "flex" }}>
+                {
+                    edittags
+                        ? <div style={{ flex: "1", border: "2px inset", background: colorbase }}>
+                            {(() => {
+                                return edittags.map((e, ti) =>
+                                    <div
+                                        key={ti}
+                                        style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "inline-flex" }}
+                                    >
+                                        {e.map((e, ei) =>
+                                            ti === editingtag?.[0]
+                                                ? <input
+                                                    key={ei}
+                                                    type="text"
+                                                    value={e}
+                                                    onChange={e => setEdittags(produce(draft => { if (draft) draft[ti][ei] = e.target.value; }))}
+                                                    onFocus={e => setEditingtag([ti, ei])}
+                                                    onBlur={e => setEditingtag(s => s?.[0] === ti && s?.[1] === ei ? null : s)}
+                                                    size={Math.max(1, e.length)}
+                                                    style={{
+                                                        margin: "2px",
+                                                        padding: "0px 2px",
+                                                        borderLeft: "1px solid",
+                                                        borderLeftColor: colornormal,
+                                                        background: colorbase,
+                                                        color: colornormal,
+                                                        font: fonttext,
+                                                    }}
+                                                />
+                                                : <div
+                                                    key={ei}
+                                                    ref={editingtag?.[0] === ti && editingtag?.[1] === ei ? editingtagref : undefined}
+                                                    style={{ padding: "0 2px", borderLeft: "1px solid", borderLeftColor: colornormal, color: colornormal }}
+                                                    tabIndex={0}
+                                                    onFocus={e => setEditingtag([ti, ei])}
+                                                >{e}</div>
+                                        )}
+                                    </div>);
+                            })()}
+                        </div>
+                        : <>
+                            <div style={{ flex: "1", height: "1em", padding: "2px", display: "flex", alignItems: "center", overflow: "hidden" }}>
+                                <div style={{ ...shortstyle, flex: "1" }}>
+                                    ∃{tap?.nunreads}/{tap?.posts?.length} ∀{streams?.getNunreads()}/{streams?.getAllPosts()?.size} | 💬{speeds.mypostph}/⭐{speeds.reactph}/🌊{speeds.allnoteph}/h | {status}
+                                </div>
+                            </div>
+                            <div style={{ padding: "2px 0.5em" }}>-</div>
+                            <div style={{ padding: "2px 0.5em" }}>{fetchqlen}</div>
+                        </>
+                }
+                <div style={{ padding: "2px 0.5em", position: "relative", display: "flex", flexDirection: "row", alignItems: "center" }}>
                     <div style={{ cursor: "pointer" }} onClick={e => setRelaypopping(s => !s)}>{relayinfo.healthy}/{relayinfo.all}</div>
                     {!relaypopping ? null : <div
                         ref={relaypopref}
