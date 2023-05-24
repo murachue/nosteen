@@ -1,7 +1,7 @@
 import { produce } from "immer";
 import { useAtom } from "jotai";
 import { generatePrivateKey, getPublicKey, nip19 } from "nostr-tools";
-import { FC, useCallback, useState } from "react";
+import { FC, Fragment, useCallback, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
 import TextInput from "../components/textinput";
@@ -112,8 +112,8 @@ export default () => {
         <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>Preferences</h1>
         <h2>Relays:</h2>
         <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "max-content max-content", columnGap: "0.5em" }}>
-            {relays.map((rly, i) => <>
-                <div key={`l:${rly.url}`} style={{ display: "flex", gap: "0.5em" }}>
+            {relays.map((rly, i) => <Fragment key={rly.url}>
+                <div style={{ display: "flex", gap: "0.5em" }}>
                     <div style={{ ...(rly.removed ? { textDecoration: "line-through" } : rly.added ? { fontStyle: "italic" } : {}), flex: "1", marginRight: "1em", display: "flex" }}>
                         <div style={{ alignSelf: "center", height: "1em" }}>{<img src={identiconStore.png(sha256str(rly.url))} style={{ height: "100%" }} />}</div>
                         <div>{rly.url}</div>
@@ -122,14 +122,14 @@ export default () => {
                     <div><label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label></div>
                     <div><label><input type="checkbox" checked={rly.public} onChange={e => setRelays(produce(draft => { draft[i].public = e.target.checked; }))} />publish?</label></div>
                 </div>
-                <button key={`b:${rly.url}`} onClick={e => {
+                <button onClick={e => {
                     setRelays(produce(draft => {
                         const r = draft.find(r => r.url === rly.url);
                         invariant(r, "inconsistent relays");
                         r.removed = !r.removed;
                     }));
                 }}>{rly.removed ? "Undo" : "Remove"}</button>
-            </>)}
+            </Fragment>)}
             <div style={{ display: "flex" }}>
                 <MultiInput placeholder="wss://..." value={url} onChange={lines => setUrl(lines)} style={{ flex: "1" }} />
             </div>

@@ -1,7 +1,7 @@
 import produce from "immer";
 import { useAtom } from "jotai";
 import { Event, Kind, nip13, nip19 } from "nostr-tools";
-import { CSSProperties, FC, ForwardedRef, PropsWithChildren, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { CSSProperties, FC, ForwardedRef, Fragment, PropsWithChildren, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
@@ -2040,20 +2040,20 @@ const Tabsview: FC<{
                         const now = Date.now();
                         return [...relayinfo.relays]
                             .sort((a, b) => a.relay.url.localeCompare(b.relay.url))
-                            .map(r => <>
-                                <div key={`f:${r.relay.url}`}>{0 < r.nfail ? "⚠" : "♻"}{r.ndied}</div>
-                                <div key={`u:${r.relay.url}`} style={{ maxWidth: "15em", display: "flex", alignItems: "baseline" }}>
+                            .map(r => <Fragment key={r.relay.url}>
+                                <div>{0 < r.nfail ? "⚠" : "♻"}{r.ndied}</div>
+                                <div style={{ maxWidth: "15em", display: "flex", alignItems: "baseline" }}>
                                     <div style={{ alignSelf: "flex-end", height: "1em" }}>{<img src={identiconStore.png(sha256str(r.relay.url))} style={{ height: "100%" }} />}</div>
                                     <div style={{ ...shortstyle, flex: "1" }}>{r.relay.url}</div>
                                 </div>
-                                <div key={`d:${r.relay.url}`} style={{ textAlign: "right" }}>{r.disconnectedat ? reltime(r.disconnectedat - now) : r.connectedat ? reltime(now - r.connectedat) : "-"}</div>
+                                <div style={{ textAlign: "right" }}>{r.disconnectedat ? reltime(r.disconnectedat - now) : r.connectedat ? reltime(now - r.connectedat) : "-"}</div>
                                 {(noswk.recentNotices.get(r.relay) || []).map((n, i) =>
                                     <div key={`n:${i}:${r.relay.url}`} style={{ gridColumn: "span 3", paddingLeft: "1em", display: "flex", flexDirection: "row" }}>
                                         <div style={{ ...shortstyle, flex: "1" }}>{n.msg}</div>
                                         <div>{reltime(n.receivedAt - now)}</div>
                                     </div>
                                 )}
-                            </>);
+                            </Fragment>);
                     })()}</div>}
                 </div>
                 {/* <div style={{ position: "relative" }}>
