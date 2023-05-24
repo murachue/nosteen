@@ -948,6 +948,18 @@ const Tabsview: FC<{
                             navigate(`/tab/e/${text}`);
                             break;
                         }
+                        const rmhash = text.match(/^#(.+)/);
+                        if (rmhash) {
+                            const id = crypto.randomUUID();
+                            setTabs([...tabs.filter(t => t.id !== id), {
+                                id,
+                                name: `#${rmhash[1].slice(0, 8)}`,
+                                filter: [{ "#t": [rmhash[1]], limit: 30 }],
+                            }]);
+                            setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
+                            navigate(`/tab/${id}`);
+                            break;
+                        }
                         setFlash({ msg: "sorry not supported yet", bang: true });
                         break;
                     }

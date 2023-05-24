@@ -1,6 +1,5 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { Kinds } from "./types";
 import { IdenticonStore } from "./identicon";
 
 export type Tabdef = {
@@ -10,8 +9,7 @@ export type Tabdef = {
         ids: string[];
         authors: string[];
         kinds: number[];
-        "#e": string[];
-        "#p": string[];
+        [k: `#${string}`]: string[];
         since: number;
         until: number;
         limit: number;
