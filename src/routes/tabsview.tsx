@@ -204,14 +204,18 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                 return;
             }
             const listScrollBottom = lel.scrollTop + lel.clientHeight;
-            const selOffsetBottom = (ix + 2) * rowh + iel.offsetTop;  // last fully-visible item also scrolls.
-            if (listScrollBottom < selOffsetBottom) {
-                if (scrollTo.toTop) {
+            if (scrollTo.toTop) {
+                const selOffsetBottom = (ix + 2) * rowh + iel.offsetTop;  // last fully-visible item also scrolls.
+                if (listScrollBottom < selOffsetBottom) {
                     lel.scrollTo(0, ix * rowh);
-                } else {
-                    lel.scrollTo(0, selOffsetBottom - lel.clientHeight);
+                    return;
                 }
-                return;
+            } else {
+                const selOffsetBottom = (ix + 1) * rowh + iel.offsetTop;
+                if (listScrollBottom < selOffsetBottom) {
+                    lel.scrollTo(0, selOffsetBottom - lel.clientHeight);
+                    return;
+                }
             }
         }
         if ("lastIfVisible" in scrollTo) {
