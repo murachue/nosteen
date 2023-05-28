@@ -621,7 +621,9 @@ const Tabsview: FC<{
     const [status, setStatus] = useState("status...");
     const [edittags, setEdittags] = useState<string[][] | null>(null);
     const [editingtag, setEditingtag] = useState<[number, number] | null>(null);
+    const [editingtagdelay, setEditingtagdelay] = useState<[number, number] | null>(null);
     const editingtagref = useRef<HTMLInputElement>(null);
+    const editingtagaddref = useRef<HTMLDivElement>(null);
 
     const relayinfo = useSyncExternalStore(
         useCallback(storeChange => {
@@ -817,11 +819,27 @@ const Tabsview: FC<{
         if (!el) return;
         el.focus();
     }, [tabnameedit]);  // !!
+    // useEffect(() => {
+    //     const el = editingtagref.current;
+    //     if (!el) return;
+    //     el.focus();
+    // }, [editingtag]);  // !!
     useEffect(() => {
-        const el = editingtagref.current;
-        if (!el) return;
-        el.focus();
-    }, [editingtag]);  // !!
+        // FIXME: SUPER hacky
+        setEditingtagdelay(editingtag);
+    }, [editingtag]);
+    useEffect(() => {
+        if (!editingtagdelay) return;
+        if (editingtagdelay[0] === -1) {
+            const el = editingtagaddref.current;
+            if (!el) return;
+            el.focus();
+        } else {
+            const el = editingtagref.current;
+            if (!el) return;
+            el.focus();
+        }
+    }, [editingtagdelay]);  // !!!!
     const nextunread = useCallback(() => {
         // TODO: search other tabs, jump to last note of first tab if all tabs has read.
         if (!tap) return false;
@@ -1149,16 +1167,30 @@ const Tabsview: FC<{
                 }
                 case "Enter": {
                     if (!selev) break;
-                    // remove root and reply from editing tags
-                    const rooti = (edittags || []).map((e, i) => [i, e] as const).reduce<number | null>((p, [i, c]) =>
-                        (c[0] === "e" && c[3] === "root") || p === null ? i : p, null);
-                    const replyi = (edittags || []).map((e, i) => [i, e] as const).reduce<{ i: number | null, t: string[]; }>((p, [i, t]) =>
-                        !(p.i !== null && p.t[0] === "e" && p.t[3] === "reply") && t[0] === "e" ? { i, t } : p, { i: null, t: [] }).i;
-                    const worrtags = (edittags || []).filter((e, i) => (rooti === null || i !== rooti) && (replyi === null || i !== replyi));
-                    // then combine
-                    const root = ((selrpev || selev)?.event?.event?.tags || []).reduce<string[] | null>((p, c) => (c[0] === "e" && (c[3] === "root" || p === null)) ? c : p, null);
+                    const derefev = selrpev || selev;
+                    // copy #p tags, first reply-to, merged. (even if originate contains duplicated #p)
+                    const ppks = new Map();
+                    if (derefev.event?.event?.pubkey) {
+                        // TODO: relay/petname in tag from receivefrom/{contacts|profile}? really?
+                        ppks.set(derefev.event.event.pubkey, ["p", derefev.event.event.pubkey]);
+                    }
+                    for (const tag of derefev.event?.event?.tags || []) {
+                        if (tag[0] !== "p") continue;
+                        ppks.set(tag[1], tag);
+                    }
+                    const ptags = [...ppks.values()];
+                    // then combine. when for root, only root, without reply. (NIP-10 #e)
+                    // XXX: also include original "#e"s? (Damus way?) I think it's not right.
+                    //      * we don't mentioning it in posting note (although it's marker will be "mention")
+                    //      * considering the case of fetching only sub-reply-tree, copying "root" is enough. it's too much to copying "#e"s.
+                    const root = (derefev.event?.event?.tags || []).reduce<string[] | null>((p, c) => (c[0] === "e" && (c[3] === "root" || p === null)) ? c : p, null);
                     // TODO: relay in tag from receivefrom? really?
-                    setEdittags([(root ? [root[0], root[1], root[2] || "", "root"] : ["e", (selrpev || selev).id, "", "root"]), ...worrtags, ["e", (selrpev || selev).id, "", "reply"]]);
+                    // TODO: kind40/41/42 to kind42
+                    setEdittags([
+                        (root ? [root[0], root[1], root[2] || "", "root"] : ["e", (selrpev || selev).id, "", "root"]),
+                        ...(root ? [["e", derefev.id, "", "reply"]] : []),
+                        ...ptags,
+                    ]);
                     posteditor.current?.focus();
                     e.preventDefault();
                     break;
@@ -1954,14 +1986,22 @@ const Tabsview: FC<{
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
             </div>
             <div style={{ display: "flex", alignItems: "center", background: coloruibg }}>
-                <textarea ref={posteditor} style={{ flex: "1", border: "2px inset", background: colorbase, color: colornormal, font: fonttext }} value={postdraft} rows={(postdraft.match(/\n/g)?.length || 0) + 1} onChange={e => {
-                    if (e.target.value === " ") {
-                        listref.current?.focus();
-                        nextunread();
-                        return;
-                    }
-                    setPostdraft(e.target.value);
-                }} />
+                <textarea
+                    ref={posteditor}
+                    style={{ flex: "1", border: "2px inset", background: colorbase, color: colornormal, font: fonttext }}
+                    value={postdraft}
+                    rows={(postdraft.match(/\n/g)?.length || 0) + 1}
+                    onChange={e => {
+                        if (e.target.value === " ") {
+                            listref.current?.focus();
+                            nextunread();
+                            return;
+                        }
+                        setPostdraft(e.target.value);
+                    }}
+                    onFocus={e => setEdittags(s => s === null ? [] : s)}
+                    onBlur={e => setEditingtag(s => Array.isArray(edittags) && edittags.length === 0 ? null : s)}
+                />
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
                 <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
             </div>
@@ -1969,20 +2009,42 @@ const Tabsview: FC<{
                 {
                     edittags
                         ? <div style={{ flex: "1", border: "2px inset", background: colorbase }}>
-                            {(() => {
-                                return edittags.map((e, ti) =>
+                            <datalist id="tagkeys">
+                                <option value="content-warning" />
+                                <option value="g" />
+                                <option value="subject" />
+                                <option value="d" />
+                                <option value="a" />
+                                <option value="image" />
+                                <option value="published_at" />
+                                <option value="summary" />
+                                <option value="title" />
+                                <option value="delegation" />
+                                <option value="i" />
+                                <option value="description" />
+                                <option value="name" />
+                                <option value="thumb" />
+                                <option value="e" />
+                                <option value="p" />
+                                <option value="t" />
+                                <option value="r" />
+                            </datalist>
+                            {(() => <>
+                                {edittags.map((e, ti) =>
                                     <div
                                         key={ti}
                                         style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "inline-flex" }}
                                     >
                                         {e.map((e, ei) =>
-                                            ti === editingtag?.[0]
+                                            ti === editingtagdelay?.[0]  // FIXME !!!
                                                 ? <input
                                                     key={ei}
+                                                    ref={editingtag?.[0] === ti && editingtag?.[1] === ei ? editingtagref : undefined}
                                                     type="text"
                                                     value={e}
+                                                    list={ei === 0 ? "tagkeys" : undefined}
                                                     onChange={e => setEdittags(produce(draft => { if (draft) draft[ti][ei] = e.target.value; }))}
-                                                    onFocus={e => setEditingtag([ti, ei])}
+                                                    onFocus={e => setEditingtag(s => [ti, ei])}
                                                     onBlur={e => setEditingtag(s => s?.[0] === ti && s?.[1] === ei ? null : s)}
                                                     size={Math.max(1, e.length)}
                                                     style={{
@@ -1997,14 +2059,96 @@ const Tabsview: FC<{
                                                 />
                                                 : <div
                                                     key={ei}
-                                                    ref={editingtag?.[0] === ti && editingtag?.[1] === ei ? editingtagref : undefined}
                                                     style={{ padding: "0 2px", borderLeft: "1px solid", borderLeftColor: colornormal, color: colornormal }}
                                                     tabIndex={0}
                                                     onFocus={e => setEditingtag([ti, ei])}
                                                 >{e}</div>
                                         )}
-                                    </div>);
-                            })()}
+                                        {ti !== editingtagdelay?.[0] ? null : <>  {/* // FIXME !!! */}
+                                            <div
+                                                tabIndex={0}
+                                                style={{ padding: "0 0.5em", background: colornormal, color: colorbase, display: "flex", flexDirection: "row", alignItems: "center" }}
+                                                onFocus={e => setEditingtag(s => [ti, -1])}
+                                                onBlur={e => setEditingtag(s => s?.[0] === ti ? null : s)}
+                                                onKeyDown={ev => {
+                                                    if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+                                                    if (ev.key !== " " && ev.key !== "Enter") return;
+                                                    ev.preventDefault();
+                                                    ev.stopPropagation();
+                                                    setEdittags(produce(draft => { if (!draft) return; draft[ti].push(""); }));
+                                                    setEditingtag([ti, e.length]);
+                                                }}
+                                                onPointerDown={ev => {
+                                                    if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+                                                    if (ev.button !== 0) return;
+                                                    ev.preventDefault();
+                                                    ev.stopPropagation();
+                                                    setEdittags(produce(draft => { if (!draft) return; draft[ti].push(""); }));
+                                                    setEditingtag([ti, e.length]);
+                                                }}
+                                            >+</div>
+                                            <div
+                                                tabIndex={0}
+                                                style={{ padding: "0 0.5em", background: colornormal, color: colorbase, display: "flex", flexDirection: "row", alignItems: "center" }}
+                                                onFocus={e => setEditingtag(s => [ti, -1])}
+                                                onBlur={e => setEditingtag(s => s?.[0] === ti ? null : s)}
+                                                onKeyDown={ev => {
+                                                    if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+                                                    if (ev.key !== " " && ev.key !== "Enter") return;
+                                                    ev.preventDefault();
+                                                    ev.stopPropagation();
+                                                    if (e.length <= 2) {
+                                                        setEdittags(produce(draft => { if (!draft) return; draft.splice(ti, 1); }));
+                                                        setEditingtag([ti === edittags.length - 1 ? -1 : ti, -1]);
+                                                    } else {
+                                                        setEdittags(produce(draft => { if (!draft) return; draft[ti].pop(); }));
+                                                        // setEditingtag([ti, e.length - 2]);
+                                                    }
+                                                }}
+                                                onPointerDown={ev => {
+                                                    if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+                                                    if (ev.button !== 0) return;
+                                                    ev.preventDefault();
+                                                    ev.stopPropagation();
+                                                    if (e.length <= 2) {
+                                                        setEdittags(produce(draft => { if (!draft) return; draft.splice(ti, 1); }));
+                                                        setEditingtag([ti === edittags.length - 1 ? -1 : ti, -1]);
+                                                    } else {
+                                                        setEdittags(produce(draft => { if (!draft) return; draft[ti].pop(); }));
+                                                        // setEditingtag([ti, e.length - 2]);
+                                                    }
+                                                }}
+                                            >-</div>
+                                        </>}
+                                    </div>)
+                                }
+                                <div style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "inline-flex" }}>
+                                    <div
+                                        ref={editingtagaddref}
+                                        tabIndex={0}
+                                        style={{ padding: "0 0.5em", background: colornormal, color: colorbase, display: "flex", flexDirection: "row", alignItems: "center" }}
+                                        onFocus={e => setEditingtag(s => [-1, 0])}
+                                        onBlur={e => setEditingtag(s => s?.[0] === -1 ? null : s)}
+                                        onKeyDown={ev => {
+                                            if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+                                            if (ev.key !== " " && ev.key !== "Enter") return;
+                                            ev.preventDefault();
+                                            ev.stopPropagation();
+                                            setEdittags([...edittags, ["", ""]]);
+                                            setEditingtag([edittags.length, 0]);
+                                        }}
+                                        onPointerDown={ev => {
+                                            if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+                                            if (ev.button !== 0) return;
+                                            ev.preventDefault();
+                                            ev.stopPropagation();
+                                            setEdittags([...edittags, ["", ""]]);
+                                            setEditingtag([edittags.length, 0]);
+                                        }}
+                                    >+</div>
+                                </div>
+                            </>
+                            )()}
                         </div>
                         : <>
                             <div style={{ flex: "1", height: "1em", padding: "2px", display: "flex", alignItems: "center", overflow: "hidden" }}>
