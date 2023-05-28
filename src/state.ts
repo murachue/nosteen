@@ -1,6 +1,8 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { Event } from "nostr-tools";
 import { IdenticonStore } from "./identicon";
+import { Relay } from "./relay";
 
 export type Tabdef = {
     id: string;
@@ -29,6 +31,17 @@ type Tabstate = {
     replypath: string[];
 };
 export const newtabstate: () => Tabstate = () => ({ selected: null, scroll: 0, replypath: [] });
+
+export type RecentPost = {
+    event: Event;
+    postAt: number;
+    postByRelay: Map<string, {
+        relay: string;
+        recvAt: number;
+        ok: boolean;
+        reason: string;
+    } | null>;
+};
 
 export default {
     preferences: {
@@ -81,4 +94,5 @@ export default {
     closedTabs: atom<Tabdef[]>([]),
     tabzorder: atom<string[]>([]),
     identiconStore: atom(new IdenticonStore()),
+    recentPubs: atom<RecentPost[]>([]),
 };

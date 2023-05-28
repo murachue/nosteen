@@ -295,14 +295,14 @@ export class NostrWorker {
         });
     }
     getRelays() {
-        return [...this.relays.values()].map(r => ({
+        return this.getLivingRelays().map(r => ({
             ...r,
             healthy: r.relay.relay.status === WebSocket.OPEN,
             recentNotices: this.recentNotices.get(r.relay.relay) || [],
         }));
     }
     setRelays(newrelays: { url: string, read: boolean, write: boolean; }[]) {
-        const pre = new Map(this.relays); // taking a (shallow) copy for direct modify
+        const pre = new Map(this.getLivingRelays().map(r => [r.url, r]));
         const cur = new Map(newrelays.map(r => [r.url, r]));
 
         // added
@@ -312,21 +312,22 @@ export class NostrWorker {
             const relay = this.mux.getrelay(relopt.url);
             const rm: RelayWithMode = { relay: relay, url, read: relopt.read, write: relopt.write };
             this.relays.set(relopt.url, rm);
-            relay.wantweak();
+            relay.wantweak();  // sid.sub() also do this (for read)... but we express "want to connect now (even if not to sub)"
         }
 
         // removed
         for (const url of pre.keys()) {
             if (cur.has(url)) continue;
 
+            // XXX: (immediate) close? or forget()?
+            //      we close now for give priority to reduce transport cost.
             this.mux.close([url]);
-            this.relays.delete(url);
         }
 
         // update subs
         // TODO: relays per sid... what to do?
         this.subs.forEach(({ sid }) => sid?.sub(
-            [...this.relays.values()].filter(r => r.read).map(r => r.url),
+            this.getLivingRelays().filter(r => r.read).map(r => r.url),
             null,
         ));
     }
@@ -345,7 +346,7 @@ export class NostrWorker {
             // this.getProfile(pubkey, Kinds.contacts).catch(console.error);
             // XXX: sub on here is ugly
             this.profsid = this.mux.sub(
-                [...this.relays.values()].filter(r => r.read).map(r => r.url),
+                this.getLivingRelays().filter(r => r.read).map(r => r.url),
                 [{ authors: [pubkey], kinds: [Kinds.contacts], limit: 1 /* for each relay. some relays (ex. nostr-filter) notice "limit must be <=500" */ }],
                 { skipVerification: true },
             );
@@ -484,7 +485,7 @@ export class NostrWorker {
                 if (!filters) return { filters: null, sid: null };
 
                 const sid = this.mux.sub(
-                    [...this.relays.values()].filter(r => r.read).map(r => r.url),
+                    this.getLivingRelays().filter(r => r.read).map(r => r.url),
                     filters,
                     { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
                 );
@@ -510,9 +511,13 @@ export class NostrWorker {
     getPostStream(name: string) {
         return this.postStreams.get(name);
     }
-    postEvent(etl: UnsignedEvent, sk: string) {
-        const ev = finishEvent(etl, sk);
-        // TODO
+    postEvent(ev: Event) {
+        if (!verifySignature(ev)) throw new Error(`event not valid: ${JSON.stringify(ev)}`);
+        const relays = this.getLivingRelays().filter(r => r.write);
+        return {
+            relays,
+            pub: this.mux.publish(relays.map(r => r.url), ev),
+        };
     }
     addListener(name: string, fn: (msg: NostrWorkerListenerMessage) => void) {
         const emitter = this.receiveEmitter.get(name) || new SimpleEmitter();
@@ -650,6 +655,10 @@ export class NostrWorker {
         return pcache?.event || null;
     }
 
+    private getLivingRelays() {
+        return [...this.relays.values()].filter(r => r.relay.wantonline || r.relay.relay.status !== WebSocket.CLOSED);
+    }
+
     private putProfile(event: DeletableEvent): boolean {
         if (!event.event) return false;
         const ev = event.event.event;
@@ -740,7 +749,7 @@ export class NostrWorker {
                     let sid: ReturnType<MuxPool["sub"]>;
                     // TODO: use list() instead of sub()?
                     sid = this.mux.sub(
-                        [...this.relays.values()].filter(r => r.read).map(r => r.url),
+                        this.getLivingRelays().filter(r => r.read).map(r => r.url),
                         [...predsbag.values()].flatMap(e => e.flatMap(f => f.filter())) as FilledFilters,
                         { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
                     );

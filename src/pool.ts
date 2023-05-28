@@ -41,7 +41,7 @@ export class RelayWrap {
         this.relay.close();  // for connecting
     }
 
-    private forget() {
+    forget() {
         if (!this.wantonline) return;
         this.wantonline = false;
         this.unsched();  // for reconnecting
@@ -52,20 +52,25 @@ export class RelayWrap {
     }
 
     async want() {
-        if (this.wantonline) return;
-        this.wantonline = true;
-        this.ndied = 0;
         if (this.reconnecttimer !== undefined) {
             // do nothing on waiting for reconnect (listener.connected may called on reconnect)
-            return undefined;
+            // throw new Error(`reconnecting`);
+            return false;
         }
-        return await this.must();
+        if (this.wantonline) return true;
+        this.wantonline = true;
+        this.ndied = 0;
+        await this.must();
+        return true;
     }
 
     async must() {
         if (!this.wantonline) {
             this.wantonline = true;
             this.ndied = 0;
+        }
+        if (([WebSocket.CONNECTING, WebSocket.OPEN] satisfies number[] as number[]).includes(this.relay.status)) {
+            return;
         }
         this.unsched();
         this.dead = false;
@@ -193,7 +198,10 @@ export class MuxPool {
 
     async ensureRelay(url: string): Promise<RelayWrap> {
         const relay = this.getrelay(url);
-        await relay.must();
+        const connected = await relay.want();
+        if (!connected) {
+            throw new Error("reconnecting");
+        }
         return relay;
     }
 
@@ -424,14 +432,14 @@ export class MuxPool {
                 try {
                     const r = await this.ensureRelay(relay);
                     const pub = r.relay.publish(event);
-                    let unlinker: (() => void) | undefined;  // hacky...
+                    let unlinker = () => { };  // hacky...
                     const okhandler = (reason: string): void => {
                         const listeners = pubListeners.get(relay);
                         if (listeners) {
                             listeners.ok.forEach(cb => cb([{ relay: r.relay, reason }]));
                             pubListeners.delete(relay);
                         }
-                        unlinker?.();
+                        unlinker();
                     };
                     const failedhandler = (reason: unknown): void => {
                         const listeners = pubListeners.get(relay);
@@ -439,14 +447,14 @@ export class MuxPool {
                             listeners.failed.forEach(cb => cb({ relay, reason }));
                             pubListeners.delete(relay);
                         }
-                        unlinker?.();
+                        unlinker();
                     };
                     unlinker = () => {
                         pub.off('ok', okhandler);
                         pub.off('failed', failedhandler);
 
                         const ls = plns.forget;
-                        let idx = ls.indexOf(unlinker!);
+                        let idx = ls.indexOf(unlinker);
                         if (idx >= 0) ls.splice(idx, 1);
                     };
                     pub.on('ok', okhandler);

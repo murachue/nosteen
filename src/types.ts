@@ -1,4 +1,4 @@
-import { Event, Filter, Kind } from "nostr-tools";
+import { Event, EventTemplate, Filter, Kind } from "nostr-tools";
 import { Relay } from "./relay";
 
 export type ReceivedEvent = {
@@ -49,3 +49,18 @@ export const Kinds = {
     reaction: Kind.Reaction,
     relays: Kind.RelayList,
 };
+
+declare global {
+    interface Window {
+        // NIP-07
+        readonly nostr?: {
+            getPublicKey(): Promise<string>; // returns a public key as hex
+            signEvent(event: /* Event */EventTemplate): Promise<Event>; // takes an event object, adds `id`, `pubkey` and `sig` and returns it
+            getRelays?(): Promise<{ [url: string]: { read: boolean, write: boolean; }; }>; // returns a basic map of relay urls to relay policies
+            nip04?: {
+                encrypt?(pubkey: string, plaintext: string): Promise<string>; // returns ciphertext and iv as specified in nip-04
+                decrypt?(pubkey: string, ciphertext: string): Promise<string>; // takes ciphertext and iv as specified in nip-04
+            };
+        };
+    }
+}

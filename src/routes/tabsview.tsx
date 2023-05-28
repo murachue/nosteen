@@ -1,6 +1,6 @@
 import produce from "immer";
 import { useAtom } from "jotai";
-import { Event, Kind, nip13, nip19 } from "nostr-tools";
+import { Event, Kind, finishEvent, getBlankEvent, nip13, nip19, signEvent } from "nostr-tools";
 import { CSSProperties, FC, ForwardedRef, Fragment, PropsWithChildren, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -10,7 +10,7 @@ import TextInput from "../components/textinput";
 import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
-import state, { Tabdef, newtabstate } from "../state";
+import state, { RecentPost, Tabdef, newtabstate } from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue, sha256str } from "../util";
 
@@ -576,6 +576,7 @@ const Tabsview: FC<{
     const [tabstates, setTabstates] = useAtom(state.tabstates);
     const [closedtabs, setClosedtabs] = useAtom(state.closedTabs);
     const [tabzorder, setTabzorder] = useAtom(state.tabzorder);
+    const [recentpubs, setRecentpubs] = useAtom(state.recentPubs);
     const [colorbase] = useAtom(state.preferences.colors.base);
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorrepost] = useAtom(state.preferences.colors.repost);
@@ -624,6 +625,9 @@ const Tabsview: FC<{
     const [editingtagdelay, setEditingtagdelay] = useState<[number, number] | null>(null);
     const editingtagref = useRef<HTMLInputElement>(null);
     const editingtagaddref = useRef<HTMLDivElement>(null);
+    const [posting, setPosting] = useState(false);
+    const [postpopping, setPostpopping] = useState(false);
+    const postpopref = useRef<HTMLDivElement>(null);
 
     const relayinfo = useSyncExternalStore(
         useCallback(storeChange => {
@@ -784,6 +788,7 @@ const Tabsview: FC<{
             return sp;
         };
     })(), [])(tab?.id, tap?.posts);
+    const readonlyuser = !(account && "privkey" in account) && !window.nostr?.signEvent;
     const onselect = useCallback((i: number, toTop?: boolean) => {
         if (!tab || !tap) return;
         if (tap) {
@@ -1167,6 +1172,7 @@ const Tabsview: FC<{
                 }
                 case "Enter": {
                     if (!selev) break;
+                    if (readonlyuser) break;
                     const derefev = selrpev || selev;
                     // copy #p tags, first reply-to, merged. (even if originate contains duplicated #p)
                     const ppks = new Map();
@@ -1450,7 +1456,60 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser]);
+    const post = useCallback(() => {
+        setStatus(`signing... ${postdraft}`);
+        setPosting(true);
+        (async () => {
+            const event = await (async () => {
+                const ev = {
+                    created_at: Math.floor(Date.now() / 1000),
+                    kind: Kinds.post,
+                    content: postdraft,
+                    tags: edittags!,
+                };
+                if (account && "privkey" in account) {
+                    return finishEvent(ev, account.privkey);
+                } else if (window.nostr?.signEvent) {
+                    return await window.nostr.signEvent(ev);
+                } else {
+                    throw new Error(`could not sign: no private key nor NIP-07 signEvent; ${postdraft}`);
+                }
+            })();
+            setStatus(`posting... ${postdraft}`);
+            const postAt = Date.now();
+            const post = noswk.postEvent(event);
+            const repo: RecentPost = {
+                event,
+                postAt,
+                postByRelay: new Map(post.relays.map(r => [r.relay.relay.url, null]))
+            };
+            setRecentpubs(r => r.slice(5));
+            post.pub.on("ok", recv => setRecentpubs(produce(draft => {
+                const repo = draft.find(r => r.event === event);
+                if (!repo) return;
+                const recvAt = Date.now();
+                for (const r of recv) {
+                    repo.postByRelay.set(r.relay.url, { relay: r.relay.url, recvAt, ok: true, reason: r.reason });
+                }
+            })));
+            post.pub.on("failed", recv => setRecentpubs(produce(draft => {
+                const repo = draft.find(r => r.event === event);
+                if (!repo) return;
+                const recvAt = Date.now();
+                repo.postByRelay.set(recv.relay, { relay: recv.relay, recvAt, ok: false, reason: String(recv.reason) });
+            })));
+            // TODO: timeout? pub.on("forget", () => { });
+            setStatus(`posted: ${postdraft}`);
+            setPostdraft("");
+            setEditingtag(null);
+            setPosting(false);
+        })().catch(e => {
+            console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} ${e}`);
+            setStatus(`post failed: ${e}`);
+            setPosting(false);
+        });
+    }, [postdraft, edittags, account, window.nostr?.signEvent, noswk]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -1469,6 +1528,9 @@ const Tabsview: FC<{
             }
             if (!relaypopref.current?.contains(e.nativeEvent.target as any)) {
                 setRelaypopping(false);
+            }
+            if (!postpopref.current?.contains(e.nativeEvent.target as any)) {
+                setPostpopping(false);
             }
         });
         return () => setGlobalOnPointerDown(undefined);
@@ -1533,7 +1595,7 @@ const Tabsview: FC<{
             // redirect to first
             // need to in useEffect
             navigate(`/tab/${tabs[0].id}`, { replace: true });
-            console.log(tab, tabs[0]);
+            console.debug(tab, tabs[0]);
         }
     }, [tab]);
 
@@ -1737,7 +1799,7 @@ const Tabsview: FC<{
                                     <div style={shortstyle}>{String(p?.name)}</div>
                                     <div style={{ textAlign: "right" }}>display_name:</div>
                                     <div style={shortstyle}>{String(p?.display_name)}</div>
-                                    <div style={{ textAlign: "right" }}>last updated at (created_at):</div>
+                                    <div style={{ textAlign: "right" }}>rewritten at:</div>
                                     <div style={shortstyle}>{!prof.metadata ? "?" : timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
                                     <div style={{ textAlign: "right" }}>picture:</div>
                                     <div style={shortstyle}>{String(p?.picture)}</div>
@@ -1749,7 +1811,7 @@ const Tabsview: FC<{
                                     <div style={shortstyle}>{String(p?.nip05)}</div>
                                     <div style={{ textAlign: "right" }}>lud06/16:</div>
                                     <div style={shortstyle}>{String(p?.lud16 || p?.lud06)}</div>
-                                    <div style={{ textAlign: "right" }}>following? followed?</div>
+                                    <div style={{ textAlign: "right" }}>following? ed?</div>
                                     <div style={shortstyle}>{
                                         !account?.pubkey
                                             ? "-"
@@ -1775,7 +1837,7 @@ const Tabsview: FC<{
                                     }}>{String(p?.about)}</div>
                                     {/* <div style={{ textAlign: "right" }}>recent note</div>
                                     <div style={shortstyle}>{ }</div> */}
-                                    <div style={{ textAlign: "right" }}>followings, followers:</div>
+                                    <div style={{ textAlign: "right" }}>followings, ers:</div>
                                     <div style={shortstyle}>{prof.contacts?.event ? prof.contacts.event.event.tags.filter(t => t[0] === "p").length : "?"} / ENOTIMPL</div>
                                     {/* <div style={{ textAlign: "right" }}>notes, reactions</div>
                                     <div style={shortstyle}>{ }</div> */}
@@ -1990,6 +2052,8 @@ const Tabsview: FC<{
                     ref={posteditor}
                     style={{ flex: "1", border: "2px inset", background: colorbase, color: colornormal, font: fonttext }}
                     value={postdraft}
+                    placeholder={readonlyuser ? "cannot post: private key nor NIP-07 extension unavailable" : undefined}
+                    disabled={readonlyuser}
                     rows={(postdraft.match(/\n/g)?.length || 0) + 1}
                     onChange={e => {
                         if (e.target.value === " ") {
@@ -1999,11 +2063,16 @@ const Tabsview: FC<{
                         }
                         setPostdraft(e.target.value);
                     }}
+                    onKeyDown={e => post()}
                     onFocus={e => setEdittags(s => s === null ? [] : s)}
                     onBlur={e => setEditingtag(s => Array.isArray(edittags) && edittags.length === 0 ? null : s)}
                 />
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
-                <button tabIndex={-1} style={{ padding: "0 0.5em", font: fontui }}>Post</button>
+                <button
+                    tabIndex={-1}
+                    style={{ padding: "0 0.5em", font: fontui }}
+                    onClick={e => post()}
+                >Post</button>
             </div>
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, display: "flex" }}>
                 {
@@ -2072,11 +2141,12 @@ const Tabsview: FC<{
                                                 onBlur={e => setEditingtag(s => s?.[0] === ti ? null : s)}
                                                 onKeyDown={ev => {
                                                     if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
-                                                    if (ev.key !== " " && ev.key !== "Enter") return;
-                                                    ev.preventDefault();
-                                                    ev.stopPropagation();
-                                                    setEdittags(produce(draft => { if (!draft) return; draft[ti].push(""); }));
-                                                    setEditingtag([ti, e.length]);
+                                                    if (ev.key === " " || ev.key === "Enter") {
+                                                        ev.preventDefault();
+                                                        ev.stopPropagation();
+                                                        setEdittags(produce(draft => { if (!draft) return; draft[ti].push(""); }));
+                                                        setEditingtag([ti, e.length]);
+                                                    }
                                                 }}
                                                 onPointerDown={ev => {
                                                     if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
@@ -2094,15 +2164,16 @@ const Tabsview: FC<{
                                                 onBlur={e => setEditingtag(s => s?.[0] === ti ? null : s)}
                                                 onKeyDown={ev => {
                                                     if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
-                                                    if (ev.key !== " " && ev.key !== "Enter") return;
-                                                    ev.preventDefault();
-                                                    ev.stopPropagation();
-                                                    if (e.length <= 2) {
-                                                        setEdittags(produce(draft => { if (!draft) return; draft.splice(ti, 1); }));
-                                                        setEditingtag([ti === edittags.length - 1 ? -1 : ti, -1]);
-                                                    } else {
-                                                        setEdittags(produce(draft => { if (!draft) return; draft[ti].pop(); }));
-                                                        // setEditingtag([ti, e.length - 2]);
+                                                    if (ev.key === " " || ev.key === "Enter") {
+                                                        ev.preventDefault();
+                                                        ev.stopPropagation();
+                                                        if (e.length <= 2) {
+                                                            setEdittags(produce(draft => { if (!draft) return; draft.splice(ti, 1); }));
+                                                            setEditingtag([ti === edittags.length - 1 ? -1 : ti, -1]);
+                                                        } else {
+                                                            setEdittags(produce(draft => { if (!draft) return; draft[ti].pop(); }));
+                                                            // setEditingtag([ti, e.length - 2]);
+                                                        }
                                                     }
                                                 }}
                                                 onPointerDown={ev => {
@@ -2131,11 +2202,12 @@ const Tabsview: FC<{
                                         onBlur={e => setEditingtag(s => s?.[0] === -1 ? null : s)}
                                         onKeyDown={ev => {
                                             if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
-                                            if (ev.key !== " " && ev.key !== "Enter") return;
-                                            ev.preventDefault();
-                                            ev.stopPropagation();
-                                            setEdittags([...edittags, ["", ""]]);
-                                            setEditingtag([edittags.length, 0]);
+                                            if (ev.key === " " || ev.key === "Enter") {
+                                                ev.preventDefault();
+                                                ev.stopPropagation();
+                                                setEdittags([...edittags, ["", ""]]);
+                                                setEditingtag([edittags.length, 0]);
+                                            }
                                         }}
                                         onPointerDown={ev => {
                                             if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
@@ -2156,7 +2228,63 @@ const Tabsview: FC<{
                                     ∃{tap?.nunreads}/{tap?.posts?.length} ∀{streams?.getNunreads()}/{streams?.getAllPosts()?.size} | 💬{speeds.mypostph}/⭐{speeds.reactph}/🌊{speeds.allnoteph}/h | {status}
                                 </div>
                             </div>
-                            <div style={{ padding: "2px 0.5em" }}>-</div>
+                            <div style={{ position: "relative" }}>
+                                <div style={{ padding: "2px 0.5em" }} onClick={e => setPostpopping(s => !s)}>{
+                                    recentpubs.length === 0
+                                        ? "-"
+                                        : (() => {
+                                            const all = [...recentpubs[0].postByRelay.values()];
+                                            const done = all.filter((r): r is NonNullable<typeof r> => !!r);
+                                            const fails = done.filter(r => !r.ok);
+                                            return `${0 < fails.length ? `(!${fails.length}) ` : ""}${done.length}/${all.length}`;
+                                        })()
+                                }</div>
+                                {!postpopping ? null : <div
+                                    ref={postpopref}
+                                    style={{
+                                        display: "flex",
+                                        position: "absolute",
+                                        right: "0",
+                                        bottom: "100%",
+                                        padding: "5px",
+                                        maxWidth: "20em",
+                                        border: "2px outset",
+                                        background: coloruibg,
+                                        color: coloruitext,
+                                        font: fontui,
+                                    }}>{
+                                        [...recentpubs].reverse().map(rp => {
+                                            const all = [...rp.postByRelay.values()];
+                                            const done = all.filter((r): r is NonNullable<typeof all[number]> => !!r);
+                                            const oks = done.filter(r => r.ok);
+                                            const fails = done.filter(r => !r.ok);
+                                            const now = Date.now();
+                                            return <div style={{ display: "flex", flexDirection: "column" }}>
+                                                <div style={{ display: "flex", flexDirection: "row" }}>
+                                                    <div style={{ flex: "1", display: "flex", flexDirection: "row" }}>
+                                                        <TabText style={shortstyle}>{nip19.noteEncode(rp.event.id)}</TabText>
+                                                        <TabText style={shortstyle}>{JSON.stringify(rp.event)}</TabText>
+                                                    </div>
+                                                    <div>{reltime(rp.postAt - now)}</div>
+                                                </div>
+                                                <div style={{ marginLeft: "1em", display: "flex", flexDirection: "row" }}>
+                                                    <div style={{ display: "flex", flexDirection: "column" }}>
+                                                        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{
+                                                            oks.map(r => <img style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
+                                                        }</div>
+                                                        <div>{done.length}/{all.length}</div>
+                                                    </div>
+                                                    {fails.length === 0 ? null : <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                                                        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{
+                                                            fails.map(r => <img style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
+                                                        }</div>
+                                                        <div>(!{fails.length})</div>
+                                                    </div>}
+                                                </div>
+                                            </div>;
+                                        })
+                                    }</div>}
+                            </div>
                             <div style={{ padding: "2px 0.5em" }}>{fetchqlen}</div>
                         </>
                 }
