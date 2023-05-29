@@ -305,14 +305,20 @@ export class NostrWorker {
         const pre = new Map(this.getLivingRelays().map(r => [r.url, r]));
         const cur = new Map(newrelays.map(r => [r.url, r]));
 
-        // added
         for (const [url, relopt] of cur.entries()) {
-            if (pre.has(url)) continue;
-
-            const relay = this.mux.getrelay(relopt.url);
-            const rm: RelayWithMode = { relay: relay, url, read: relopt.read, write: relopt.write };
-            this.relays.set(relopt.url, rm);
-            relay.wantweak();  // sid.sub() also do this (for read)... but we express "want to connect now (even if not to sub)"
+            const rly = pre.get(url);
+            if (rly) {
+                // modified
+                rly.read = relopt.read;
+                rly.write = relopt.write;
+                rly.relay.wantweak();
+            } else {
+                // added
+                const relay = this.mux.getrelay(relopt.url);
+                const rm: RelayWithMode = { relay: relay, url, read: relopt.read, write: relopt.write };
+                this.relays.set(relopt.url, rm);
+                relay.wantweak();  // need for booting
+            }
         }
 
         // removed
@@ -345,6 +351,7 @@ export class NostrWorker {
             // getProfile is oneshot. but need continuous...
             // this.getProfile(pubkey, Kinds.contacts).catch(console.error);
             // XXX: sub on here is ugly
+            // TODO: re-sub on relays change
             this.profsid = this.mux.sub(
                 this.getLivingRelays().filter(r => r.read).map(r => r.url),
                 [{ authors: [pubkey], kinds: [Kinds.contacts], limit: 1 /* for each relay. some relays (ex. nostr-filter) notice "limit must be <=500" */ }],

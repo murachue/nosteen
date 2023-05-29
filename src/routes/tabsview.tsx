@@ -1029,6 +1029,16 @@ const Tabsview: FC<{
                 }
                 // return;
             }
+            if (postpopping) {
+                switch (e.key) {
+                    case "Escape": {
+                        setPostpopping(false);
+                        listref.current?.focus();
+                        return;
+                    }
+                }
+                // return;
+            }
             switch (e.key) {
                 case "a": {
                     if (!tab) break;
@@ -1456,7 +1466,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping]);
     const post = useCallback(() => {
         setStatus(`signing... ${postdraft}`);
         setPosting(true);
@@ -1504,10 +1514,12 @@ const Tabsview: FC<{
             setPostdraft("");
             setEditingtag(null);
             setPosting(false);
+            listref.current?.focus();
         })().catch(e => {
             console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} ${e}`);
             setStatus(`post failed: ${e}`);
             setPosting(false);
+            posteditor.current?.focus();
         });
     }, [postdraft, edittags, account, window.nostr?.signEvent, noswk]);
     useEffect(() => {
@@ -2063,7 +2075,14 @@ const Tabsview: FC<{
                         }
                         setPostdraft(e.target.value);
                     }}
-                    onKeyDown={e => post()}
+                    onKeyDown={e => {
+                        if (e.shiftKey || e.altKey) return;
+                        if (!e.ctrlKey && !e.metaKey) return;
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        post();
+                    }}
                     onFocus={e => setEdittags(s => s === null ? [] : s)}
                     onBlur={e => setEditingtag(s => Array.isArray(edittags) && edittags.length === 0 ? null : s)}
                 />
@@ -2071,12 +2090,16 @@ const Tabsview: FC<{
                 <button
                     tabIndex={-1}
                     style={{ padding: "0 0.5em", font: fontui }}
-                    onClick={e => post()}
+                    onClick={e => {
+                        if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+                        if (e.button !== 0) return;
+                        post();
+                    }}
                 >Post</button>
             </div>
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, display: "flex" }}>
                 {
-                    edittags
+                    edittags && !posting
                         ? <div style={{ flex: "1", border: "2px inset", background: colorbase }}>
                             <datalist id="tagkeys">
                                 <option value="content-warning" />
@@ -2229,7 +2252,7 @@ const Tabsview: FC<{
                                 </div>
                             </div>
                             <div style={{ position: "relative" }}>
-                                <div style={{ padding: "2px 0.5em" }} onClick={e => setPostpopping(s => !s)}>{
+                                <div style={{ padding: "2px 0.5em", cursor: "pointer" }} onClick={e => setPostpopping(s => !s)}>{
                                     recentpubs.length === 0
                                         ? "-"
                                         : (() => {
@@ -2253,36 +2276,38 @@ const Tabsview: FC<{
                                         color: coloruitext,
                                         font: fontui,
                                     }}>{
-                                        [...recentpubs].reverse().map(rp => {
-                                            const all = [...rp.postByRelay.values()];
-                                            const done = all.filter((r): r is NonNullable<typeof all[number]> => !!r);
-                                            const oks = done.filter(r => r.ok);
-                                            const fails = done.filter(r => !r.ok);
-                                            const now = Date.now();
-                                            return <div style={{ display: "flex", flexDirection: "column" }}>
-                                                <div style={{ display: "flex", flexDirection: "row" }}>
-                                                    <div style={{ flex: "1", display: "flex", flexDirection: "row" }}>
-                                                        <TabText style={shortstyle}>{nip19.noteEncode(rp.event.id)}</TabText>
-                                                        <TabText style={shortstyle}>{JSON.stringify(rp.event)}</TabText>
+                                        recentpubs.length === 0
+                                            ? <div style={shortstyle}>(no recent posts)</div>
+                                            : [...recentpubs].reverse().map(rp => {
+                                                const all = [...rp.postByRelay.values()];
+                                                const done = all.filter((r): r is NonNullable<typeof all[number]> => !!r);
+                                                const oks = done.filter(r => r.ok);
+                                                const fails = done.filter(r => !r.ok);
+                                                const now = Date.now();
+                                                return <div style={{ display: "flex", flexDirection: "column" }}>
+                                                    <div style={{ display: "flex", flexDirection: "row" }}>
+                                                        <div style={{ flex: "1", display: "flex", flexDirection: "row" }}>
+                                                            <TabText style={shortstyle}>{nip19.noteEncode(rp.event.id)}</TabText>
+                                                            <TabText style={shortstyle}>{JSON.stringify(rp.event)}</TabText>
+                                                        </div>
+                                                        <div>{reltime(rp.postAt - now)}</div>
                                                     </div>
-                                                    <div>{reltime(rp.postAt - now)}</div>
-                                                </div>
-                                                <div style={{ marginLeft: "1em", display: "flex", flexDirection: "row" }}>
-                                                    <div style={{ display: "flex", flexDirection: "column" }}>
-                                                        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{
-                                                            oks.map(r => <img style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
-                                                        }</div>
-                                                        <div>{done.length}/{all.length}</div>
+                                                    <div style={{ marginLeft: "1em", display: "flex", flexDirection: "row" }}>
+                                                        <div style={{ display: "flex", flexDirection: "column" }}>
+                                                            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{
+                                                                oks.map(r => <img style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
+                                                            }</div>
+                                                            <div>{done.length}/{all.length}</div>
+                                                        </div>
+                                                        {fails.length === 0 ? null : <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                                                            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{
+                                                                fails.map(r => <img style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
+                                                            }</div>
+                                                            <div>(!{fails.length})</div>
+                                                        </div>}
                                                     </div>
-                                                    {fails.length === 0 ? null : <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                                                        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{
-                                                            fails.map(r => <img style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
-                                                        }</div>
-                                                        <div>(!{fails.length})</div>
-                                                    </div>}
-                                                </div>
-                                            </div>;
-                                        })
+                                                </div>;
+                                            })
                                     }</div>}
                             </div>
                             <div style={{ padding: "2px 0.5em" }}>{fetchqlen}</div>
