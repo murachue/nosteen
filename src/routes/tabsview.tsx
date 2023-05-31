@@ -788,7 +788,7 @@ const Tabsview: FC<{
             }
             return sp;
         };
-    })(), [])(tab?.id, tap?.posts);
+    })(), [account])(tab?.id, tap?.posts);
     const readonlyuser = !(account && "privkey" in account) && !window.nostr?.signEvent;
     const onselect = useCallback((i: number, toTop?: boolean) => {
         if (!tab || !tap) return;
