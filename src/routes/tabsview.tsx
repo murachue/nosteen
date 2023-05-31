@@ -1461,6 +1461,108 @@ const Tabsview: FC<{
                     setRelaypopping(s => !s);
                     break;
                 }
+                case "F": {
+                    if (!tab || !selpost) break;
+                    const derefev = selpost.reposttarget || selpost.event;
+                    if (!derefev) break; // XXX: should not happen
+                    const targetev = derefev.event?.event;
+                    if (!targetev) break; // XXX: should not happen
+                    // FIXME: favoriting repost have a bug... on receive side.
+                    const { desc, event: revent } = (() => {
+                        if (!selpost.myreaction || selpost.myreaction.deleteevent) {
+                            // reaction: copy #e and #p. last #e and #p must be reacted event/pubkey.
+                            // TODO: popup content selection?
+                            const etags = new Map<string, string[]>();
+                            const ptags = new Map<string, string[]>();
+                            for (const t of targetev.tags || []) {
+                                if (t[0] === "e") {
+                                    etags.set(t[1], t);
+                                }
+                                if (t[0] === "p") {
+                                    ptags.set(t[1], t);
+                                }
+                            }
+                            etags.delete(targetev.id);
+                            ptags.delete(targetev.pubkey);
+                            return {
+                                desc: `⭐${targetev.content}`,
+                                event: {
+                                    created_at: Math.floor(Date.now() / 1000),
+                                    kind: Kind.Reaction,
+                                    content: "+",
+                                    tags: [
+                                        ...[...etags.values()],
+                                        ["e", derefev.id],  // TODO: relay?
+                                        ...[...ptags.values()],
+                                        ["p", targetev.pubkey],  // TODO: relay and petname?
+                                    ],
+                                },
+                            };
+                        } else {
+                            // delete reaction
+                            return {
+                                desc: `❌⭐${targetev.content}`,
+                                event: {
+                                    created_at: Math.floor(Date.now() / 1000),
+                                    kind: Kind.EventDeletion,
+                                    content: "",
+                                    tags: [
+                                        ["e", selpost.myreaction.id],  // TODO: relay?
+                                    ],
+                                },
+                            };
+                        }
+                    })();
+                    // TODO: cofactoring
+                    setStatus(`signing... ${desc}`);
+                    (async () => {
+                        const event = await (async () => {
+                            if (account && "privkey" in account) {
+                                return finishEvent(revent, account.privkey);
+                            } else if (window.nostr?.signEvent) {
+                                return await window.nostr.signEvent(revent);
+                            } else {
+                                throw new Error(`could not sign: no private key nor NIP-07 signEvent; ${desc}`);
+                            }
+                        })();
+                        setStatus(`posting... ${desc}`);
+                        const postAt = Date.now();
+                        const post = noswk.postEvent(event);
+                        const repo: RecentPost = {
+                            desc,
+                            event,
+                            postAt,
+                            postByRelay: new Map(post.relays.map(r => [r.relay.relay.url, null])),
+                            pub: post.pub,
+                        };
+                        recentpubs.slice(4).forEach(rp => rp.pub.forget());
+                        setRecentpubs(r => [repo, ...r.slice(4)]);
+                        post.pub.on("ok", recv => setRecentpubs(produce(draft => {
+                            const repo = draft.find(r => r.event.id === event.id);
+                            if (!repo) return;
+                            const recvAt = Date.now();
+                            for (const r of recv) {
+                                repo.postByRelay.set(r.relay.url, { relay: r.relay.url, recvAt, ok: true, reason: r.reason });
+                            }
+                        })));
+                        post.pub.on("failed", recv => setRecentpubs(produce(draft => {
+                            const repo = draft.find(r => r.event.id === event.id);
+                            if (!repo) return;
+                            const recvAt = Date.now();
+                            repo.postByRelay.set(recv.relay, { relay: recv.relay, recvAt, ok: false, reason: String(recv.reason) });
+                        })));
+                        // TODO: timeout? pub.on("forget", () => { });
+                        setStatus(`reacted: ${desc}`);
+                    })().catch(e => {
+                        console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} reaction failed: ${e}`);
+                        setStatus(`reaction failed: ${e}`);
+                    });
+                    break;
+                }
+                case "R": {
+                    // TODO: repost
+                    break;
+                }
                 case ",": {
                     navigate("/preferences");
                     break;
@@ -1502,13 +1604,16 @@ const Tabsview: FC<{
             const postAt = Date.now();
             const post = noswk.postEvent(event);
             const repo: RecentPost = {
+                desc: `💬${postdraft}`,
                 event,
                 postAt,
-                postByRelay: new Map(post.relays.map(r => [r.relay.relay.url, null]))
+                postByRelay: new Map(post.relays.map(r => [r.relay.relay.url, null])),
+                pub: post.pub,
             };
-            setRecentpubs(r => r.slice(5));
+            recentpubs.slice(4).forEach(rp => rp.pub.forget());
+            setRecentpubs(r => [repo, ...r.slice(4)]);
             post.pub.on("ok", recv => setRecentpubs(produce(draft => {
-                const repo = draft.find(r => r.event === event);
+                const repo = draft.find(r => r.event.id === event.id);
                 if (!repo) return;
                 const recvAt = Date.now();
                 for (const r of recv) {
@@ -1516,7 +1621,7 @@ const Tabsview: FC<{
                 }
             })));
             post.pub.on("failed", recv => setRecentpubs(produce(draft => {
-                const repo = draft.find(r => r.event === event);
+                const repo = draft.find(r => r.event.id === event.id);
                 if (!repo) return;
                 const recvAt = Date.now();
                 repo.postByRelay.set(recv.relay, { relay: recv.relay, recvAt, ok: false, reason: String(recv.reason) });
@@ -1524,7 +1629,9 @@ const Tabsview: FC<{
             // TODO: timeout? pub.on("forget", () => { });
             setStatus(`posted: ${postdraft}`);
             setPostdraft("");
+            setEdittags(null);
             setEditingtag(null);
+            setKind(null);
             setPosting(false);
             listref.current?.focus();
         })().catch(e => {
@@ -2314,6 +2421,8 @@ const Tabsview: FC<{
                                     ref={postpopref}
                                     style={{
                                         display: "flex",
+                                        flexDirection: "column",
+                                        gap: "0.5em",
                                         position: "absolute",
                                         right: "0",
                                         bottom: "100%",
@@ -2332,24 +2441,25 @@ const Tabsview: FC<{
                                                 const oks = done.filter(r => r.ok);
                                                 const fails = done.filter(r => !r.ok);
                                                 const now = Date.now();
-                                                return <div style={{ display: "flex", flexDirection: "column" }}>
-                                                    <div style={{ display: "flex", flexDirection: "row" }}>
-                                                        <div style={{ flex: "1", display: "flex", flexDirection: "row" }}>
+                                                return <div key={rp.event.id} style={{ display: "flex", flexDirection: "column" }}>
+                                                    <div style={{ display: "flex", flexDirection: "row", /* overflow: "hidden" */ }}>
+                                                        <div style={{ flex: "1" }}>{rp.desc}</div>
+                                                        <div>{reltime(rp.postAt - now)}</div>
+                                                    </div>
+                                                    <div style={{ marginLeft: "1em", display: "flex", flexDirection: "column" }}>
+                                                        <div style={{ display: "flex", flexDirection: "column" }}>
                                                             <TabText style={shortstyle}>{nip19.noteEncode(rp.event.id)}</TabText>
                                                             <TabText style={shortstyle}>{JSON.stringify(rp.event)}</TabText>
                                                         </div>
-                                                        <div>{reltime(rp.postAt - now)}</div>
-                                                    </div>
-                                                    <div style={{ marginLeft: "1em", display: "flex", flexDirection: "row" }}>
-                                                        <div style={{ display: "flex", flexDirection: "column" }}>
-                                                            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{
-                                                                oks.map(r => <img style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
+                                                        <div style={{ display: "flex", flexDirection: "row" }}>
+                                                            <div style={{ flex: 1, display: "flex", flexDirection: "row", flexWrap: "wrap" }}>{
+                                                                oks.map(r => <img key={r.relay} style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
                                                             }</div>
                                                             <div>{done.length}/{all.length}</div>
                                                         </div>
-                                                        {fails.length === 0 ? null : <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                                                            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{
-                                                                fails.map(r => <img style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
+                                                        {fails.length === 0 ? null : <div style={{ flex: 1, display: "flex", flexDirection: "row" }}>
+                                                            <div style={{ flex: 1, display: "flex", flexDirection: "row", flexWrap: "wrap" }}>{
+                                                                fails.map(r => <img key={r.relay} style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
                                                             }</div>
                                                             <div>(!{fails.length})</div>
                                                         </div>}

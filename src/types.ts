@@ -6,11 +6,14 @@ export type ReceivedEvent = {
     receivedfrom: Map<Relay, number>;
 };
 
+// FIXME: rename to EventTwin?
 export type DeletableEvent = {
     id: string; // event.id, the event can be null when received delete first (then event, or never)
     event: ReceivedEvent | null;
     deleteevent: ReceivedEvent | null; // kind5 may also maintained by this type, but deleting-delete can be ignored as in NIP-09.
 };
+// FIXME: rename to DeletableEvent?
+export type DellatchEvent = DeletableEvent & { event: NonNullable<DeletableEvent["event"]>; };
 
 export type Post = {
     id: string;

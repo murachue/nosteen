@@ -2,7 +2,7 @@ import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Event } from "nostr-tools";
 import { IdenticonStore } from "./identicon";
-import { Relay } from "./relay";
+import { MuxPub } from "./pool";
 
 export type Tabdef = {
     id: string;
@@ -33,6 +33,7 @@ type Tabstate = {
 export const newtabstate: () => Tabstate = () => ({ selected: null, scroll: 0, replypath: [] });
 
 export type RecentPost = {
+    desc: string;
     event: Event;
     postAt: number;
     postByRelay: Map<string, {
@@ -41,6 +42,7 @@ export type RecentPost = {
         ok: boolean;
         reason: string;
     } | null>;
+    pub: MuxPub;
 };
 
 export default {

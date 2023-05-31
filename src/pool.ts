@@ -430,6 +430,7 @@ export class MuxPool {
             pubListeners.set(relay, plns);
             (async () => {
                 try {
+                    // FIXME: decompose ensureRelay to getRelay() and must()etc, to onFailed can get Relay instance.
                     const r = await this.ensureRelay(relay);
                     const pub = r.relay.publish(event);
                     let unlinker = () => { };  // hacky...
