@@ -2452,13 +2452,21 @@ const Tabsview: FC<{
                                                         </div>
                                                         <div style={{ display: "flex", flexDirection: "row" }}>
                                                             <div style={{ flex: 1, display: "flex", flexDirection: "row", flexWrap: "wrap" }}>{
-                                                                oks.map(r => <img key={r.relay} style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
+                                                                oks.map(r => <img
+                                                                    key={r.relay}
+                                                                    style={{ height: "1em" }}
+                                                                    src={identiconStore.png(sha256str(r.relay))}
+                                                                    title={`${r.relay}${r.reason ? `: ${r.reason}` : ""} ${reltime(r.recvAt - now)}`} />)
                                                             }</div>
                                                             <div>{done.length}/{all.length}</div>
                                                         </div>
                                                         {fails.length === 0 ? null : <div style={{ flex: 1, display: "flex", flexDirection: "row" }}>
                                                             <div style={{ flex: 1, display: "flex", flexDirection: "row", flexWrap: "wrap" }}>{
-                                                                fails.map(r => <img key={r.relay} style={{ height: "1em" }} src={identiconStore.png(sha256str(r.relay))} title={`${r.relay} ${reltime(r.recvAt - now)}`} />)
+                                                                fails.map(r => <img
+                                                                    key={r.relay}
+                                                                    style={{ height: "1em" }}
+                                                                    src={identiconStore.png(sha256str(r.relay))}
+                                                                    title={`${r.relay}${r.reason ? `: ${r.reason}` : ""} ${reltime(r.recvAt - now)}`} />)
                                                             }</div>
                                                             <div>(!{fails.length})</div>
                                                         </div>}
