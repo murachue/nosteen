@@ -1,7 +1,7 @@
 import { Event, Filter, Kind, UnsignedEvent, finishEvent, matchFilter, validateEvent, verifySignature } from "nostr-tools";
 import { FC, PropsWithChildren, createContext, useContext } from "react";
 import invariant from "tiny-invariant";
-import { MuxPool, RelayWrap } from "./pool";
+import { MuxPool, MuxSub, RelayWrap } from "./pool";
 import { Relay } from "./relay";
 import { DeletableEvent, EventMessageFromRelay, FilledFilters, Kinds, Post } from "./types";
 import { SimpleEmitter, getmk, postindex, postupsertindex, rescue } from "./util";
@@ -256,11 +256,18 @@ type VerifiedHandler = (result: {
     ng: Event[];
 } | null) => void;
 
+type SubHandlers = {
+    onEvent: (receives: EventMessageFromRelay[]) => void | Promise<void>;
+    onEose?: () => void | Promise<void>;
+};
+
 // MuxPool with mutating note pool of subs, maintaining relays/subs in idenpotent style.
 export class NostrWorker {
     mux = new MuxPool();
     relays = new Map<string, RelayWithMode>();
-    subs = new Map<string, { sid: ReturnType<MuxPool["sub"]>; filters: FilledFilters; } | { sid: null; filters: null; }>();
+    subs = new Map<string, { sid: ReturnType<MuxPool["sub"]>; filters: FilledFilters; handlers: SubHandlers; } | { sid: null; filters: null; }>();
+    exsubs = new Map<string, FilledFilters | null>();
+    insubs = new Map<string, { filters: FilledFilters | null; handlers: SubHandlers; }>();
     // TODO: GC/LRUify events and posts. copy-gc from postStreams?
     events = new Map<string, DeletableEvent>();
     posts = new Map<string, Post>();
@@ -338,50 +345,49 @@ export class NostrWorker {
         ));
     }
     setIdentity(pubkey: string | null) {
-        const pkchanged = this.pubkey !== pubkey;
-
-        if (pkchanged && this.profsid) {
-            // this.mux.unSubscribe(this.profsid);
-            this.profsid.unsub();
-            this.profsid = null;
-        }
-
         this.pubkey = pubkey;
-        if (pkchanged && pubkey) {
-            // getProfile is oneshot. but need continuous...
-            // this.getProfile(pubkey, Kinds.contacts).catch(console.error);
-            // XXX: sub on here is ugly
-            // TODO: re-sub on relays change
-            this.profsid = this.mux.sub(
-                this.getLivingRelays().filter(r => r.read).map(r => r.url),
-                [{ authors: [pubkey], kinds: [Kinds.contacts], limit: 1 /* for each relay. some relays (ex. nostr-filter) notice "limit must be <=500" */ }],
-                { skipVerification: true },
-            );
-            this.profsid.on("event", receives => this.enqueueVerify(receives, r => {
-                if (!r) return;
-                for (const dev of r.ok.values()) {
-                    const newer = this.putProfile(dev);
-                    if (!newer) continue;
-                    const ev = dev.event?.event;
-                    if (!ev) continue;
-                    if (ev.pubkey !== pubkey || ev.kind !== Kinds.contacts) {
-                        // !?
-                        continue;
+
+        // TODO: myaction should be wiped if pubkey changed
+        // TODO: recent, reply, etc. should be wiped if pubkey changed, but it is callers resp?
+
+        // getProfile is oneshot. but need continuous...
+        // this.getProfile(pubkey, Kinds.contacts).catch(console.error);
+        const insubs: [string, { filters: FilledFilters | null; handlers: SubHandlers; }][] =
+            !pubkey
+                ? []
+                : [["_myprofile", {
+                    filters: [{
+                        authors: [pubkey],
+                        kinds: [Kinds.contacts],
+                        limit: 1,  // for each relay. some relays (ex. nostr-filter) notice "limit must be <=500"
+                    }],
+                    handlers: {
+                        onEvent: receives => this.enqueueVerify(receives, r => {
+                            if (!r) return;
+                            for (const dev of r.ok.values()) {
+                                const newer = this.putProfile(dev);
+                                if (!newer) continue;
+                                const ev = dev.event?.event;
+                                if (!ev) continue;
+                                if (ev.pubkey !== pubkey || ev.kind !== Kinds.contacts) {
+                                    // !?
+                                    continue;
+                                }
+                                // if eosed?
+                                this.onMyContacts.emit("", dev);
+                            }
+                        }),
+                        // onEose: () => this.enqueueVerify(null, r => {
+                        //     const dev = this.profiles.get(pubkey)?.contacts;
+                        //     if (dev) {
+                        //         this.onMyContacts.emit(dev);
+                        //         eosed = true;
+                        //     }
+                        // }),
                     }
-                    // if eosed?
-                    this.onMyContacts.emit("", dev);
-                }
-            }));
-            // this.profsid.on("eose", subid => this.enqueueVerify(null, r => {
-            //     const dev = this.profiles.get(pubkey)?.contacts;
-            //     if (dev) {
-            //         this.onMyContacts.emit(dev);
-            //         eosed = true;
-            //     }
-            // }));
-        }
-        // TODO: myaction should be wiped
-        // TODO: recent, reply, etc. should be wiped, but it is callers resp?
+                }]];
+        // XXX: sub on here seems ugly
+        this.setInSubscribes(new Map(insubs));
     }
     // must return arrays in predictable order to easier deep-compare.
     getFilter(type: "recent" | "reply" | "dm" | "favs"): FilledFilters | null {
@@ -462,6 +468,34 @@ export class NostrWorker {
         }
     }
     setSubscribes(subs: Map<string, FilledFilters | null>) {
+        this.exsubs = subs;
+        this.updateSubscribes();
+    }
+    private setInSubscribes(subs: Map<string, { filters: FilledFilters | null; handlers: SubHandlers; }>) {
+        this.insubs = subs;
+        this.updateSubscribes();
+    }
+    private updateSubscribes() {
+        const subs = new Map<string, { filters: FilledFilters | null; handlers: SubHandlers; }>();
+        for (const [name, filters] of this.exsubs) {
+            subs.set(name, {
+                filters,
+                handlers: {
+                    onEvent: receives => this.enqueueVerify(receives, async r => {
+                        invariant(r);
+                        this.delevToPost(name, r.ok);
+                    }),
+                    onEose: () => this.enqueueVerify(null, r => {
+                        invariant(!r);
+                        this.receiveEmitter.get(name)?.emit("", { name, type: "eose", events: [], posts: [] });
+                    })
+                },
+            });
+        }
+        for (const [name, fandh] of this.insubs.entries()) {
+            subs.set(name, fandh);
+        }
+
         for (const [name, sub] of this.subs.entries()) {
             if (subs.has(name)) continue;
 
@@ -473,11 +507,29 @@ export class NostrWorker {
             this.postStreams.delete(name);
         }
 
-        for (const [name, filters] of subs.entries()) {
+        for (const [name, fandh] of subs.entries()) {
             const sub = this.subs.get(name);
             if (sub) {
                 // existing: unsub only if filters is changed. (noop, keep sub if not changed)
-                if ((!sub.filters && !filters) || (sub.filters && filters && filtereq(sub.filters, filters))) continue;
+                if ((!sub.filters && !fandh.filters) || (sub.filters && fandh.filters && filtereq(sub.filters, fandh.filters))) {
+                    if (sub.sid) {
+                        sub.sid.off("event", sub.handlers.onEvent);
+                        if (sub.handlers.onEose) {
+                            sub.sid.off("eose", sub.handlers.onEose);
+                        }
+
+                        sub.sid.on("event", fandh.handlers.onEvent);
+                        if (fandh.handlers.onEose) {
+                            sub.sid.on("eose", fandh.handlers.onEose);
+                        }
+                    }
+                    if (sub.filters) {
+                        sub.handlers.onEvent = fandh.handlers.onEvent;
+                        sub.handlers.onEose = fandh.handlers.onEose;
+                    }
+
+                    continue;
+                }
 
                 // changed; unsubscribe to override (nostr protocol supports override but nostr-mux silently rejects it)
                 if (sub.filters) {
@@ -489,23 +541,20 @@ export class NostrWorker {
             }
 
             const su = (() => {
-                if (!filters) return { filters: null, sid: null };
+                if (!fandh.filters) return { filters: null, sid: null };
 
                 const sid = this.mux.sub(
                     this.getLivingRelays().filter(r => r.read).map(r => r.url),
-                    filters,
-                    { skipVerification: true },  // FIXME: this is vulnerable for knownIds/seenOn
+                    fandh.filters!,
+                    { skipVerification: true },  // don't do this on nostr-tools' Pool/Relay; this is vulnerable for knownIds/seenOn
                 );
-                sid.on("event", receives => this.enqueueVerify(receives, async r => {
-                    invariant(r);
-                    this.delevToPost(name, r.ok);
-                }));
-                sid.on("eose", () => this.enqueueVerify(null, r => {
-                    invariant(!r);
-                    this.receiveEmitter.get(name)?.emit("", { name, type: "eose", events: [], posts: [] });
-                }));
+                sid.on("event", fandh.handlers.onEvent);
+                if (fandh.handlers.onEose) {
+                    sid.on("eose", fandh.handlers.onEose);
+                }
                 return {
-                    filters,
+                    filters: fandh.filters,
+                    handlers: fandh.handlers,
                     sid,
                 };
             })();
