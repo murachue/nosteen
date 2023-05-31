@@ -621,6 +621,7 @@ const Tabsview: FC<{
     const relaypopref = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState("status...");
     const [edittags, setEdittags] = useState<string[][] | null>(null);
+    const [kind, setKind] = useState<number | null>(null);
     const [editingtag, setEditingtag] = useState<[number, number] | null>(null);
     const [editingtagdelay, setEditingtagdelay] = useState<[number, number] | null>(null);
     const editingtagref = useRef<HTMLInputElement>(null);
@@ -1184,6 +1185,12 @@ const Tabsview: FC<{
                     if (!selev) break;
                     if (readonlyuser) break;
                     const derefev = selrpev || selev;
+
+                    if (derefev.event?.event?.kind === Kind.EncryptedDirectMessage) {
+                        setFlash({ msg: "Replying DM is not implemented", bang: true });
+                        break;
+                    }
+
                     // copy #p tags, first reply-to, merged. (even if originate contains duplicated #p)
                     const ppks = new Map();
                     if (derefev.event?.event?.pubkey) {
@@ -1207,6 +1214,7 @@ const Tabsview: FC<{
                         ...(root ? [["e", derefev.id, "", "reply"]] : []),
                         ...ptags,
                     ]);
+                    setKind(([Kind.ChannelCreation, Kind.ChannelMetadata, Kind.ChannelMessage] as number[]).includes(derefev.event?.event?.kind || 0) ? Kind.ChannelMessage : Kind.Text);
                     posteditor.current?.focus();
                     e.preventDefault();
                     break;
@@ -1468,13 +1476,17 @@ const Tabsview: FC<{
         return () => setGlobalOnKeyDown(undefined);
     }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping]);
     const post = useCallback(() => {
+        if (kind === null) {
+            setFlash({ msg: "kind is not set!?", bang: true });
+            return;
+        }
         setStatus(`signing... ${postdraft}`);
         setPosting(true);
         (async () => {
             const event = await (async () => {
                 const ev = {
                     created_at: Math.floor(Date.now() / 1000),
-                    kind: Kinds.post,
+                    kind,
                     content: postdraft,
                     tags: edittags!,
                 };
@@ -1516,12 +1528,12 @@ const Tabsview: FC<{
             setPosting(false);
             listref.current?.focus();
         })().catch(e => {
-            console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} ${e}`);
+            console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} post failed: ${e}`);
             setStatus(`post failed: ${e}`);
             setPosting(false);
             posteditor.current?.focus();
         });
-    }, [postdraft, edittags, account, window.nostr?.signEvent, noswk]);
+    }, [kind, postdraft, edittags, account, window.nostr?.signEvent, noswk]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -1633,6 +1645,7 @@ const Tabsview: FC<{
                         if (postdraft === "") {
                             setEdittags(null);
                             setEditingtag(null);
+                            setKind(null);
                         }
                     }}
                     scrollTo={listscrollto}
@@ -2083,7 +2096,10 @@ const Tabsview: FC<{
                         e.stopPropagation();
                         post();
                     }}
-                    onFocus={e => setEdittags(s => s === null ? [] : s)}
+                    onFocus={e => {
+                        setKind(s => s === null ? 1 : s);
+                        setEdittags(s => s === null ? [] : s);
+                    }}
                     onBlur={e => setEditingtag(s => Array.isArray(edittags) && edittags.length === 0 ? null : s)}
                 />
                 <div style={{ minWidth: "3em", textAlign: "center", verticalAlign: "middle", color: coloruitext, font: fontui }}>{postdraft.length}</div>
@@ -2241,6 +2257,38 @@ const Tabsview: FC<{
                                             setEditingtag([edittags.length, 0]);
                                         }}
                                     >+</div>
+                                </div>
+                                <div style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "inline-flex" }}>
+                                    <div
+                                        style={{ padding: "0 2px", background: colornormal, color: colorbase }}
+                                    >kind</div>
+                                    {editingtagdelay?.[0] === edittags.length + 1  // FIXME !!!
+                                        ? <input
+                                            ref={editingtag?.[0] === edittags.length + 1 && editingtag?.[1] === 1 ? editingtagref : undefined}
+                                            type="text"
+                                            value={kind || "0"}
+                                            onChange={e => {
+                                                const k = Number(e.target.value);
+                                                setKind(Number.isNaN(k) ? 1 : k);
+                                            }}
+                                            onFocus={e => setEditingtag(s => [edittags.length + 1, 1])}
+                                            onBlur={e => setEditingtag(s => s?.[0] === edittags.length + 1 && s?.[1] === 1 ? null : s)}
+                                            size={Math.max(1, String(kind).length)}
+                                            style={{
+                                                margin: "2px",
+                                                padding: "0px 2px",
+                                                borderLeft: "1px solid",
+                                                borderLeftColor: colornormal,
+                                                background: colorbase,
+                                                color: colornormal,
+                                                font: fonttext,
+                                            }}
+                                        />
+                                        : <div
+                                            style={{ padding: "0 2px", borderLeft: "1px solid", borderLeftColor: colornormal, color: colornormal }}
+                                            tabIndex={0}
+                                            onFocus={e => setEditingtag([edittags.length + 1, 1])}
+                                        >{String(kind)}</div>}
                                 </div>
                             </>
                             )()}
