@@ -1633,7 +1633,6 @@ const Tabsview: FC<{
             setEditingtag(null);
             setKind(null);
             setPosting(false);
-            listref.current?.focus();
         })().catch(e => {
             console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} post failed: ${e}`);
             setStatus(`post failed: ${e}`);
