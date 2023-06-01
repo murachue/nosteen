@@ -97,7 +97,7 @@ export class RelayWrap {
     }
 
     private unsched() {
-        if (this.reconnecttimer !== undefined) return;
+        if (this.reconnecttimer === undefined) return;
         clearTimeout(this.reconnecttimer);
         this.reconnecttimer = undefined;
         this.reconnectat = undefined;

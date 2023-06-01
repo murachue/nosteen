@@ -1,6 +1,6 @@
 import produce from "immer";
 import { useAtom } from "jotai";
-import { Event, Kind, finishEvent, getBlankEvent, nip13, nip19, signEvent } from "nostr-tools";
+import { Event, EventTemplate, Kind, finishEvent, getBlankEvent, nip13, nip19, signEvent } from "nostr-tools";
 import { CSSProperties, FC, ForwardedRef, Fragment, PropsWithChildren, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -720,6 +720,34 @@ const Tabsview: FC<{
                 }
             }
         }
+        {
+            const ma = tabid.match(/^a\/(naddr1[a-z0-9]+|\d{1,5}:[0-9A-Fa-f]{64}:.+)$/);
+            if (ma) {
+                // TODO
+                // const nid = (() => {
+                //     if (ma[1].match(/[0-9A-Fa-f]{64}/)) {
+                //         return ma[1];
+                //     }
+                //     const d = (() => { try { return nip19.decode(ma[1]); } catch { return undefined; } })();
+                //     if (!d) return null;
+                //     if (d.type === "note") return d.data;
+                //     if (d.type === "nevent") return d.data.id;
+                //     return null;
+                // })();
+                // if (nid) {
+                //     // TODO: relay from nevent
+                //     const newt: Tabdef = {
+                //         id: `e/${nid}`,
+                //         name: `e/${nid.slice(0, 8)}`,
+                //         filter: [{ ids: [nid], /* kinds: [Kinds.post], */ limit: 1 }],
+                //     };
+                //     setTabs([...tabs, newt]);
+                //     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
+                //     navigate(`/tab/e/${nid}`, { replace: true });
+                //     return newt;
+                // }
+            }
+        }
     }, [tabs, tabid, tabzorder])();
 
     const tap = useSyncExternalStore(
@@ -894,6 +922,53 @@ const Tabsview: FC<{
         navigate(`/tab/${t.id}`);
         listref.current?.focus();
     }, [tabs, tabedit]);
+    const broadcast = useCallback((event: Event, desc: string) => {
+        setStatus(`emiting... ${desc}`);
+        const postAt = Date.now();
+        const post = noswk.postEvent(event);
+
+        const repo: RecentPost = {
+            desc,
+            event,
+            postAt,
+            postByRelay: new Map(post.relays.map(r => [r.relay.relay.url, null])),
+            pub: post.pub,
+        };
+        recentpubs.slice(4).forEach(rp => rp.pub.forget());
+        setRecentpubs(r => [repo, ...r.slice(0, 4)]);
+        post.pub.on("ok", recv => setRecentpubs(produce(draft => {
+            const repo = draft.find(r => r.event.id === event.id);
+            if (!repo) return;
+            const recvAt = Date.now();
+            for (const r of recv) {
+                repo.postByRelay.set(r.relay.url, { relay: r.relay.url, recvAt, ok: true, reason: r.reason });
+            }
+        })));
+        post.pub.on("failed", recv => setRecentpubs(produce(draft => {
+            const repo = draft.find(r => r.event.id === event.id);
+            if (!repo) return;
+            const recvAt = Date.now();
+            repo.postByRelay.set(recv.relay, { relay: recv.relay, recvAt, ok: false, reason: String(recv.reason) });
+        })));
+        // TODO: timeout? pub.on("forget", () => { });
+    }, [noswk, recentpubs]);
+    const emitevent = useCallback(async (tev: EventTemplate, desc: string) => {
+        setStatus(`signing... ${desc}`);
+        const event = await (async () => {
+            if (account && "privkey" in account) {
+                return finishEvent(tev, account.privkey);
+            } else if (window.nostr?.signEvent) {
+                const sev = await window.nostr.signEvent(tev);
+                if (sev.pubkey !== account?.pubkey) {
+                    throw new Error(`NIP-07 set unexpected pubkey for: ${desc} (pk=${sev.pubkey}, expected=${account?.pubkey})`);
+                }
+                return sev;
+            } else {
+                throw new Error(`could not sign: no private key nor NIP-07 signEvent; ${desc}`);
+            }
+        })();
+        broadcast(event, desc);
+    }, [account, window.nostr, broadcast]);
     useEffect(() => {
         setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
@@ -961,6 +1036,34 @@ const Tabsview: FC<{
                         }
                         break;
                     }
+                    case "I": {
+                        if (linksel === null) {
+                            break;
+                        }
+
+                        const text = linkpop[linksel].text;
+                        if (text.match(/^(note|nevent)1/)) {
+                            if (!expectn(text, "note") && !expectn(text, "nevent")) { break; }
+
+                            setLinkpop([]);
+                            setLinksel(null);
+                            listref.current?.focus();
+
+                            const id = `thread/${text}`;
+                            setTabs([...tabs.filter(t => t.id !== id), {
+                                id,
+                                name: `t/${text.slice(0, 8)}`,
+                                filter: [{ ids: [text], limit: 1 }, { "#e": [text] }],
+                            }]);
+                            setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
+                            navigate(`/tab/${id}`);
+
+                            break;
+                        }
+
+                        setFlash({ msg: "sorry not supported yet", bang: true });
+                        break;
+                    }
                     case "Enter": {
                         // TODO: full support
                         if (linksel === null) {
@@ -982,6 +1085,11 @@ const Tabsview: FC<{
                             navigate(`/tab/e/${text}`);
                             break;
                         }
+                        if (text.match(/^naddr1/)) {
+                            if (!expectn(text, "naddr")) { break; }
+                            navigate(`/tab/a/${text}`);
+                            break;
+                        }
                         const rmhash = text.match(/^#(.+)/);
                         if (rmhash) {
                             const id = crypto.randomUUID();
@@ -994,6 +1102,7 @@ const Tabsview: FC<{
                             navigate(`/tab/${id}`);
                             break;
                         }
+
                         setFlash({ msg: "sorry not supported yet", bang: true });
                         break;
                     }
@@ -1183,6 +1292,7 @@ const Tabsview: FC<{
                 }
                 case "Enter": {
                     if (!selev) break;
+                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
                     if (readonlyuser) break;
                     const derefev = selrpev || selev;
 
@@ -1197,7 +1307,11 @@ const Tabsview: FC<{
                         // TODO: relay/petname in tag from receivefrom/{contacts|profile}? really?
                         ppks.set(derefev.event.event.pubkey, ["p", derefev.event.event.pubkey]);
                     }
-                    for (const tag of derefev.event?.event?.tags || []) {
+                    for (const tag of edittags || []) {  // from currently editing
+                        if (tag[0] !== "p") continue;
+                        ppks.set(tag[1], tag);
+                    }
+                    for (const tag of derefev.event?.event?.tags || []) {  // from reply target
                         if (tag[0] !== "p") continue;
                         ppks.set(tag[1], tag);
                     }
@@ -1463,12 +1577,13 @@ const Tabsview: FC<{
                 }
                 case "F": {
                     if (!tab || !selpost) break;
+                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
                     const targetev = derefev.event?.event;
                     if (!targetev) break; // XXX: should not happen
                     // FIXME: favoriting repost have a bug... on receive side.
-                    const { desc, event: revent } = (() => {
+                    const { desc, event: tev } = (() => {
                         if (!selpost.myreaction || selpost.myreaction.deleteevent) {
                             // reaction: copy #e and #p. last #e and #p must be reacted event/pubkey.
                             // TODO: popup content selection?
@@ -1513,54 +1628,84 @@ const Tabsview: FC<{
                             };
                         }
                     })();
-                    // TODO: cofactoring
-                    setStatus(`signing... ${desc}`);
-                    (async () => {
-                        const event = await (async () => {
-                            if (account && "privkey" in account) {
-                                return finishEvent(revent, account.privkey);
-                            } else if (window.nostr?.signEvent) {
-                                return await window.nostr.signEvent(revent);
-                            } else {
-                                throw new Error(`could not sign: no private key nor NIP-07 signEvent; ${desc}`);
-                            }
-                        })();
-                        setStatus(`posting... ${desc}`);
-                        const postAt = Date.now();
-                        const post = noswk.postEvent(event);
-                        const repo: RecentPost = {
-                            desc,
-                            event,
-                            postAt,
-                            postByRelay: new Map(post.relays.map(r => [r.relay.relay.url, null])),
-                            pub: post.pub,
-                        };
-                        recentpubs.slice(4).forEach(rp => rp.pub.forget());
-                        setRecentpubs(r => [repo, ...r.slice(4)]);
-                        post.pub.on("ok", recv => setRecentpubs(produce(draft => {
-                            const repo = draft.find(r => r.event.id === event.id);
-                            if (!repo) return;
-                            const recvAt = Date.now();
-                            for (const r of recv) {
-                                repo.postByRelay.set(r.relay.url, { relay: r.relay.url, recvAt, ok: true, reason: r.reason });
-                            }
-                        })));
-                        post.pub.on("failed", recv => setRecentpubs(produce(draft => {
-                            const repo = draft.find(r => r.event.id === event.id);
-                            if (!repo) return;
-                            const recvAt = Date.now();
-                            repo.postByRelay.set(recv.relay, { relay: recv.relay, recvAt, ok: false, reason: String(recv.reason) });
-                        })));
-                        // TODO: timeout? pub.on("forget", () => { });
-                        setStatus(`reacted: ${desc}`);
-                    })().catch(e => {
-                        console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} reaction failed: ${e}`);
-                        setStatus(`reaction failed: ${e}`);
-                    });
+                    emitevent(tev, desc)
+                        .then(
+                            () => setStatus(`✔⭐: ${desc}`),
+                            e => {
+                                console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} reaction failed: ${e}`);
+                                setStatus(`💔⭐: ${e}`);
+                            });
                     break;
                 }
                 case "R": {
-                    // TODO: repost
+                    if (!tab || !selpost) break;
+                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                    const derefev = selpost.reposttarget || selpost.event;
+                    if (!derefev) break; // XXX: should not happen
+                    const derev = derefev.event;
+                    if (!derev) break; // XXX: should not happen
+                    const targetev = derev.event;
+                    if (!targetev) break; // XXX: should not happen
+                    const recvfrom: Relay = derev.receivedfrom.keys().next().value;
+                    if (!recvfrom) break; // XXX: should not happen
+
+                    const tev = {
+                        created_at: Math.floor(Date.now() / 1000),
+                        kind: Kinds.repost,
+                        content: "",
+                        tags: [
+                            ["e", derefev.id, recvfrom.url],
+                            ["p", targetev.pubkey],  // TODO: relay and petname?
+                        ],
+                    };
+                    emitevent(tev, `👁‍🗨${targetev.content}`)
+                        .then(
+                            () => setStatus(`✔👁‍🗨: ${targetev.content}`),
+                            e => {
+                                console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} repost failed: ${e}`);
+                                setStatus(`💔👁‍🗨: ${e}`);
+                            });
+                    break;
+                }
+                case "q": {
+                    if (!selev) break;
+                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                    if (readonlyuser) break;
+                    const derefev = selrpev || selev;
+
+                    if (derefev.event?.event?.kind === Kind.EncryptedDirectMessage) {
+                        setFlash({ msg: "Don't quote a DM", bang: true });
+                        break;
+                    }
+
+                    // just #e that is mentioning. no copying or adding #p from quoting.
+                    // but keep edittags.
+                    // TODO: relay in tag from receivefrom? really?
+                    setEdittags(t => [
+                        ["e", (selrpev || selev).id, "", "mention"],
+                        ...(t || []),
+                    ]);
+                    setKind(k => k ?? Kind.Text);
+                    // TODO: nevent quoting option
+                    setPostdraft(s => `${s || ""} nostr:${nip19.noteEncode((selrpev || selev).id)}`);
+                    posteditor.current?.focus();
+                    e.preventDefault();
+                    break;
+                }
+                case "E": {
+                    if (!tab || !selpost) break;
+                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                    const derefev = selpost.reposttarget || selpost.event;
+                    if (!derefev) break; // XXX: should not happen
+                    const targetev = derefev.event?.event;
+                    if (!targetev) break; // XXX: should not happen
+                    try {
+                        broadcast(targetev, `📣${targetev.content}`);
+                        setStatus(`✔📣: ${targetev.content}`);
+                    } catch (e) {
+                        console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} broadcast failed: ${e}`);
+                        setStatus(`💔📣: ${e}`);
+                    }
                     break;
                 }
                 case ",": {
@@ -1576,70 +1721,37 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent]);
     const post = useCallback(() => {
         if (kind === null) {
             setFlash({ msg: "kind is not set!?", bang: true });
             return;
         }
-        setStatus(`signing... ${postdraft}`);
+        const ev = {
+            created_at: Math.floor(Date.now() / 1000),
+            kind,
+            content: postdraft,
+            tags: edittags!,
+        };
         setPosting(true);
-        (async () => {
-            const event = await (async () => {
-                const ev = {
-                    created_at: Math.floor(Date.now() / 1000),
-                    kind,
-                    content: postdraft,
-                    tags: edittags!,
-                };
-                if (account && "privkey" in account) {
-                    return finishEvent(ev, account.privkey);
-                } else if (window.nostr?.signEvent) {
-                    return await window.nostr.signEvent(ev);
-                } else {
-                    throw new Error(`could not sign: no private key nor NIP-07 signEvent; ${postdraft}`);
-                }
-            })();
-            setStatus(`posting... ${postdraft}`);
-            const postAt = Date.now();
-            const post = noswk.postEvent(event);
-            const repo: RecentPost = {
-                desc: `💬${postdraft}`,
-                event,
-                postAt,
-                postByRelay: new Map(post.relays.map(r => [r.relay.relay.url, null])),
-                pub: post.pub,
-            };
-            recentpubs.slice(4).forEach(rp => rp.pub.forget());
-            setRecentpubs(r => [repo, ...r.slice(4)]);
-            post.pub.on("ok", recv => setRecentpubs(produce(draft => {
-                const repo = draft.find(r => r.event.id === event.id);
-                if (!repo) return;
-                const recvAt = Date.now();
-                for (const r of recv) {
-                    repo.postByRelay.set(r.relay.url, { relay: r.relay.url, recvAt, ok: true, reason: r.reason });
-                }
-            })));
-            post.pub.on("failed", recv => setRecentpubs(produce(draft => {
-                const repo = draft.find(r => r.event.id === event.id);
-                if (!repo) return;
-                const recvAt = Date.now();
-                repo.postByRelay.set(recv.relay, { relay: recv.relay, recvAt, ok: false, reason: String(recv.reason) });
-            })));
-            // TODO: timeout? pub.on("forget", () => { });
-            setStatus(`posted: ${postdraft}`);
-            setPostdraft("");
-            setEdittags(null);
-            setEditingtag(null);
-            setKind(null);
-            setPosting(false);
-        })().catch(e => {
-            console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} post failed: ${e}`);
-            setStatus(`post failed: ${e}`);
-            setPosting(false);
-            posteditor.current?.focus();
-        });
-    }, [kind, postdraft, edittags, account, window.nostr?.signEvent, noswk]);
+        emitevent(ev, `💬${postdraft}`)
+            .then(
+                () => {
+                    setStatus(`✔💬: ${postdraft}`);
+                    setPostdraft("");
+                    setEdittags(null);
+                    setEditingtag(null);
+                    setKind(null);
+                    setPosting(false);
+                },
+                e => {
+                    console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} post failed: ${e}`);
+                    setStatus(`💔💬: ${e}`);
+                    setPosting(false);
+                    posteditor.current?.focus();
+                },
+            );
+    }, [kind, postdraft, edittags, emitevent]);
     useEffect(() => {
         setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
             if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
@@ -2412,8 +2524,9 @@ const Tabsview: FC<{
                                         : (() => {
                                             const all = [...recentpubs[0].postByRelay.values()];
                                             const done = all.filter((r): r is NonNullable<typeof r> => !!r);
+                                            const oks = done.filter(r => r.ok);
                                             const fails = done.filter(r => !r.ok);
-                                            return `${0 < fails.length ? `(!${fails.length}) ` : ""}${done.length}/${all.length}`;
+                                            return `${oks.length}${0 < fails.length ? `+!${fails.length}=${done.length}` : ""}/${all.length}`;
                                         })()
                                 }</div>
                                 {!postpopping ? null : <div
@@ -2435,14 +2548,14 @@ const Tabsview: FC<{
                                         recentpubs.length === 0
                                             ? <div style={shortstyle}>(no recent posts)</div>
                                             : [...recentpubs].reverse().map(rp => {
-                                                const all = [...rp.postByRelay.values()];
-                                                const done = all.filter((r): r is NonNullable<typeof all[number]> => !!r);
-                                                const oks = done.filter(r => r.ok);
-                                                const fails = done.filter(r => !r.ok);
+                                                const all = [...rp.postByRelay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+                                                const done = all.filter((r): r is [typeof all[number][0], NonNullable<typeof all[number][1]>] => !!r[1]);
+                                                const oks = done.filter(([u, r]) => r.ok);
+                                                const fails = done.filter(([u, r]) => !r.ok);
                                                 const now = Date.now();
-                                                return <div key={rp.event.id} style={{ display: "flex", flexDirection: "column" }}>
+                                                return <div key={`${rp.event.id}-${rp.postAt}`} style={{ display: "flex", flexDirection: "column" }}>
                                                     <div style={{ display: "flex", flexDirection: "row", /* overflow: "hidden" */ }}>
-                                                        <div style={{ flex: "1" }}>{rp.desc}</div>
+                                                        <div style={{ ...shortstyle, flex: "1" }}>{rp.desc}</div>
                                                         <div>{reltime(rp.postAt - now)}</div>
                                                     </div>
                                                     <div style={{ marginLeft: "1em", display: "flex", flexDirection: "column" }}>
@@ -2452,24 +2565,27 @@ const Tabsview: FC<{
                                                         </div>
                                                         <div style={{ display: "flex", flexDirection: "row" }}>
                                                             <div style={{ flex: 1, display: "flex", flexDirection: "row", flexWrap: "wrap" }}>{
-                                                                oks.map(r => <img
-                                                                    key={r.relay}
-                                                                    style={{ height: "1em" }}
-                                                                    src={identiconStore.png(sha256str(r.relay))}
-                                                                    title={`${r.relay}${r.reason ? `: ${r.reason}` : ""} ${reltime(r.recvAt - now)}`} />)
+                                                                all.map(([u, r]) => <div style={{ position: "relative" }}>
+                                                                    <img
+                                                                        key={u}
+                                                                        style={{ height: "1em" }}
+                                                                        src={identiconStore.png(sha256str(u))}
+                                                                        title={`${u}${!r ? " (waiting)" : ((r.reason ? `: ${r.reason}` : "") + " " + reltime(r.recvAt - now))}`} />
+                                                                    <div style={{
+                                                                        width: "0.4em",
+                                                                        height: "0.4em",
+                                                                        position: "absolute",
+                                                                        top: "0",
+                                                                        right: "0",
+                                                                        borderRadius: "100%",
+                                                                        border: !r ? "1px solid black" : undefined,
+                                                                        boxSizing: "border-box",
+                                                                        background: !r ? coloruibg : !r.ok ? "red" : "green",
+                                                                    }} />
+                                                                </div>)
                                                             }</div>
-                                                            <div>{done.length}/{all.length}</div>
+                                                            <div>{oks.length}{0 < fails.length ? `+!${fails.length}=${done.length}` : ""}/{all.length}</div>
                                                         </div>
-                                                        {fails.length === 0 ? null : <div style={{ flex: 1, display: "flex", flexDirection: "row" }}>
-                                                            <div style={{ flex: 1, display: "flex", flexDirection: "row", flexWrap: "wrap" }}>{
-                                                                fails.map(r => <img
-                                                                    key={r.relay}
-                                                                    style={{ height: "1em" }}
-                                                                    src={identiconStore.png(sha256str(r.relay))}
-                                                                    title={`${r.relay}${r.reason ? `: ${r.reason}` : ""} ${reltime(r.recvAt - now)}`} />)
-                                                            }</div>
-                                                            <div>(!{fails.length})</div>
-                                                        </div>}
                                                     </div>
                                                 </div>;
                                             })
