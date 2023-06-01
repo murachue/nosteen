@@ -723,29 +723,33 @@ const Tabsview: FC<{
         {
             const ma = tabid.match(/^a\/(naddr1[a-z0-9]+|\d{1,5}:[0-9A-Fa-f]{64}:.+)$/);
             if (ma) {
-                // TODO
-                // const nid = (() => {
-                //     if (ma[1].match(/[0-9A-Fa-f]{64}/)) {
-                //         return ma[1];
-                //     }
-                //     const d = (() => { try { return nip19.decode(ma[1]); } catch { return undefined; } })();
-                //     if (!d) return null;
-                //     if (d.type === "note") return d.data;
-                //     if (d.type === "nevent") return d.data.id;
-                //     return null;
-                // })();
-                // if (nid) {
-                //     // TODO: relay from nevent
-                //     const newt: Tabdef = {
-                //         id: `e/${nid}`,
-                //         name: `e/${nid.slice(0, 8)}`,
-                //         filter: [{ ids: [nid], /* kinds: [Kinds.post], */ limit: 1 }],
-                //     };
-                //     setTabs([...tabs, newt]);
-                //     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
-                //     navigate(`/tab/e/${nid}`, { replace: true });
-                //     return newt;
-                // }
+                const naddr = ((): nip19.AddressPointer | null => {
+                    const mar = ma[1].match(/^(\d{1,5}):([0-9A-Fa-f]{64}):(.+)$/);
+                    if (mar) {
+                        return {
+                            kind: Number(mar[1]),
+                            pubkey: mar[2],
+                            identifier: mar[3],
+                        };
+                    }
+                    const d = (() => { try { return nip19.decode(ma[1]); } catch { return undefined; } })();
+                    if (!d) return null;
+                    if (d.type === "naddr") return d.data;
+                    return null;
+                })();
+                if (naddr) {
+                    const nid = `${naddr.kind}:${naddr.pubkey}:${naddr.identifier}`;
+                    // TODO: relay from naddr
+                    const newt: Tabdef = {
+                        id: `a/${nid}`,
+                        name: `a/${naddr.identifier.slice(0, 8)}`,
+                        filter: [{ kinds: [naddr.kind], authors: [naddr.pubkey], "#d": [naddr.identifier] }],
+                    };
+                    setTabs([...tabs, newt]);
+                    setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
+                    navigate(`/tab/a/${nid}`, { replace: true });
+                    return newt;
+                }
             }
         }
     }, [tabs, tabid, tabzorder])();
@@ -1432,6 +1436,13 @@ const Tabsview: FC<{
                             }
                             case "e": {
                                 const text = nip19.noteEncode(t[1]);
+                                ls.set(text, { text, auto: false });
+                                break;
+                            }
+                            case "a": {
+                                const am = t[1].match(/^(\d{1,5}):([0-9A-Fa-f]{64}):(.+)$/);
+                                if (!am) break;
+                                const text = nip19.naddrEncode({ kind: Number(am[1]), pubkey: am[2], identifier: am[3] });
                                 ls.set(text, { text, auto: false });
                                 break;
                             }
