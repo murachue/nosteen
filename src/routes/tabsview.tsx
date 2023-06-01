@@ -1,6 +1,6 @@
 import produce from "immer";
 import { useAtom } from "jotai";
-import { Event, EventTemplate, Kind, finishEvent, getBlankEvent, nip13, nip19, signEvent } from "nostr-tools";
+import { Event, EventTemplate, Kind, finishEvent, getBlankEvent, nip13, nip19, signEvent, utils } from "nostr-tools";
 import { CSSProperties, FC, ForwardedRef, Fragment, PropsWithChildren, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -927,11 +927,13 @@ const Tabsview: FC<{
         const postAt = Date.now();
         const post = noswk.postEvent(event);
 
+        // FIXME: I dunno why onFailed gives non-trailing-slash but onOk is trailing-slashed.
+        //        we do normalizeURL to avoid that diff... but that itself is something wrong.
         const repo: RecentPost = {
             desc,
             event,
             postAt,
-            postByRelay: new Map(post.relays.map(r => [r.relay.relay.url, null])),
+            postByRelay: new Map(post.relays.map(r => [utils.normalizeURL(r.relay.relay.url), null])),
             pub: post.pub,
         };
         recentpubs.slice(4).forEach(rp => rp.pub.forget());
@@ -941,14 +943,14 @@ const Tabsview: FC<{
             if (!repo) return;
             const recvAt = Date.now();
             for (const r of recv) {
-                repo.postByRelay.set(r.relay.url, { relay: r.relay.url, recvAt, ok: true, reason: r.reason });
+                repo.postByRelay.set(utils.normalizeURL(r.relay.url), { relay: r.relay.url, recvAt, ok: true, reason: r.reason });
             }
         })));
         post.pub.on("failed", recv => setRecentpubs(produce(draft => {
             const repo = draft.find(r => r.event.id === event.id);
             if (!repo) return;
             const recvAt = Date.now();
-            repo.postByRelay.set(recv.relay, { relay: recv.relay, recvAt, ok: false, reason: String(recv.reason) });
+            repo.postByRelay.set(utils.normalizeURL(recv.relay), { relay: recv.relay, recvAt, ok: false, reason: String(recv.reason) });
         })));
         // TODO: timeout? pub.on("forget", () => { });
     }, [noswk, recentpubs]);
