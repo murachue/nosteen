@@ -1045,17 +1045,24 @@ const Tabsview: FC<{
 
                         const text = linkpop[linksel].text;
                         if (text.match(/^(note|nevent)1/)) {
-                            if (!expectn(text, "note") && !expectn(text, "nevent")) { break; }
+                            const nid = (() => {
+                                const d = (() => { try { return nip19.decode(text); } catch { return undefined; } })();
+                                if (!d) return null;
+                                if (d.type === "note") return d.data;
+                                if (d.type === "nevent") return d.data.id;
+                                return null;
+                            })();
+                            if (!nid) { break; }
 
                             setLinkpop([]);
                             setLinksel(null);
                             listref.current?.focus();
 
-                            const id = `thread/${text}`;
+                            const id = `thread/${nid}`;
                             setTabs([...tabs.filter(t => t.id !== id), {
                                 id,
-                                name: `t/${text.slice(0, 8)}`,
-                                filter: [{ ids: [text], limit: 1 }, { "#e": [text] }],
+                                name: `t/${nid.slice(0, 8)}`,
+                                filter: [{ ids: [nid], limit: 1 }, { "#e": [nid] }],
                             }]);
                             setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
                             navigate(`/tab/${id}`);
