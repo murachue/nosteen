@@ -688,7 +688,9 @@ const Tabsview: FC<{
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
-                    navigate(`/tab/p/${pk}`, { replace: true });
+                    if (tabid !== `p/${pk}`) {
+                        navigate(`/tab/p/${pk}`, { replace: true });
+                    }
                     return newt;
                 }
             }
@@ -715,7 +717,9 @@ const Tabsview: FC<{
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
-                    navigate(`/tab/e/${nid}`, { replace: true });
+                    if (tabid !== `e/${nid}`) {
+                        navigate(`/tab/e/${nid}`, { replace: true });
+                    }
                     return newt;
                 }
             }
@@ -747,7 +751,9 @@ const Tabsview: FC<{
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
-                    navigate(`/tab/a/${nid}`, { replace: true });
+                    if (tabid !== `a/${nid}`) {
+                        navigate(`/tab/a/${nid}`, { replace: true });
+                    }
                     return newt;
                 }
             }
@@ -1087,6 +1093,7 @@ const Tabsview: FC<{
                         setLinksel(null);
                         listref.current?.focus();
 
+                        // XXX: we should use raw-form instead of bech32, to avoid redundant navigate()
                         const text = linkpop[linksel].text;
                         if (text.match(/^(npub|nprofile)1/)) {
                             if (!expectn(text, "npub") && !expectn(text, "nprofile")) { break; }
