@@ -2070,12 +2070,31 @@ const Tabsview: FC<{
                 <div style={{ flex: "1", minWidth: "0", /* display: "flex", flexDirection: "column" */ }}>
                     <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex" }}>
                         <div style={{ flex: "1", minWidth: "0", position: "relative", height: "1em", display: "flex", alignItems: "center" }}>
-                            <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, ...shortstyle }} onClick={e => setProfpopping(s => !s)}>
-                                {!selev ? "name..." : (
-                                    selpost.reposttarget
-                                        ? `${rpauthor ? `${rpauthor.name}/${rpauthor.display_name}` : selpost.reposttarget.event?.event?.pubkey} (RP: ${author ? `${author.name}/${author.display_name}` : selev.event?.event?.pubkey})`
-                                        : (author ? `${author.name}/${author.display_name}` : selev.event?.event?.pubkey)
-                                )}
+                            <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, display: "flex", alignItems: "baseline" }} onClick={e => setProfpopping(s => !s)}>
+                                {!selev ? "name..." : (() => {
+                                    const ael =
+                                        author
+                                            ? <>
+                                                <div style={{ ...shortstyle, maxWidth: "20em" }}>{author.name}</div>
+                                                {"/"}
+                                                <div style={{ ...shortstyle, maxWidth: "20em" }}>{author.display_name}</div>
+                                            </>
+                                            : <div style={{ ...shortstyle, maxWidth: "20em" }}>{selev.event?.event?.pubkey}</div>;
+                                    return selpost.reposttarget
+                                        ? <>
+                                            {rpauthor
+                                                ? <>
+                                                    <div style={{ ...shortstyle, maxWidth: "20em" }}>{rpauthor.name}</div>
+                                                    {"/"}
+                                                    <div style={{ ...shortstyle, maxWidth: "20em" }}>{rpauthor.display_name}</div>
+                                                </>
+                                                : <div style={{ ...shortstyle, maxWidth: "20em" }}>{selrpev?.event?.event?.pubkey}</div>}
+                                            {" (RP: "}
+                                            {ael}
+                                            {")"}
+                                        </>
+                                        : ael;
+                                })()}
                             </div>
                             {(!selev || !profpopping) ? null : (() => {
                                 const p = !prof.metadata ? null : metadatajsoncontent(prof.metadata);
