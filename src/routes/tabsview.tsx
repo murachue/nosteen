@@ -100,7 +100,11 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
         <TR>
             <TD>
                 <div style={{ ...shortstyle, textAlign: "right" }}>
-                    {derefev && derefev.event?.event?.tags?.find(t => t[0] === "p" || t[0] === "e") ? "→" : ""}
+                    {derefev && derefev.event?.event?.tags?.find(t => t[0] === "e")
+                        ? "⇒"
+                        : derefev && derefev.event?.event?.tags?.find(t => t[0] === "p")
+                            ? "→"
+                            : ""}
                     {(post.event!.deleteevent || post.reposttarget?.deleteevent) ? "×" : ""}
                 </div>
             </TD>
@@ -2342,8 +2346,24 @@ const Tabsview: FC<{
                         post();
                     }}
                     onFocus={e => {
-                        setKind(s => s === null ? 1 : s);
-                        setEdittags(s => s === null ? [] : s);
+                        const inpubchat = ([Kind.ChannelCreation, Kind.ChannelMetadata, Kind.ChannelMessage] as number[]).includes(selev?.event?.event?.kind || 0);
+                        const pcid: string | null = !inpubchat ? null : (() => {
+                            const ev = selev?.event?.event;
+                            if (!ev) return null;
+                            switch (ev.kind) {
+                                case Kind.ChannelCreation: {
+                                    return ev.id;
+                                }
+                                case Kind.ChannelMetadata:
+                                case Kind.ChannelMessage: {
+                                    return ev.tags.reduce<string | null>((p, c) => !p && c[0] === "e" ? c[1] : p, null);
+                                }
+                                default: return null;
+                            }
+                        })();
+                        // TODO: DM?
+                        setKind(s => s !== null ? s : inpubchat ? 42 : 1);
+                        setEdittags(s => s !== null ? s : pcid ? [["e", pcid, ""/* TODO: relay? */, "root"]] : []);
                     }}
                     onBlur={e => setEditingtag(s => Array.isArray(edittags) && edittags.length === 0 ? null : s)}
                 />
