@@ -623,6 +623,7 @@ const Tabsview: FC<{
     const tabnameeditref = useRef<HTMLInputElement>(null);
     const [relaypopping, setRelaypopping] = useState(false);
     const relaypopref = useRef<HTMLDivElement>(null);
+    const [forcedellatch, setForcedellatch] = useState({ count: 0, at: 0 });
     const [status, setStatus] = useState("status...");
     const [edittags, setEdittags] = useState<string[][] | null>(null);
     const [kind, setKind] = useState<number | null>(null);
@@ -1728,18 +1729,62 @@ const Tabsview: FC<{
                     if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
-                    const targetev = derefev.event?.event;
+                    // broadcasting kind5 event have higher priority.
+                    const { event: targetev, desc } = (() => {
+                        const tev = derefev.event?.event;
+                        const dev = derefev.deleteevent?.event;
+                        if (dev) {
+                            return { event: dev, desc: `❌${tev ? tev.content : dev.content}` };
+                        }
+                        return { event: tev, desc: `${tev?.content}` };
+                    })();
                     if (!targetev) break; // XXX: should not happen
                     try {
-                        broadcast(targetev, `📣${targetev.content}`);
-                        setStatus(`✔📣: ${targetev.content}`);
+                        broadcast(targetev, `📣${desc}`);
+                        setStatus(`✔📣: ${desc}`);
                     } catch (e) {
                         console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} broadcast failed: ${e}`);
                         setStatus(`💔📣: ${e}`);
                     }
                     break;
                 }
-                case ",": {
+                case "D": {
+                    if (!tab || !selpost) break;
+                    // even it is reposted, target is itself.
+                    const dev = selpost.event;
+                    if (!dev) break; // XXX: should not happen
+                    if (dev.deleteevent) {
+                        setFlash({ msg: "Already deleted", bang: true });
+                        break;
+                    }
+                    const targetev = dev.event?.event;
+                    if (!targetev) break; // XXX: should not happen
+                    if (targetev.pubkey !== account?.pubkey) {
+                        const recent = Date.now() < forcedellatch.at + 1000;
+                        if (!recent || forcedellatch.count < 4) {
+                            setForcedellatch(recent ? { ...forcedellatch, count: forcedellatch.count + 1 } : { count: 1, at: Date.now() });
+                            setFlash({ msg: "Don't delete someone's", bang: true });
+                            break;
+                        }
+                    }
+                    emitevent({
+                        created_at: Math.floor(Date.now() / 1000),
+                        kind: Kind.EventDeletion,
+                        content: "",  // TODO: reason?
+                        tags: [
+                            ["e", targetev.id],  // we should not add a relay... that may be a hint of original.
+                        ],
+                    }, `❌${targetev.content}`)
+                        .then(
+                            () => setStatus(`✔❌: ${targetev.content}`),
+                            e => {
+                                console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} deletion failed: ${e}`);
+                                setStatus(`💔❌: ${e}`);
+                            },
+                        );
+                    break;
+                }
+                case "<": {
                     navigate("/preferences");
                     break;
                 }
@@ -1752,7 +1797,7 @@ const Tabsview: FC<{
             }
         });
         return () => setGlobalOnKeyDown(undefined);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent]);
+    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent, forcedellatch]);
     const post = useCallback(() => {
         if (kind === null) {
             setFlash({ msg: "kind is not set!?", bang: true });
