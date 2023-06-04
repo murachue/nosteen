@@ -1376,46 +1376,50 @@ const Tabsview: FC<{
                     break;
                 }
                 case "Enter": {
-                    if (!selev) break;
-                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
-                    if (readonlyuser) break;
-                    const derefev = selrpev || selev;
+                    if (e.shiftKey) {
+                        setPostpopping(s => !s);
+                    } else {
+                        if (!selev) break;
+                        if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                        if (readonlyuser) break;
+                        const derefev = selrpev || selev;
 
-                    if (derefev.event?.event?.kind === Kind.EncryptedDirectMessage) {
-                        setFlash({ msg: "Replying DM is not implemented", bang: true });
-                        break;
-                    }
+                        if (derefev.event?.event?.kind === Kind.EncryptedDirectMessage) {
+                            setFlash({ msg: "Replying DM is not implemented", bang: true });
+                            break;
+                        }
 
-                    // copy #p tags, first reply-to, merged. (even if originate contains duplicated #p)
-                    const ppks = new Map();
-                    if (derefev.event?.event?.pubkey) {
-                        // TODO: relay/petname in tag from receivefrom/{contacts|profile}? really?
-                        ppks.set(derefev.event.event.pubkey, ["p", derefev.event.event.pubkey]);
+                        // copy #p tags, first reply-to, merged. (even if originate contains duplicated #p)
+                        const ppks = new Map();
+                        if (derefev.event?.event?.pubkey) {
+                            // TODO: relay/petname in tag from receivefrom/{contacts|profile}? really?
+                            ppks.set(derefev.event.event.pubkey, ["p", derefev.event.event.pubkey]);
+                        }
+                        for (const tag of edittags || []) {  // from currently editing
+                            if (tag[0] !== "p") continue;
+                            ppks.set(tag[1], tag);
+                        }
+                        for (const tag of derefev.event?.event?.tags || []) {  // from reply target
+                            if (tag[0] !== "p") continue;
+                            ppks.set(tag[1], tag);
+                        }
+                        const ptags = [...ppks.values()];
+                        // then combine. when for root, only root, without reply. (NIP-10 #e)
+                        // XXX: also include original "#e"s? (Damus way?) I think it's not right.
+                        //      * we don't mentioning it in posting note (although it's marker will be "mention")
+                        //      * considering the case of fetching only sub-reply-tree, copying "root" is enough. it's too much to copying "#e"s.
+                        const root = (derefev.event?.event?.tags || []).reduce<string[] | null>((p, c) => (c[0] === "e" && (c[3] === "root" || p === null)) ? c : p, null);
+                        // TODO: relay in tag from receivefrom? really?
+                        // TODO: kind40/41/42 to kind42
+                        setEdittags([
+                            (root ? [root[0], root[1], root[2] || "", "root"] : ["e", (selrpev || selev).id, "", "root"]),
+                            ...(root ? [["e", derefev.id, "", "reply"]] : []),
+                            ...ptags,
+                        ]);
+                        setKind(([Kind.ChannelCreation, Kind.ChannelMetadata, Kind.ChannelMessage] as number[]).includes(derefev.event?.event?.kind || 0) ? Kind.ChannelMessage : Kind.Text);
+                        posteditor.current?.focus();
+                        e.preventDefault();
                     }
-                    for (const tag of edittags || []) {  // from currently editing
-                        if (tag[0] !== "p") continue;
-                        ppks.set(tag[1], tag);
-                    }
-                    for (const tag of derefev.event?.event?.tags || []) {  // from reply target
-                        if (tag[0] !== "p") continue;
-                        ppks.set(tag[1], tag);
-                    }
-                    const ptags = [...ppks.values()];
-                    // then combine. when for root, only root, without reply. (NIP-10 #e)
-                    // XXX: also include original "#e"s? (Damus way?) I think it's not right.
-                    //      * we don't mentioning it in posting note (although it's marker will be "mention")
-                    //      * considering the case of fetching only sub-reply-tree, copying "root" is enough. it's too much to copying "#e"s.
-                    const root = (derefev.event?.event?.tags || []).reduce<string[] | null>((p, c) => (c[0] === "e" && (c[3] === "root" || p === null)) ? c : p, null);
-                    // TODO: relay in tag from receivefrom? really?
-                    // TODO: kind40/41/42 to kind42
-                    setEdittags([
-                        (root ? [root[0], root[1], root[2] || "", "root"] : ["e", (selrpev || selev).id, "", "root"]),
-                        ...(root ? [["e", derefev.id, "", "reply"]] : []),
-                        ...ptags,
-                    ]);
-                    setKind(([Kind.ChannelCreation, Kind.ChannelMetadata, Kind.ChannelMessage] as number[]).includes(derefev.event?.event?.kind || 0) ? Kind.ChannelMessage : Kind.Text);
-                    posteditor.current?.focus();
-                    e.preventDefault();
                     break;
                 }
                 case "J": {
@@ -2733,32 +2737,59 @@ const Tabsview: FC<{
                                                         <div>{reltime(rp.postAt - now)}</div>
                                                     </div>
                                                     <div style={{ marginLeft: "1em", display: "flex", flexDirection: "column" }}>
-                                                        <div style={{ display: "flex", flexDirection: "column" }}>
-                                                            <TabText style={shortstyle}>{nip19.noteEncode(rp.event.id)}</TabText>
-                                                            <TabText style={shortstyle}>{JSON.stringify(rp.event)}</TabText>
-                                                        </div>
+                                                        <TabText style={shortstyle}>{nip19.noteEncode(rp.event.id)}</TabText>
+                                                        <TabText style={shortstyle}>{JSON.stringify(rp.event)}</TabText>
                                                         <div style={{ display: "flex", flexDirection: "row" }}>
-                                                            <div style={{ flex: 1, display: "flex", flexDirection: "row", flexWrap: "wrap" }}>{
-                                                                all.map(([u, r]) => <div style={{ position: "relative" }}>
-                                                                    <img
-                                                                        key={u}
-                                                                        style={{ height: "1em" }}
-                                                                        src={identiconStore.png(sha256str(u))}
-                                                                        title={`${u}${!r ? " (waiting)" : ((r.reason ? `: ${r.reason}` : "") + " " + reltime(r.recvAt - now))}`} />
-                                                                    <div style={{
-                                                                        width: "0.4em",
-                                                                        height: "0.4em",
-                                                                        position: "absolute",
-                                                                        top: "0",
-                                                                        right: "0",
-                                                                        borderRadius: "100%",
-                                                                        border: !r ? "1px solid black" : undefined,
-                                                                        boxSizing: "border-box",
-                                                                        background: !r ? coloruibg : !r.ok ? "red" : "green",
-                                                                    }} />
-                                                                </div>)
-                                                            }</div>
-                                                            <div>{oks.length}{0 < fails.length ? `+!${fails.length}=${done.length}` : ""}/{all.length}</div>
+                                                            <details tabIndex={0} style={{ flex: 1 }}>
+                                                                <summary style={{ display: "flex", flexDirection: "row" }}>
+                                                                    <div style={{ flex: 1, display: "flex", flexDirection: "row", flexWrap: "wrap" }}>
+                                                                        {all.map(([u, r]) => <div key={u} style={{ position: "relative" }}>
+                                                                            <img
+                                                                                style={{ height: "1em" }}
+                                                                                src={identiconStore.png(sha256str(u))}
+                                                                                title={`${u}${!r ? " (waiting)" : ((r.reason ? `: ${r.reason}` : "") + " " + reltime(r.recvAt - now))}`} />
+                                                                            <div style={{
+                                                                                width: "0.4em",
+                                                                                height: "0.4em",
+                                                                                position: "absolute",
+                                                                                top: "0",
+                                                                                right: "0",
+                                                                                borderRadius: "100%",
+                                                                                border: !r ? "1px solid black" : undefined,
+                                                                                boxSizing: "border-box",
+                                                                                background: !r ? coloruibg : !r.ok ? "red" : "green",
+                                                                            }} />
+                                                                        </div>)}
+                                                                    </div>
+                                                                    <div>{oks.length}{0 < fails.length ? `+!${fails.length}=${done.length}` : ""}/{all.length}</div>
+                                                                </summary>
+                                                                <div style={{ display: "flex", flexDirection: "column" }}>
+                                                                    {all.map(([u, r]) => <div key={u} style={{ display: "flex", flexDirection: "column" }}>
+                                                                        <div style={{ display: "flex", flexDirection: "row" }}>
+                                                                            <div style={{ position: "relative" }}>
+                                                                                <img
+                                                                                    style={{ height: "1em" }}
+                                                                                    src={identiconStore.png(sha256str(u))}
+                                                                                    title={`${u}${!r ? " (waiting)" : ((r.reason ? `: ${r.reason}` : "") + " " + reltime(r.recvAt - now))}`} />
+                                                                                <div style={{
+                                                                                    width: "0.4em",
+                                                                                    height: "0.4em",
+                                                                                    position: "absolute",
+                                                                                    top: "0",
+                                                                                    right: "0",
+                                                                                    borderRadius: "100%",
+                                                                                    border: !r ? "1px solid black" : undefined,
+                                                                                    boxSizing: "border-box",
+                                                                                    background: !r ? coloruibg : !r.ok ? "red" : "green",
+                                                                                }} />
+                                                                            </div>
+                                                                            <div style={{ ...shortstyle, flex: 1 }}>{u}</div>
+                                                                            <div>{!r ? "..." : reltime(r.recvAt - now)}</div>
+                                                                        </div>
+                                                                        {!r?.reason ? null : <div style={{ ...shortstyle, paddingLeft: "1.5em" }}>{r.reason}</div>}
+                                                                    </div>)}
+                                                                </div>
+                                                            </details>
                                                         </div>
                                                     </div>
                                                 </div>;
