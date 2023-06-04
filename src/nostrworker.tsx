@@ -166,8 +166,15 @@ const validateCompleteEvent = (event: unknown): event is Event => {
 
 export type NostrWorkerListenerMessage = {
     name: string;
-    type: "event" | "eose" | "hasread";
+    type: "event";
     events: DeletableEvent[];
+    posts: Post[];
+} | {
+    name: string;
+    type: "eose";
+} | {
+    name: string;
+    type: "hasread";
     posts: Post[];
 };
 
@@ -487,7 +494,7 @@ export class NostrWorker {
                     }),
                     onEose: () => this.enqueueVerify(null, r => {
                         invariant(!r);
-                        this.receiveEmitter.get(name)?.emit("", { name, type: "eose", events: [], posts: [] });
+                        this.receiveEmitter.get(name)?.emit("", { name, type: "eose" });
                     })
                 },
             });
@@ -613,14 +620,14 @@ export class NostrWorker {
         if ("id" in spec) {
             const post = this.posts.get(spec.id);
             if (!post) {
-                return undefined;
+                return;
             }
             if (post.hasread === hasRead) {
-                return post;
+                return;
             }
             const ev = post.event?.event?.event;
             if (!ev) {
-                return undefined;
+                return;
             }
 
             post.hasread = hasRead;
@@ -632,13 +639,13 @@ export class NostrWorker {
                     continue;
                 }
                 tab.nunreads += dhr;
-                this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", events: [], posts: [post] });
+                this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", posts: [post] });
             }
             return;
         }
         if ("stream" in spec) {
             const strm = this.postStreams.get(spec.stream);
-            if (!strm) return undefined;
+            if (!strm) return;
             const posts = strm.posts;
             let i: number;
             let e: number;
@@ -646,16 +653,16 @@ export class NostrWorker {
             if ("beforeIndex" in spec) { i = 0; e = Math.min(spec.beforeIndex, l); }
             else { i = spec.afterIndex + 1; e = l; }
             const changed = [];
-            // TODO: unread other streams is N*M
+            // TODO: unread other streams is N*M. we currently re-scan later but it is slow.
             for (; i < e; i++) {
                 if (posts[i].hasread === hasRead) continue;
                 posts[i].hasread = hasRead;
-                strm.nunreads += dhr;
+                // strm.nunreads += dhr;
                 this.nunreads += dhr;
                 changed.push(posts[i]);
             }
             if (0 < changed.length) {
-                this.receiveEmitter.get(spec.stream)?.emit("", { name: spec.stream, type: "hasread", events: [], posts: changed });
+                this.receiveEmitter.get(spec.stream)?.emit("", { name: spec.stream, type: "hasread", posts: changed });
             }
             for (const [name, s] of this.postStreams.entries()) {
                 if (name === spec.stream) continue;
@@ -663,7 +670,7 @@ export class NostrWorker {
                 if (s.nunreads !== nunrs) {
                     s.nunreads = nunrs;
                     // FIXME: posts is empty...
-                    this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", events: [], posts: [] });
+                    this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", posts: [] });
                 }
             }
         }

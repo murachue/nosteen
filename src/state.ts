@@ -26,11 +26,11 @@ const initTabdef: Tabdef[] = [
 ];
 
 type Tabstate = {
-    selected: number | null;
+    selected: { id: string | null, index: number | null; };
     scroll: number;
     replypath: string[];
 };
-export const newtabstate: () => Tabstate = () => ({ selected: null, scroll: 0, replypath: [] });
+export const newtabstate: () => Tabstate = () => ({ selected: { id: null, index: null }, scroll: 0, replypath: [] });
 
 export type RecentPost = {
     desc: string;

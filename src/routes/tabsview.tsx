@@ -167,7 +167,7 @@ type TheListProps = {
     posts: Post[];
     mypubkey: string | undefined;
     selection: number | null;
-    onSelect?: (i: number) => void;
+    onSelect?: (sel: { id: string; index: number; }) => void;
     onScroll?: React.HTMLAttributes<HTMLDivElement>["onScroll"];
     onFocus?: React.HTMLAttributes<HTMLDivElement>["onFocus"];
     scrollTo?: { pixel: number; } | { index: number; toTop?: boolean; } | { lastIfVisible: boolean; };
@@ -265,10 +265,15 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                     <TBody>
                         {posts.slice(Math.floor(scrollTop / rowh), Math.floor(scrollTop + clientHeight) / rowh).map((p, ri) => {
                             const i = ri + Math.floor(scrollTop / rowh);
-                            const evid = p.event?.event?.event?.id || ri;
                             return <div
-                                key={evid}
-                                onPointerDown={e => e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && onSelect && onSelect(i)}
+                                key={p.id}
+                                onPointerDown={e => {
+                                    if (!e.isPrimary) return;  // need?
+                                    if (e.button !== 0) return;
+                                    if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+                                    if (!onSelect) return;
+                                    onSelect({ id: p.id, index: i });
+                                }}
                                 style={{ position: "absolute", top: `${rowh * i}px` }}
                             >
                                 <TheRow post={p} mypubkey={mypubkey} selected={selpost} />
@@ -730,6 +735,36 @@ const Tabsview: FC<{
             }
         }
         {
+            const mt = tabid.match(/^thread\/((note|nevent)1[a-z0-9]+|[0-9A-Fa-f]{64})$/);
+            if (mt) {
+                const nid = (() => {
+                    if (mt[1].match(/[0-9A-Fa-f]{64}/)) {
+                        return mt[1];
+                    }
+                    const d = (() => { try { return nip19.decode(mt[1]); } catch { return undefined; } })();
+                    if (!d) return null;
+                    if (d.type === "note") return d.data;
+                    if (d.type === "nevent") return d.data.id;
+                    return null;
+                })();
+                if (nid) {
+                    // TODO: relay from nevent
+                    const newt: Tabdef = {
+                        id: `thread/${nid}`,
+                        name: `t/${nid.slice(0, 8)}`,
+                        // don't limit to post to fetch also repost/reaction/zap/etc.
+                        filter: [{ ids: [nid]/* , kinds: [Kinds.post] */, limit: 1 }, { "#e": [nid]/* , kinds: [Kinds.post] */ }],
+                    };
+                    setTabs([...tabs, newt]);
+                    setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
+                    if (tabid !== `thread/${nid}`) {
+                        navigate(`/tab/thread/${nid}`, { replace: true });
+                    }
+                    return newt;
+                }
+            }
+        }
+        {
             const ma = tabid.match(/^a\/(naddr1[a-z0-9]+|\d{1,5}:[0-9A-Fa-f]{64}:.+)$/);
             if (ma) {
                 const naddr = ((): nip19.AddressPointer | null => {
@@ -777,6 +812,17 @@ const Tabsview: FC<{
             return streams.getPostStream(tab.id);
         }, [streams, tab?.id]),
     );
+
+    const postindexwithhint = useCallback((posts: Post[], cursor: { id: string | null, index: number | null; }) => {
+        if (!cursor.id) return null;
+        if (cursor.index !== null && posts[cursor.index].id === cursor.id) {
+            return cursor.index;
+        }
+        const ev = noswk.getPost(cursor.id)?.event?.event?.event;
+        if (!ev) return null;
+        return postindex(posts, ev);
+    }, [noswk]);
+
     useEffect(() => {
         if (!tab) return;
         const onChange = (msg: NostrWorkerListenerMessage) => {
@@ -812,7 +858,7 @@ const Tabsview: FC<{
         streams.setMutes({ users: [...muteuserpublic, ...muteuserprivate, ...muteuserlocal], regexs: muteregexlocal });
     }, [streams, muteuserpublic, muteuserprivate, muteuserlocal, muteregexlocal]);
     const tas = !tab ? undefined : tabstates.get(tab.id);
-    const selpost = (tas?.selected ?? null) === null ? undefined : tap?.posts[tas!.selected!];
+    const selpost = !tas?.selected?.id ? undefined : noswk.getPost(tas.selected.id);
     const selev = selpost?.event;
     const selrpev = selpost?.reposttarget;
     const speeds = useCallback((() => {
@@ -833,17 +879,22 @@ const Tabsview: FC<{
         };
     })(), [account])(tab?.id, tap?.posts);
     const readonlyuser = !(account && "privkey" in account) && !window.nostr?.signEvent;
-    const onselect = useCallback((i: number, toTop?: boolean) => {
-        if (!tab || !tap) return;
-        if (tap) {
-            noswk.setHasread({ id: tap.posts[i].id }, true);
+    // fix stale selection.index
+    if (tab && tap && tas && tas.selected.id) {
+        const index = postindexwithhint(tap.posts, tas.selected);
+        if (index !== null && tas.selected.index !== index) {  // should not be null
+            setTabstates(produce(draft => {
+                getmk(draft, tab.id, newtabstate).selected.index = index;
+            }));
         }
-        setTabstates(produce(draft => {
-            getmk(draft, tab.id, newtabstate).selected = i;
-        }));
-        setListscrollto({ index: i, toTop });
+    }
+    const onselect = useCallback((sel: { id: string; index: number; }, toTop?: boolean) => {
+        if (!tab || !tap) return;
+        noswk.setHasread({ id: sel.id }, true);
+        setTabstates(produce(draft => { getmk(draft, tab.id, newtabstate).selected = sel; }));
+        setListscrollto({ index: sel.index, toTop });
         textref.current?.scrollTo(0, 0);
-    }, [tap, noswk]);
+    }, [tab?.id, tap, noswk]);
     useEffect(() => {
         if (!tas) return;
         // TODO: when fonttext changes?
@@ -900,7 +951,7 @@ const Tabsview: FC<{
             }
         }
         if (i < tapl) {
-            onselect(i, true);
+            onselect({ id: tap.posts[i].id, index: i }, true);
         }
         return true;
     }, [tap]);
@@ -1073,15 +1124,7 @@ const Tabsview: FC<{
                             setLinksel(null);
                             listref.current?.focus();
 
-                            const id = `thread/${nid}`;
-                            setTabs([...tabs.filter(t => t.id !== id), {
-                                id,
-                                name: `t/${nid.slice(0, 8)}`,
-                                filter: [{ ids: [nid], limit: 1 }, { "#e": [nid] }],
-                            }]);
-                            setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
-                            navigate(`/tab/${id}`);
-
+                            navigate(`/tab/thread/${nid}`);
                             break;
                         }
 
@@ -1191,29 +1234,35 @@ const Tabsview: FC<{
                 }
                 case "j": {
                     if (!tas || !tap) break;
-                    const i = tas.selected === null ? tap.posts.length - 1 : tas.selected + 1;
+                    const ci = postindexwithhint(tap.posts, tas.selected);
+                    const i = ci === null ? 0 : ci + 1;
                     if (i < tap.posts.length) {
-                        onselect(i);
+                        const id = tap.posts[i].id;
+                        onselect({ id, index: i });
                     }
                     break;
                 }
                 case "k": {
                     if (!tas || !tap) break;
-                    const i = tas.selected === null ? tap.posts.length - 1 : tas.selected - 1;
-                    if (0 <= i) {
-                        onselect(i);
+                    const ci = postindexwithhint(tap.posts, tas.selected);
+                    const i = ci === null ? (0 < tap.posts.length ? 0 : null) : ci - 1;
+                    if (i !== null && 0 <= i) {
+                        const id = tap.posts[i].id;
+                        onselect({ id, index: i });
                     }
                     break;
                 }
                 case "h": {
                     if (!tas || !tap) break;
-                    if (tas.selected === null) break;
-                    const ev = tap.posts[tas.selected].event?.event;
+                    const ci = postindexwithhint(tap.posts, tas.selected);
+                    if (ci === null) break;
+                    const ev = tap.posts[ci].event?.event;
                     if (!ev) break;
                     const pk = ev.event.pubkey;
-                    for (let i = tas.selected - 1; 0 <= i; i--) {
-                        if (tap.posts[i].event?.event?.event?.pubkey === pk) {
-                            onselect(i);
+                    for (let i = ci - 1; 0 <= i; i--) {
+                        const p = tap.posts[i];
+                        if (p.event?.event?.event?.pubkey === pk) {
+                            onselect({ id: p.id, index: i });
                             break;
                         }
                     }
@@ -1221,14 +1270,16 @@ const Tabsview: FC<{
                 }
                 case "l": {
                     if (!tas || !tap) break;
-                    if (tas.selected === null) break;
+                    const ci = postindexwithhint(tap.posts, tas.selected);
+                    if (ci === null) break;
                     const l = tap.posts.length;
-                    const ev = tap.posts[tas.selected].event?.event;
+                    const ev = tap.posts[ci].event?.event;
                     if (!ev) break;
                     const pk = ev.event.pubkey;
-                    for (let i = tas.selected + 1; i < l; i++) {
-                        if (tap.posts[i].event?.event?.event?.pubkey === pk) {
-                            onselect(i);
+                    for (let i = ci + 1; i < l; i++) {
+                        const p = tap.posts[i];
+                        if (p.event?.event?.event?.pubkey === pk) {
+                            onselect({ id: p.id, index: i });
                             break;
                         }
                     }
@@ -1236,12 +1287,13 @@ const Tabsview: FC<{
                 }
                 case "[": {
                     if (!tas || !tap || !tab) break;
-                    if (tas.selected === null) break;
-                    // const selpost = tap.posts[tas.selected];
+                    if (tas.selected.id === null) break;
+                    // const ci = postindexwithhint(tap.posts, tas.selected);
+                    // if (ci === null) break;
+                    // const selpost = tap.posts[ci];
                     if (!selpost) break;  //!?
                     const ev = selpost.reposttarget || selpost.event!;
-                    // really last? (if no "reply" marker) NIP-10 states that but...
-                    // 2nd? 2/3?? note18h28wvds25vsd8dlujt7p9cu3q5rnwgl47jrmmumhcmw2pxys63q7zee4e
+                    // get reply target #e. (if no "reply" marker) NIP-10 states that.
                     const etag = ev.event!.event.tags.reduce<string[] | undefined>((p, c) => c[0] !== "e" ? p : p?.[3] === "reply" ? p : c, undefined);
                     const replye = etag?.[1];
                     if (!replye) break;
@@ -1259,32 +1311,49 @@ const Tabsview: FC<{
                     setTabstates(produce(draft => { getmk(draft, tab.id, newtabstate).replypath = rp; }));
                     const ei = postindex(tap.posts, lp.event!.event!.event);
                     if (ei === null) break;  // TODO: may move tab? what if already closed?
-                    onselect(ei);
+                    onselect({ id: replye, index: ei });
                     break;
                 }
                 case "]": {
                     if (!tas || !tap || !tab) break;
-                    if (tas.selected === null) break;
-                    // const selpost = tap.posts[tas.selected];
+                    if (tas.selected.id === null) break;
+                    // const ci = postindexwithhint(tap.posts, tas.selected);
+                    // if (ci === null) break;
+                    // const selpost = tap.posts[ci];
                     if (!selpost) break;  //!?
 
-                    const lid = (() => {
+                    const target = (() => {
                         const rp = [...tas.replypath];
 
-                        // potentially repost itself have priority
-                        const i1 = rp.indexOf(selpost.event!.id);
-                        if (i1 !== -1) {
-                            const id1 = rp[i1 + 1];
-                            if (id1) return id1;
+                        const rpi = (() => {
+                            // potentially repost itself have priority
+                            const i1 = rp.indexOf(selpost.event!.id);
+                            if (i1 !== -1) return i1;
+
+                            const rtid = selpost.reposttarget?.id;
+                            const i2 = !rtid ? -1 : rp.indexOf(rtid);
+                            if (i2 !== -1) return i2;
+                            return -1;
+                        })();
+
+                        if (rpi !== -1) {
+                            const id = rp[rpi + 1];
+                            if (id) {
+                                const p = noswk.getPost(id);
+                                // p===null: lru'ed!?
+                                if (p) {
+                                    const index = postindex(tap.posts, p.event!.event!.event);
+                                    // index===null caused by stale replypath. maybe by updated mute.
+                                    // TODO: may move tab? what if already closed?
+                                    if (index !== null) {
+                                        return { id: id, index };
+                                    }
+                                }
+                            }
+                            // fallthrough: failing path-digging fallbacks to find ref'er.
                         }
 
-                        const rtid = selpost.reposttarget?.id;
-                        const i2 = !rtid ? -1 : rp.indexOf(rtid);
-                        if (i2 !== -1) {
-                            const id2 = rp[i2 + 1];
-                            if (id2) return id2;
-                        }
-
+                        const nrp = (rpi === -1) ? [] : rp;
                         // find next referencing... but sometimes created_at swaps. offset.
                         // note1m4dx8m2tmp3nvpa7s4uav4m7p9h8pxyelxvn3y5j4peemsymvy5svusdte
                         const st = selpost.event!.event!.event.created_at - 60;
@@ -1294,25 +1363,16 @@ const Tabsview: FC<{
                         for (let i = si; i < l; i++) {
                             const p = tap.posts[i];
                             if (p.event!.event!.event.tags.find(t => t[0] === "e" && t[1] === id)) {
-                                const nrp = (i1 === -1 && i2 === -1) ? [] : rp;
                                 nrp.push(p.id);
-                                setTabs(produce(draft => { draft.get(tab.id)!.replypath = nrp; }));
-                                return p.id;
+                                setTabstates(produce(draft => { getmk(draft, tab.id, newtabstate).replypath = nrp; }));  // sideeffect!!
+                                return { id: p.id, index: i };
                             }
                         }
 
                         return null;
                     })();
-                    if (!lid) {
-                        // not found
-                        break;
-                    }
-
-                    const lp = noswk.getPost(lid);
-                    if (!lp) break;
-                    const ei = postindex(tap.posts, lp.event!.event!.event);
-                    if (ei === null) break;  // TODO: may move tab? what if already closed?
-                    onselect(ei);
+                    if (!target) break;  // not found
+                    onselect(target);
                     break;
                 }
                 case "Enter": {
@@ -1381,7 +1441,7 @@ const Tabsview: FC<{
                     if (!tap) break;
                     const i = 0;
                     if (i < tap.posts.length) {
-                        onselect(i);
+                        onselect({ id: tap.posts[i].id, index: i });
                     }
                     break;
                 }
@@ -1389,7 +1449,7 @@ const Tabsview: FC<{
                     if (!tap) break;
                     const i = tap.posts.length - 1;
                     if (0 <= i) {
-                        onselect(i);
+                        onselect({ id: tap.posts[i].id, index: i });
                     }
                     break;
                 }
@@ -1509,8 +1569,10 @@ const Tabsview: FC<{
                 }
                 case "b": {
                     if (!tas || !tab || !tap) break;
-                    if (tas.selected === null) break;
-                    const ev = tap.posts[tas.selected].event?.event?.event;
+                    if (tas.selected.id === null) break;
+                    const ci = postindexwithhint(tap.posts, tas.selected);
+                    if (ci === null) break;
+                    const ev = tap.posts[ci].event?.event?.event;
                     if (!ev) break;
                     // index may not match between noswk.stream and noswkwrapper.posts
                     const i = postindex(noswk.getPostStream(tab.id)?.posts || [], ev);
@@ -1520,8 +1582,10 @@ const Tabsview: FC<{
                 }
                 case "B": {
                     if (!tas || !tab || !tap) break;
-                    if (tas.selected === null) break;
-                    const ev = tap.posts[tas.selected].event?.event?.event;
+                    if (tas.selected.id === null) break;
+                    const ci = postindexwithhint(tap.posts, tas.selected);
+                    if (ci === null) break;
+                    const ev = tap.posts[ci].event?.event?.event;
                     if (!ev) break;
                     // index may not match between noswk.stream and noswkwrapper.posts
                     const i = postindex(noswk.getPostStream(tab.id)?.posts || [], ev);
@@ -1535,26 +1599,24 @@ const Tabsview: FC<{
                 }
                 case "U": {
                     if (!tas || !tap) break;
-                    if (tas.selected === null) break;
-                    const post = tap.posts[tas.selected];
+                    if (tas.selected.id === null) break;
+                    const ci = postindexwithhint(tap.posts, tas.selected);
+                    if (ci === null) break;
+                    const post = tap.posts[ci];
                     const pk = (post.reposttarget || post.event!).event!.event.pubkey;
                     navigate(`/tab/p/${pk}`);
                     break;
                 }
                 case "I": {
                     if (!tas || !tap) break;
-                    if (tas.selected === null) break;
-                    const post = tap.posts[tas.selected];
-                    const rootid = ((post?.reposttarget?.event || post?.event?.event)?.event?.tags || []).reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
-                    const evid = rootid || (post?.reposttarget?.id || post.id);
-                    const id = `thread/${evid}`;
-                    setTabs([...tabs.filter(t => t.id !== id), {
-                        id,
-                        name: `t/${evid.slice(0, 8)}`,
-                        filter: [{ ids: [evid], limit: 1 }, { "#e": [evid] }],
-                    }]);
-                    setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
-                    navigate(`/tab/${id}`);
+                    if (tas.selected.id === null) break;
+                    const ci = postindexwithhint(tap.posts, tas.selected);
+                    if (ci === null) break;
+                    const post = tap.posts[ci];
+                    const dereftags = (post.reposttarget?.event || post.event?.event)?.event?.tags || [];
+                    const rootid = dereftags.reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
+                    const id = rootid || (post?.reposttarget?.id || post.id);
+                    navigate(`/tab/thread/${id}`);
                     break;
                 }
                 case "W": {
@@ -1926,7 +1988,7 @@ const Tabsview: FC<{
                 {<TheList
                     posts={tap?.posts || []}
                     mypubkey={account?.pubkey}
-                    selection={tas?.selected ?? null}
+                    selection={tas?.selected?.index ?? null}
                     ref={listref}
                     onSelect={onselect}
                     onScroll={() => {
