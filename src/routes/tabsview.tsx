@@ -505,7 +505,7 @@ const spans = (tev: Event): (
     const span2 = subspan(span1, urlrex, "url");  // this can be []
 
     // then rest
-    const restex = /#\S+|\b(nostr:)?(note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+/g;
+    const restex = /#\[\d+\]|#\S+|\b(nostr:)?(note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+/g;
     const span3 = subspan(span2, restex, "rest");
 
     const spanx = span3.map(s => ({ type: s.type, text: text.slice(s.from, s.to) }));
@@ -528,7 +528,9 @@ const spans = (tev: Event): (
             const tag = tev.tags[ti] satisfies string[] as string[] | undefined;
             if (tag && tag[0] === "p") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.npubEncode(tag[1]), hex: tag[1] } as const;
             if (tag && tag[0] === "e") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]), hex: tag[1] } as const;
-            return { rawtext: t, type: "ref", tagindex: ti, tag, hex: null } as const;
+            // we temporarily treat unknown reference as a text... note1g5vxkt9ge2xl7mecv2jw9us56n683zh8ksjn4pt4s952xuytv5aqsy5xnu
+            // return { rawtext: t, type: "ref", tagindex: ti, tag, hex: null } as const;
+            return { rawtext: t, type: "text", text: t } as const;
         }
         const mhash = t.match(/^#(\S+)/);
         if (mhash) {
