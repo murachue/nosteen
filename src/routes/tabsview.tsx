@@ -815,7 +815,7 @@ const Tabsview: FC<{
 
     const postindexwithhint = useCallback((posts: Post[], cursor: { id: string | null, index: number | null; }) => {
         if (!cursor.id) return null;
-        if (cursor.index !== null && posts[cursor.index].id === cursor.id) {
+        if (cursor.index !== null && posts[cursor.index]?.id === cursor.id) {
             return cursor.index;
         }
         const ev = noswk.getPost(cursor.id)?.event?.event?.event;
