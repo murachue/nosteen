@@ -725,7 +725,7 @@ const Tabsview: FC<{
                     const newt: Tabdef = {
                         id: `e/${nid}`,
                         name: `e/${nid.slice(0, 8)}`,
-                        filter: [{ ids: [nid], /* kinds: [Kinds.post], */ limit: 1 }],
+                        filter: [{ ids: [nid]/* , kinds: [Kinds.post], *//* , limit: 1 */ }],
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
@@ -755,7 +755,7 @@ const Tabsview: FC<{
                         id: `thread/${nid}`,
                         name: `t/${nid.slice(0, 8)}`,
                         // don't limit to post to fetch also repost/reaction/zap/etc.
-                        filter: [{ ids: [nid]/* , kinds: [Kinds.post] */, limit: 1 }, { "#e": [nid]/* , kinds: [Kinds.post] */ }],
+                        filter: [{ ids: [nid]/* , kinds: [Kinds.post] *//* , limit: 1 */ }, { "#e": [nid]/* , kinds: [Kinds.post] */ }],
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
