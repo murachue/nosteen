@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
 import { NostrWorkerProvider, useNostrWorker } from './nostrworker';
+import About from './routes/about';
 import ErrorPage from './routes/errorpage';
 import Global from './routes/global';
 import Preferences from './routes/preferences';
@@ -55,6 +56,7 @@ const App = () => {
                     setGlobalOnPointerDown={setGlobalOnPointerDown}
                 />} />
                 <Route path="/preferences" element={<Preferences />} />
+                <Route path="/about" element={<About />} />
             </Route>
         </Routes>
     </HashRouter>;

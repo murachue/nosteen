@@ -1609,6 +1609,7 @@ const Tabsview: FC<{
                     const ci = postindexwithhint(tap.posts, tas.selected);
                     if (ci === null) break;
                     const post = tap.posts[ci];
+                    // TODO: should popup which user should be opened. like linkpop. default dereferenced.
                     const pk = (post.reposttarget || post.event!).event!.event.pubkey;
                     navigate(`/tab/p/${pk}`);
                     break;
@@ -1795,6 +1796,7 @@ const Tabsview: FC<{
                 case "E": {
                     if (!tab || !selpost) break;
                     if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                    // TODO: should popup which event should be broadcasted. like linkpop.
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
                     // broadcasting kind5 event have higher priority.
@@ -1860,6 +1862,7 @@ const Tabsview: FC<{
                     break;
                 }
                 case "?": {
+                    navigate("/about");
                     break;
                 }
             }
@@ -1989,7 +1992,7 @@ const Tabsview: FC<{
         <Helmet>
             <title>{tab?.name || ""} - nosteen</title>
         </Helmet>
-        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 1px)"/* 1px on Chrome113??? */ }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default", position: "relative" }}>
                 {<TheList
                     posts={tap?.posts || []}

@@ -14,7 +14,8 @@ const Global: FC<Pick<React.DOMAttributes<HTMLDivElement>, "onKeyDown" | "onPoin
             left: "0",
             right: "0",
             backgroundColor: colorBase,
-            color: "#ccc"
+            color: "#ccc",
+            overflow: "auto",
         }}
         onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
@@ -24,7 +25,9 @@ const Global: FC<Pick<React.DOMAttributes<HTMLDivElement>, "onKeyDown" | "onPoin
             <title>nosteen</title>
         </Helmet>
         <div style={{
-            width: "800px", margin: "0 auto", height: "100%",
+            width: "800px",
+            margin: "0 auto",
+            // height: "100%",
             border: "1px solid #888",
             borderTop: "1px solid transparent"/* ?? or pref h1 top margin culls side borders... */,
             borderBottom: "0",
