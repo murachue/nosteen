@@ -101,6 +101,16 @@ export const binarystringToUint8array = (bs: string): Uint8Array => {
 const utf8encoder = new TextEncoder();
 export const sha256str = (str: string) => bytesToHex(sha256(utf8encoder.encode(str)));
 
+export const seleltext = (el: HTMLElement) => {
+    // https://stackoverflow.com/a/987376
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    selection.removeAllRanges();
+    selection.addRange(range);
+};
+
 export const NeverMatch = /(?!)/;
 
 // XXX: it should have true "event" multiplex

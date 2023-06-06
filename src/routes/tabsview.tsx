@@ -1,18 +1,19 @@
 import produce from "immer";
 import { useAtom } from "jotai";
-import { Event, EventTemplate, Kind, finishEvent, getBlankEvent, nip13, nip19, signEvent, utils } from "nostr-tools";
-import { CSSProperties, FC, ForwardedRef, Fragment, PropsWithChildren, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Event, EventTemplate, Kind, finishEvent, nip13, nip19, utils } from "nostr-tools";
+import { CSSProperties, FC, ForwardedRef, Fragment, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
+import TabText from "../components/tabtext";
 import TextInput from "../components/textinput";
 import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { RecentPost, Tabdef, newtabstate } from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
-import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue, sha256str } from "../util";
+import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue, seleltext, sha256str } from "../util";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
@@ -437,25 +438,6 @@ class PostStreamWrapper {
         return news;
     }
 }
-
-const seleltext = (el: HTMLElement) => {
-    // https://stackoverflow.com/a/987376
-    const selection = window.getSelection();
-    if (!selection) return;
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    selection.removeAllRanges();
-    selection.addRange(range);
-};
-
-const TabText: FC<PropsWithChildren<React.HTMLAttributes<HTMLDivElement>>> = ({ children, onFocus, onBlur, onCopy, ...props }) =>
-    <div
-        tabIndex={0}
-        onFocus={e => { seleltext(e.target); onFocus?.(e); }}
-        onCopy={e => { navigator.clipboard.writeText(window.getSelection()?.toString() ?? ""); onCopy?.(e); }}
-        onBlur={e => { window.getSelection()?.removeAllRanges(); onBlur?.(e); }}
-        {...props}
-    >{children}</div>;
 
 const spans = (tev: Event): (
     { rawtext: string; type: "url"; href: string; auto: boolean; }

@@ -1,6 +1,11 @@
+import { bytesToHex } from "@noble/hashes/utils";
+import { bech32 } from "@scure/base";
+import { produce } from "immer";
 import { useAtom } from "jotai";
+import { getPublicKey, nip19 } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
 import icon from "../assets/icon.svg";
+import TabText from "../components/tabtext";
 import state from "../state";
 
 const keys = [
@@ -50,10 +55,12 @@ const keys = [
 
 export default () => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
+    const [colorbase] = useAtom(state.preferences.colors.base);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const klpc = Math.ceil(keys.length / 3);
     const [fonttextfamily, setFonttextfamily] = useState<string | null>(null);
     const fonttextfamilyref = useRef<HTMLDivElement>(null);
+    const [aktext, setAktext] = useState("");
 
     useEffect(() => {
         const el = fonttextfamilyref.current;
@@ -98,7 +105,7 @@ export default () => {
                                             borderRadius: "0.1em",
                                             background: "#0004",
                                             minWidth: "1em",
-                                            height: "1.2em",
+                                            height: "1.3em",
                                             textAlign: "center",
                                             padding: "0 0.2em",
                                         }}>{k}</div>
@@ -109,6 +116,159 @@ export default () => {
                         )} </>}
                     </div>
                 )} </>}
+            </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+            <h2 style={{ margin: 0, textAlign: "center" }}>Army Knife</h2>
+            <div style={{ margin: "2em", display: "flex", flexDirection: "column", gap: "0.3em" }}>
+                <input
+                    type="text"
+                    placeholder="Enter a hex, npub1, note1, nevent1, ..."
+                    value={aktext}
+                    onChange={e => setAktext(e.target.value)}
+                    style={{
+                        width: "100%",
+                        background: colorbase,
+                        color: colornormal,
+                    }} />
+                <div>{(() => {
+                    try {
+                        {
+                            const m = aktext.match(/^[0-9A-Fa-f]{64}$/);
+                            if (m) {
+                                return <ul>
+                                    <li><TabText>{nip19.noteEncode(aktext)}</TabText></li>
+                                    <li><TabText>{nip19.neventEncode({ id: aktext })}</TabText></li>
+                                    <li><TabText>{nip19.npubEncode(aktext)}</TabText></li>
+                                    <li><TabText>{nip19.nsecEncode(aktext)}</TabText></li>
+                                    <li style={{ marginLeft: "1em" }}><TabText>{nip19.npubEncode(getPublicKey(aktext))}</TabText></li>
+                                    <li><TabText>{nip19.nprofileEncode({ pubkey: aktext })}</TabText></li>
+                                </ul>;
+                            }
+                        }
+                        {
+                            const m = aktext.match(/:\/\//);
+                            if (m) {
+                                return <ul>
+                                    <li><TabText>{nip19.nrelayEncode(aktext)}</TabText></li>
+                                </ul>;
+                            }
+                        }
+                        {
+                            const m = aktext.match(/^(note|nevent|npub|nsec|nprofile|nrelay|naddr)1[0-9a-z]+$/);
+                            if (m) {
+                                const hex = bytesToHex(bech32.fromWords(bech32.decode(aktext, 1e5).words));
+                                const decoded = nip19.decode(aktext);
+                                if (decoded.type === "note" || decoded.type === "npub" || decoded.type === "nsec") {
+                                    return <div><TabText>{decoded.data}</TabText></div>;
+                                }
+                                if (decoded.type === "nevent" || decoded.type === "nprofile" || decoded.type === "naddr") {
+                                    return <>
+                                        <ul>
+                                            {(() => {
+                                                switch (decoded.type) {
+                                                    case "nevent": return <>
+                                                        <li><div style={{ display: "flex", flexDirection: "row" }}>
+                                                            <div>id:&nbsp;</div>
+                                                            <TabText>{decoded.data.id}</TabText></div>
+                                                        </li>
+                                                        <li>{decoded.data.author
+                                                            ? <div style={{ display: "flex", flexDirection: "row" }}>
+                                                                <div>author:&nbsp;</div>
+                                                                <TabText>{decoded.data.author}</TabText>
+                                                            </div>
+                                                            : "author not included"}</li>
+                                                    </>;
+                                                    case "nprofile": return <>
+                                                        <li><div style={{ display: "flex", flexDirection: "row" }}>
+                                                            <div>pubkey:&nbsp;</div>
+                                                            <TabText>{decoded.data.pubkey}</TabText></div>
+                                                        </li>
+                                                    </>;
+                                                    case "naddr": return <>
+                                                        <li><div style={{ display: "flex", flexDirection: "row" }}>
+                                                            <div>kind:&nbsp;</div>
+                                                            <TabText>{decoded.data.kind}</TabText></div>
+                                                        </li>
+                                                        <li><div style={{ display: "flex", flexDirection: "row" }}>
+                                                            <div>pubkey:&nbsp;</div>
+                                                            <TabText>{decoded.data.pubkey}</TabText></div>
+                                                        </li>
+                                                        <li><div style={{ display: "flex", flexDirection: "row" }}>
+                                                            <div>identifier:&nbsp;</div>
+                                                            <TabText>{decoded.data.identifier}</TabText></div>
+                                                        </li>
+                                                    </>;
+                                                    default:
+                                                        throw new Error(`program error: bad switch: ${(decoded as any).type}`);
+                                                }
+                                            })()}
+                                            <li>Relays:</li>
+                                            <ul>
+                                                {[...(decoded.data.relays || []), ""].map((r, i) => <li key={i}>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="wss://..."
+                                                        value={r}
+                                                        onChange={e => {
+                                                            const value = e.target.value;
+                                                            const newrelays = produce(draft => {
+                                                                if (i < draft.length) {
+                                                                    if (value !== "") {
+                                                                        draft[i] = value;
+                                                                    } else {
+                                                                        draft.splice(i, 1);
+                                                                    }
+                                                                } else {
+                                                                    draft.push(value);
+                                                                }
+                                                            })(decoded.data.relays || []);
+                                                            switch (decoded.type) {
+                                                                case "nevent": {
+                                                                    setAktext(nip19.neventEncode({
+                                                                        ...decoded.data,
+                                                                        relays: 0 < newrelays.length ? newrelays : undefined,
+                                                                    }));
+                                                                    break;
+                                                                }
+                                                                case "nprofile": {
+                                                                    setAktext(nip19.nprofileEncode({
+                                                                        ...decoded.data,
+                                                                        relays: 0 < newrelays.length ? newrelays : undefined,
+                                                                    }));
+                                                                    break;
+                                                                }
+                                                                case "naddr": {
+                                                                    setAktext(nip19.naddrEncode({
+                                                                        ...decoded.data,
+                                                                        relays: 0 < newrelays.length ? newrelays : undefined,
+                                                                    }));
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }}
+                                                        style={{
+                                                            width: "100%",
+                                                            background: colorbase,
+                                                            color: colornormal,
+                                                        }} />
+                                                </li>)}
+                                            </ul>
+                                        </ul>
+                                        <TabText style={{ fontFamily: "monospace", overflowWrap: "anywhere" }}>{hex}</TabText>
+                                    </>;
+                                }
+                                if (decoded.type === "nrelay") {
+                                    return <div><TabText>{decoded.data}</TabText></div>;
+                                }
+                                throw new Error(`program error: unsupported decoded type: ${(decoded as any).type}`);
+                            }
+                        }
+                        return null;
+                    } catch (e) {
+                        return `${e}`;
+                    }
+                })()}</div>
             </div>
         </div>
         <div style={{ marginTop: "2em", textAlign: "center" }}>
