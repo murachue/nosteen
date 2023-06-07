@@ -13,7 +13,7 @@ const Global: FC<Pick<React.DOMAttributes<HTMLDivElement>, "onKeyDown" | "onPoin
             bottom: "0",
             left: "0",
             right: "0",
-            backgroundColor: colorBase,
+            background: colorBase,
             color: "#ccc",
             overflow: "auto",
         }}

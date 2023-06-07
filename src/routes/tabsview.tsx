@@ -2002,7 +2002,7 @@ const Tabsview: FC<{
                     alignItems: "flex-start",
                     overflow: "visible",
                     lineHeight: "1em",
-                    backgroundColor: coloruibg,
+                    background: coloruibg,
                     border: "2px inset",
                     padding: "0 0 0 2px",
                 }}>
