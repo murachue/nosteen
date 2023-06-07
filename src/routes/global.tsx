@@ -24,12 +24,10 @@ const Global: FC = () => {
         <div style={{
             width: "800px",
             margin: "0 auto",
-            // height: "100%",
-            border: "1px solid #888",
-            borderTop: "1px solid transparent"/* ?? or pref h1 top margin culls side borders... */,
-            borderBottom: "0",
+            minHeight: "100%",
+            border: "solid #888",
+            borderWidth: "0 1px",
             boxSizing: "border-box",
-            position: "relative", // XXX: just for Prefs link... ugly.
         }}>
             <Outlet />
         </div>

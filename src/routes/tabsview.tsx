@@ -1975,7 +1975,7 @@ const Tabsview: FC = () => {
         <Helmet>
             <title>{tab?.name || ""} - nosteen</title>
         </Helmet>
-        <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 1px)"/* 1px on Chrome113??? */ }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
             <div style={{ flex: "1 0 0px", display: "flex", flexDirection: "column", cursor: "default", position: "relative" }}>
                 {<TheList
                     posts={tap?.posts || []}
