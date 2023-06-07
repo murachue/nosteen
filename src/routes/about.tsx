@@ -2,7 +2,7 @@ import { bytesToHex } from "@noble/hashes/utils";
 import { bech32 } from "@scure/base";
 import { produce } from "immer";
 import { useAtom } from "jotai";
-import { getEventHash, getPublicKey, nip19, verifySignature } from "nostr-tools";
+import { Event, EventTemplate, finishEvent, getEventHash, getPublicKey, nip19, validateEvent, verifySignature } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
 import icon from "../assets/icon.svg";
 import TabText from "../components/tabtext";
@@ -65,16 +65,32 @@ export default () => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorbase] = useAtom(state.preferences.colors.base);
     const [fonttext] = useAtom(state.preferences.fonts.text);
+    const [account] = useAtom(state.preferences.account);
     const klpc = Math.ceil(keys.length / 3);
     const [fonttextfamily, setFonttextfamily] = useState<string | null>(null);
     const fonttextfamilyref = useRef<HTMLDivElement>(null);
     const [aktext, setAktext] = useState("");
+    const [signerror, setSignerror] = useState("");
 
     useEffect(() => {
         const el = fonttextfamilyref.current;
         if (!el) return;
         setFonttextfamily(el.style.fontFamily);
     }, [fonttextfamilyref.current]);
+
+    const sign = async (tev: EventTemplate) => {
+        if (account && "privkey" in account) {
+            return finishEvent(tev, account.privkey);
+        } else if (window.nostr?.signEvent) {
+            const sev = await window.nostr.signEvent(tev);
+            if (sev.pubkey !== account?.pubkey) {
+                throw new Error(`NIP-07 set unexpected pubkey: ${sev.pubkey} expected=${account?.pubkey}`);
+            }
+            return sev;
+        } else {
+            throw new Error("could not sign: no private key nor NIP-07 signEvent");
+        }
+    };
 
     return <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", color: colornormal }}>
         <div style={{ padding: "2em", display: "flex", flexDirection: "row", alignItems: "center" }}>
@@ -134,6 +150,21 @@ export default () => {
                     placeholder="Enter a hex, npub1, note1, nevent1, ..."
                     value={aktext}
                     onChange={e => setAktext(e.target.value)}
+                    onKeyDown={e => {
+                        if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.key === "Enter") {
+                            if (!account?.pubkey) {
+                                setSignerror("pubkey not set in Preference");
+                                return;
+                            }
+                            const obj = rescue(() => JSON.parse(aktext), undefined);
+                            // validateEvent does not accept EventTemplate
+                            if (typeof obj === "object" && obj !== null && validateEvent<unknown>({ pubkey: "0".repeat(64), ...obj })) {
+                                const { kind, content, tags, created_at } = obj;
+                                sign({ kind, content, tags, created_at }).then(t => setAktext(JSON.stringify(t)), e => setSignerror(`${e}`));
+                            }
+                            return;
+                        }
+                    }}
                     style={{
                         width: "100%",
                         background: colorbase,
@@ -246,6 +277,7 @@ export default () => {
                                             <div>{!oksig || badsig ? "❌" : "✔"}</div>
                                         </div></li>
                                     </ul>
+                                    {!signerror ? null : <li>sign error: {signerror}</li>}
                                     {0 < bad.length
                                         ? <>
                                             <li>errors:</li>
