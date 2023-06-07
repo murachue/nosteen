@@ -4,7 +4,7 @@ import { Helmet } from "react-helmet";
 import { Outlet } from "react-router";
 import state from "../state";
 
-const Global: FC<Pick<React.DOMAttributes<HTMLDivElement>, "onKeyDown" | "onPointerDown">> = ({ onKeyDown, onPointerDown }) => {
+const Global: FC = () => {
     const [colorBase] = useAtom(state.preferences.colors.base);
     return <div
         style={{
@@ -17,9 +17,6 @@ const Global: FC<Pick<React.DOMAttributes<HTMLDivElement>, "onKeyDown" | "onPoin
             color: "#ccc",
             overflow: "auto",
         }}
-        onKeyDown={onKeyDown}
-        onPointerDown={onPointerDown}
-        tabIndex={-1}  // needs tabIndex? https://qiita.com/roottool/items/50b8ab5e5e1de1520e09
     >
         <Helmet>
             <title>nosteen</title>

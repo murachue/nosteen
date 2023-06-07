@@ -20,8 +20,6 @@ const App = () => {
     const [prefrelays] = useAtom(state.preferences.relays);
     const [prefaccount] = useAtom(state.preferences.account);
     const [tabs] = useAtom(state.tabs);
-    const [globalOnKeyDown, setGlobalOnKeyDown] = useState<React.DOMAttributes<HTMLDivElement>["onKeyDown"]>(undefined);
-    const [globalOnPointerDown, setGlobalOnPointerDown] = useState<React.DOMAttributes<HTMLDivElement>["onPointerDown"]>(undefined);
     const noswk = useNostrWorker();
 
     useEffect(() => {
@@ -49,12 +47,9 @@ const App = () => {
 
     return <HashRouter>
         <Routes>
-            <Route element={<Global onKeyDown={globalOnKeyDown} onPointerDown={globalOnPointerDown} />} errorElement={<ErrorPage />}>
+            <Route element={<Global />} errorElement={<ErrorPage />}>
                 <Route path="/" element={<Root />} />
-                <Route path="/tab/*" element={<TabsView
-                    setGlobalOnKeyDown={setGlobalOnKeyDown}
-                    setGlobalOnPointerDown={setGlobalOnPointerDown}
-                />} />
+                <Route path="/tab/*" element={<TabsView />} />
                 <Route path="/preferences" element={<Preferences />} />
                 <Route path="/about" element={<About />} />
             </Route>

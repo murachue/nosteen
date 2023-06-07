@@ -551,10 +551,7 @@ const spans = (tev: Event): (
     });
 };
 
-const Tabsview: FC<{
-    setGlobalOnKeyDown: React.Dispatch<React.SetStateAction<React.HTMLAttributes<HTMLDivElement>["onKeyDown"]>>;
-    setGlobalOnPointerDown: React.Dispatch<React.SetStateAction<React.HTMLAttributes<HTMLDivElement>["onPointerDown"]>>;
-}> = ({ setGlobalOnKeyDown, setGlobalOnPointerDown }) => {
+const Tabsview: FC = () => {
     const navigate = useNavigate();
     const data = useParams();
     const tabid = data["*"] || "";
@@ -1022,7 +1019,7 @@ const Tabsview: FC<{
         broadcast(event, desc);
     }, [account, window.nostr, broadcast]);
     useEffect(() => {
-        setGlobalOnKeyDown(() => (e: React.KeyboardEvent<HTMLDivElement>) => {
+        const handler = (e: KeyboardEvent) => {
             const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
             if (tagName === "input" || tagName === "textarea" || tagName === "button") {
                 return;
@@ -1030,7 +1027,7 @@ const Tabsview: FC<{
             if (e.ctrlKey || e.altKey || e.metaKey) {
                 return;
             }
-            if (e.nativeEvent.isComposing) {
+            if (e.isComposing) {
                 return;
             }
             if (tabpopping) {
@@ -1850,8 +1847,9 @@ const Tabsview: FC<{
                     break;
                 }
             }
-        });
-        return () => setGlobalOnKeyDown(undefined);
+        };
+        document.addEventListener("keydown", handler);
+        return () => document.removeEventListener("keydown", handler);
     }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent, forcedellatch]);
     const post = useCallback(() => {
         if (kind === null) {
@@ -1884,29 +1882,30 @@ const Tabsview: FC<{
             );
     }, [kind, postdraft, edittags, emitevent]);
     useEffect(() => {
-        setGlobalOnPointerDown(() => (e: React.PointerEvent<HTMLDivElement>) => {
-            if (!evinfopopref.current?.contains(e.nativeEvent.target as any)) {
+        const handler = (e: PointerEvent) => {
+            if (!evinfopopref.current?.contains(e.target as any)) {
                 setEvinfopopping(false);
             }
-            if (!profpopref.current?.contains(e.nativeEvent.target as any)) {
+            if (!profpopref.current?.contains(e.target as any)) {
                 setProfpopping(false);
             }
-            if (!tabpopref.current?.contains(e.nativeEvent.target as any)) {
+            if (!tabpopref.current?.contains(e.target as any)) {
                 setTabpopping(false);
                 setTabpopsel(-999);
             }
-            if (!linkpopref.current?.contains(e.nativeEvent.target as any)) {
+            if (!linkpopref.current?.contains(e.target as any)) {
                 setLinkpop([]);
                 setLinksel(null);
             }
-            if (!relaypopref.current?.contains(e.nativeEvent.target as any)) {
+            if (!relaypopref.current?.contains(e.target as any)) {
                 setRelaypopping(false);
             }
-            if (!postpopref.current?.contains(e.nativeEvent.target as any)) {
+            if (!postpopref.current?.contains(e.target as any)) {
                 setPostpopping(false);
             }
-        });
-        return () => setGlobalOnPointerDown(undefined);
+        };
+        document.addEventListener("pointerdown", handler);
+        return () => document.removeEventListener("pointerdown", handler);
     }, []);
     useEffect(() => {
         // FIXME: this code block smells.
