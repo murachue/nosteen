@@ -1,8 +1,8 @@
-import { bytesToHex } from "@noble/hashes/utils";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { bech32 } from "@scure/base";
 import { produce } from "immer";
 import { useAtom } from "jotai";
-import { Event, EventTemplate, finishEvent, getEventHash, getPublicKey, nip19, validateEvent, verifySignature } from "nostr-tools";
+import { EventTemplate, finishEvent, getEventHash, getPublicKey, nip19, validateEvent, verifySignature } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
 import icon from "../assets/icon.svg";
 import TabText from "../components/tabtext";
@@ -285,6 +285,15 @@ export default () => {
                                         </>
                                         : null}
                                 </ul>;
+                            }
+                        }
+                        {
+                            const m = aktext.match(/^(.+) ([0-9a-fA-F]+)$/);
+                            if (m) {
+                                const data = hexToBytes(m[2]);
+                                const words = bech32.toWords(data);
+                                const hex = bech32.encode(m[1], words, 5e3);
+                                return <TabText style={{ fontFamily: "monospace", overflowWrap: "anywhere" }}>{hex}</TabText>;
                             }
                         }
                         {
