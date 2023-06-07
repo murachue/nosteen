@@ -654,6 +654,12 @@ const Tabsview: FC<{
             }
             return tab;
         }
+        const ctab = closedtabs.find(t => t.id === tabid);
+        if (ctab) {
+            setClosedtabs(ctabs => ctabs.filter(t => t.id !== ctab.id));
+            setTabs(tabs => [...tabs.filter(t => t.id !== ctab.id), ctab]);  // FIXME: this called twice. to avoid dupe tabs, filtering.
+            return ctab;
+        }
         {
             const mp = tabid.match(/^p\/((npub|nprofile)1[a-z0-9]+|[0-9A-Fa-f]{64})$/);
             if (mp) {
@@ -776,7 +782,7 @@ const Tabsview: FC<{
                 }
             }
         }
-    }, [tabs, tabid, tabzorder])();
+    }, [tabs, tabid, tabzorder, closedtabs])();
 
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
