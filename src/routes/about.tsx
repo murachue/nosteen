@@ -2,11 +2,12 @@ import { bytesToHex } from "@noble/hashes/utils";
 import { bech32 } from "@scure/base";
 import { produce } from "immer";
 import { useAtom } from "jotai";
-import { getPublicKey, nip19 } from "nostr-tools";
+import { getEventHash, getPublicKey, nip19, verifySignature } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
 import icon from "../assets/icon.svg";
 import TabText from "../components/tabtext";
 import state from "../state";
+import { rescue, shortstyle } from "../util";
 
 const keys = [
     { key: "A", desc: "Previous tab" },
@@ -52,6 +53,13 @@ const keys = [
     { key: "/", desc: "ENOTIMPL" },
     { key: "?", desc: "About me" },
 ];
+
+const expecttype = (errs: string[], obj: object, key: string, type: "string" | "number" | "Array"): boolean => {
+    if (!(key in obj)) { errs.push(`${key} is missing`); return false; }
+    const val = (obj as { [k: typeof key]: unknown; })[key];
+    if (type === "Array" ? !Array.isArray(val) : (typeof val !== type)) { errs.push(`${key} is not ${type}`); return false; }
+    return true;
+};
 
 export default () => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
@@ -133,6 +141,120 @@ export default () => {
                     }} />
                 <div>{(() => {
                     try {
+                        {
+                            const m = aktext.match(/^{/);
+                            if (m) {
+                                // validateEvent don't return bad reasons...
+                                const obj = rescue(() => JSON.parse(aktext), undefined);
+                                if (!obj) {
+                                    return "Bad JSON";
+                                }
+
+                                const bad: string[] = [];
+                                const okid = expecttype(bad, obj, "id", "string");
+                                const okpk = expecttype(bad, obj, "pubkey", "string");
+                                const okkind = expecttype(bad, obj, "kind", "number");
+                                const okcon = expecttype(bad, obj, "content", "string");
+                                const oktags = expecttype(bad, obj, "tags", "Array");
+                                const okcat = expecttype(bad, obj, "created_at", "number");
+                                const oksig = expecttype(bad, obj, "sig", "string");
+
+                                if (oktags) {
+                                    for (const [i, v] of (obj.tags as unknown[]).entries()) {
+                                        if (!Array.isArray(v)) {
+                                            bad.push(`tags[${i}] is not Array`);
+                                            continue;
+                                        }
+                                        for (const [j, e] of (v as unknown[]).entries()) {
+                                            if (typeof e === "object") {
+                                                bad.push(`tags[${i}][${j}] is not string, number nor boolean`);  // really non-string allowed?? nostr-tools does.
+                                            }
+                                        }
+                                    }
+                                }
+
+                                const goodpk = okpk && (obj.pubkey as string).match(/^[0-9A-Fa-f]{64}$/);
+                                if (okpk && !goodpk) {
+                                    bad.push("pubkey is not a 32 octets hex");
+                                }
+
+                                let badsig = false;
+                                if (oksig) {
+                                    if (!(obj.sig as string).match(/^[0-9A-Fa-f]{128}$/)) {
+                                        bad.push("sig is not a 64 octets hex");
+                                    } else if (!goodpk) {
+                                        bad.push("(signature not checked; valid pubkey not present)");
+                                    } else {
+                                        const result = rescue<boolean | string>(() => verifySignature(obj), e => `${e}`);
+                                        if (result === false) {
+                                            bad.push(`bad signature`);
+                                            badsig = true;
+                                        } else if (result !== true) {
+                                            bad.push(`bad signature: ${result}`);
+                                        }
+                                    }
+                                }
+
+                                let idexpect = "";
+                                if (okid) {
+                                    const expected = rescue(() => getEventHash(obj).toLowerCase(), e => e);
+                                    if (typeof expected !== "string") {
+                                        bad.push(`bad id: ${expected}`);
+                                    } else if ((obj.id as string).toLowerCase() !== expected) {
+                                        idexpect = expected;
+                                        bad.push(`bad id`);
+                                    }
+                                }
+
+                                return <ul>
+                                    <li>parsed:</li>
+                                    <ul>
+                                        <li>
+                                            <div style={{ display: "flex" }}>
+                                                <div>id:&nbsp;</div>
+                                                <TabText style={shortstyle}>{okid ? obj.id : "(not a string)"}</TabText>
+                                                <div>{!okid || idexpect ? "❌" : "✔"}</div>
+                                            </div>
+                                            {!idexpect ? null : <ul><li><div style={{ display: "flex" }}>
+                                                <div>expected:&nbsp;</div>
+                                                <TabText style={shortstyle}>{idexpect}</TabText>
+                                            </div></li></ul>}
+                                        </li>
+                                        <li><div style={{ display: "flex" }}>
+                                            <div>pubkey:&nbsp;</div>
+                                            <TabText style={shortstyle}>{okpk ? obj.pubkey : "(not a string)"}</TabText>
+                                        </div></li>
+                                        <li><div style={{ display: "flex" }}>
+                                            <div>kind:&nbsp;</div>
+                                            <TabText>{okkind ? obj.kind : "(not a number)"}</TabText>
+                                        </div></li>
+                                        <li><div style={{ display: "flex" }}>
+                                            <div>content:&nbsp;</div>
+                                            <TabText style={shortstyle}>{okcon ? obj.content : "(not a string)"}</TabText>
+                                        </div></li>
+                                        <li><div style={{ display: "flex" }}>
+                                            <div>tags:&nbsp;</div>
+                                            <TabText style={shortstyle}>{oktags ? JSON.stringify(obj.tags) : "(not an array)"}</TabText>
+                                        </div></li>
+                                        <li><div style={{ display: "flex" }}>
+                                            <div>created_at:&nbsp;</div>
+                                            <TabText>{okcat ? obj.created_at : "(not a number)"}</TabText>
+                                        </div></li>
+                                        <li><div style={{ display: "flex" }}>
+                                            <div>sig:&nbsp;</div>
+                                            <TabText style={shortstyle}>{oksig ? obj.sig : "(not a string)"}</TabText>
+                                            <div>{!oksig || badsig ? "❌" : "✔"}</div>
+                                        </div></li>
+                                    </ul>
+                                    {0 < bad.length
+                                        ? <>
+                                            <li>errors:</li>
+                                            <ul>{bad.map(((e, i) => <li key={i}>{e}</li>))}</ul>
+                                        </>
+                                        : null}
+                                </ul>;
+                            }
+                        }
                         {
                             const m = aktext.match(/^[0-9A-Fa-f]{64}$/);
                             if (m) {

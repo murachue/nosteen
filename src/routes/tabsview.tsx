@@ -13,7 +13,7 @@ import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { RecentPost, Tabdef, newtabstate } from "../state";
 import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
-import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue, seleltext, sha256str } from "../util";
+import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue, seleltext, sha256str, shortstyle } from "../util";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
@@ -22,12 +22,6 @@ const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
         return json as MetadataContent;
     }
     return null;
-};
-
-const shortstyle: CSSProperties = {
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
 };
 
 const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
@@ -1713,10 +1707,10 @@ const Tabsview: FC<{
                     })();
                     emitevent(tev, desc)
                         .then(
-                            () => setStatus(`✔⭐: ${desc}`),
+                            () => setStatus(`✔${desc}`),
                             e => {
                                 console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} reaction failed: ${e}`);
-                                setStatus(`💔⭐: ${e}`);
+                                setStatus(`💔⭐${e}`);
                             });
                     break;
                 }
@@ -1741,12 +1735,13 @@ const Tabsview: FC<{
                             ["p", targetev.pubkey],  // TODO: relay and petname?
                         ],
                     };
-                    emitevent(tev, `👁‍🗨${targetev.content}`)
+                    const desc = `👁‍🗨${targetev.content}`;
+                    emitevent(tev, desc)
                         .then(
-                            () => setStatus(`✔👁‍🗨: ${targetev.content}`),
+                            () => setStatus(`✔${desc}`),
                             e => {
                                 console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} repost failed: ${e}`);
-                                setStatus(`💔👁‍🗨: ${e}`);
+                                setStatus(`💔👁‍🗨${e}`);
                             });
                     break;
                 }
@@ -1786,17 +1781,17 @@ const Tabsview: FC<{
                         const tev = derefev.event?.event;
                         const dev = derefev.deleteevent?.event;
                         if (dev) {
-                            return { event: dev, desc: `❌${tev ? tev.content : dev.content}` };
+                            return { event: dev, desc: `❌📣${tev ? tev.content : dev.content}` };
                         }
-                        return { event: tev, desc: `${tev?.content}` };
+                        return { event: tev, desc: `📣${tev?.content}` };
                     })();
                     if (!targetev) break; // XXX: should not happen
                     try {
-                        broadcast(targetev, `📣${desc}`);
-                        setStatus(`✔📣: ${desc}`);
+                        broadcast(targetev, desc);
+                        setStatus(`✔${desc}`);
                     } catch (e) {
                         console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} broadcast failed: ${e}`);
-                        setStatus(`💔📣: ${e}`);
+                        setStatus(`💔📣${e}`);
                     }
                     break;
                 }
@@ -1819,6 +1814,7 @@ const Tabsview: FC<{
                             break;
                         }
                     }
+                    const desc = `❌${targetev.content}`;
                     emitevent({
                         created_at: Math.floor(Date.now() / 1000),
                         kind: Kind.EventDeletion,
@@ -1826,12 +1822,12 @@ const Tabsview: FC<{
                         tags: [
                             ["e", targetev.id],  // we should not add a relay... that may be a hint of original.
                         ],
-                    }, `❌${targetev.content}`)
+                    }, desc)
                         .then(
-                            () => setStatus(`✔❌: ${targetev.content}`),
+                            () => setStatus(`✔${desc}`),
                             e => {
                                 console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} deletion failed: ${e}`);
-                                setStatus(`💔❌: ${e}`);
+                                setStatus(`💔❌${e}`);
                             },
                         );
                     break;

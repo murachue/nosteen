@@ -1,8 +1,9 @@
-import { WritableDraft } from "immer/dist/internal";
-import { Event, nip19 } from "nostr-tools";
-import { Post } from "./types";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
+import { WritableDraft } from "immer/dist/internal";
+import { Event, nip19 } from "nostr-tools";
+import { CSSProperties } from "react";
+import { Post } from "./types";
 
 export const bsearchi = <T>(arr: T[], comp: (x: T) => boolean): number => {
     let left = 0;
@@ -112,6 +113,12 @@ export const seleltext = (el: HTMLElement) => {
 };
 
 export const NeverMatch = /(?!)/;
+
+export const shortstyle: CSSProperties = {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+};
 
 // XXX: it should have true "event" multiplex
 export class SimpleEmitter<T> {
