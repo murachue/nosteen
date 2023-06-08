@@ -173,12 +173,23 @@ export default () => {
                 <div>{(() => {
                     try {
                         {
-                            const m = aktext.match(/^{/);
+                            const m = aktext.match(/^["{]/);
                             if (m) {
                                 // validateEvent don't return bad reasons...
-                                const obj = rescue(() => JSON.parse(aktext), undefined);
-                                if (!obj) {
-                                    return "Bad JSON";
+                                const obj1 = rescue(() => JSON.parse(aktext), e => new Error(`${e}`));
+                                if (obj1 instanceof Error) {
+                                    return `Bad JSON: ${obj1}`;
+                                }
+
+                                let obj = obj1;
+                                if (typeof obj1 === "string") {
+                                    obj = rescue(() => JSON.parse(obj1), e => new Error(`${e}`));
+                                    if (obj instanceof Error) {
+                                        return `Bad inner JSON: ${obj}`;
+                                    }
+                                    if (typeof obj !== "object" || obj === null) {
+                                        return `Not an object: ${typeof obj} ${obj}`;
+                                    }
                                 }
 
                                 const bad: string[] = [];
@@ -238,6 +249,10 @@ export default () => {
                                 }
 
                                 return <ul>
+                                    {typeof obj1 !== "string" ? null : <li><div style={{ display: "flex" }}>
+                                        <div>unescaped:&nbsp;</div>
+                                        <TabText style={shortstyle}>{obj1}</TabText>
+                                    </div></li>}
                                     <li>parsed:</li>
                                     <ul>
                                         <li>
@@ -277,6 +292,10 @@ export default () => {
                                             <div>{!oksig || badsig ? "❌" : "✔"}</div>
                                         </div></li>
                                     </ul>
+                                    {typeof obj1 === "string" ? null : <li><div style={{ display: "flex" }}>
+                                        <div>escaped:&nbsp;</div>
+                                        <TabText style={shortstyle}>{JSON.stringify(JSON.stringify(obj))}</TabText>
+                                    </div></li>}
                                     {!signerror ? null : <li>sign error: {signerror}</li>}
                                     {0 < bad.length
                                         ? <>
