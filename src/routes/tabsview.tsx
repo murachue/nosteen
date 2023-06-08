@@ -1,4 +1,4 @@
-import produce from "immer";
+import { produce } from "immer";
 import { useAtom } from "jotai";
 import { Event, EventTemplate, Kind, finishEvent, nip13, nip19, utils } from "nostr-tools";
 import { CSSProperties, FC, ForwardedRef, Fragment, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";

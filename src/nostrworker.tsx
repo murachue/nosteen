@@ -1,7 +1,7 @@
-import { Event, Filter, Kind, UnsignedEvent, finishEvent, matchFilter, validateEvent, verifySignature } from "nostr-tools";
+import { Event, Filter, Kind, matchFilter, validateEvent, verifySignature } from "nostr-tools";
 import { FC, PropsWithChildren, createContext, useContext } from "react";
 import invariant from "tiny-invariant";
-import { MuxPool, MuxSub, RelayWrap } from "./pool";
+import { MuxPool, RelayWrap } from "./pool";
 import { Relay } from "./relay";
 import { DeletableEvent, EventMessageFromRelay, FilledFilters, Kinds, Post } from "./types";
 import { SimpleEmitter, getmk, postindex, postupsertindex, rescue } from "./util";

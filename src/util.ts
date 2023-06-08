@@ -1,6 +1,5 @@
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
-import { WritableDraft } from "immer/dist/internal";
 import { Event, nip19 } from "nostr-tools";
 import { CSSProperties } from "react";
 import { Post } from "./types";
@@ -21,8 +20,7 @@ export const bsearchi = <T>(arr: T[], comp: (x: T) => boolean): number => {
     return left;
 };
 
-// FIXME: ugh type. how to eliminate WritableDefault?
-export const postindex = <T extends Post | WritableDraft<Post>, U extends Event | WritableDraft<Event>>(posts: T[], event: U): number | null => {
+export const postindex = <T extends Post, U extends Event>(posts: T[], event: U): number | null => {
     const evid = event.id;
     const cat = event.created_at;
     const l = posts.length;
@@ -38,8 +36,7 @@ export const postindex = <T extends Post | WritableDraft<Post>, U extends Event 
     return null;
 };
 
-// FIXME: ugh type. how to eliminate WritableDefault?
-export const postupsertindex = <T extends Post | WritableDraft<Post>, U extends Event | WritableDraft<Event>>(posts: T[], event: U): { type: "insert" | "update"; index: number; } => {
+export const postupsertindex = <T extends Post, U extends Event>(posts: T[], event: U): { type: "insert" | "update"; index: number; } => {
     const evid = event.id;
     const cat = event.created_at;
     let i = bsearchi(posts, p => cat <= p.event!.event!.event.created_at);
