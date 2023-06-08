@@ -321,9 +321,15 @@ export default () => {
                             const m = aktext.match(/^(note|nevent|npub|nsec|nprofile|nrelay|naddr)1[0-9a-z]+$/);
                             if (m) {
                                 const hex = bytesToHex(bech32.fromWords(bech32.decode(aktext, 1e5).words));
-                                const decoded = nip19.decode(aktext);
+                                const decoded = rescue<ReturnType<typeof nip19.decode> | string>(() => nip19.decode(aktext), e => `${e}`);
+                                if (typeof decoded === "string") {
+                                    return <>
+                                        <div>{decoded}</div>
+                                        <TabText style={{ fontFamily: "monospace", overflowWrap: "anywhere" }}>{hex}</TabText>
+                                    </>;
+                                }
                                 if (decoded.type === "note" || decoded.type === "npub" || decoded.type === "nsec") {
-                                    return <div><TabText>{decoded.data}</TabText></div>;
+                                    return <TabText>{decoded.data}</TabText>;
                                 }
                                 if (decoded.type === "nevent" || decoded.type === "nprofile" || decoded.type === "naddr") {
                                     return <>
@@ -422,7 +428,10 @@ export default () => {
                                     </>;
                                 }
                                 if (decoded.type === "nrelay") {
-                                    return <div><TabText>{decoded.data}</TabText></div>;
+                                    return <>
+                                        <TabText>{decoded.data}</TabText>
+                                        <TabText style={{ fontFamily: "monospace", overflowWrap: "anywhere" }}>{hex}</TabText>
+                                    </>;
                                 }
                                 throw new Error(`program error: unsupported decoded type: ${(decoded as any).type}`);
                             }
