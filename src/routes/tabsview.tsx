@@ -415,8 +415,16 @@ class PostStreamWrapper {
             if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) {
                 return false;
             }
+            // TODO: this should be able to toggled off
+            if (ev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) {
+                return false;
+            }
             const rpev = p.reposttarget?.event?.event;
             if (rpev && (this.muteusers.test(rpev.pubkey) || this.mutepatterns.test(rpev.content))) {
+                return false;
+            }
+            // TODO: this should be able to toggled off
+            if (rpev && rpev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) {
                 return false;
             }
             return true;
