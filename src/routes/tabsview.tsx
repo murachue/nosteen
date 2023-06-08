@@ -2428,7 +2428,12 @@ const Tabsview: FC = () => {
                                         display: "flex",
                                         flexDirection: "row",
                                     }}>
-                                        <div style={{ padding: "0 0.3em", background: colornormal, color: colorbase }}>{t[0]}</div>
+                                        <div style={{ background: colornormal }}>
+                                            {/* XXX: this seems produces broken background on Chrome 114 but works...?? */}
+                                            <div style={{ padding: "0 0.3em", background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                                                {t[0]}
+                                            </div>
+                                        </div>
                                         {t.slice(1).map((t, i) =>
                                             <div key={i} style={{ padding: "0 0.3em", borderLeft: "1px solid", borderLeftColor: colornormal }}>{t}</div>
                                         )}
