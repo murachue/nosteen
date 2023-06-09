@@ -967,7 +967,7 @@ const Tabsview: FC = () => {
         navigate(`/tab/${t.id}`);
         setNavigating({ current: tabid, to: t.id });
         listref.current?.focus();
-    }, [closedtabs, tabpopsel]);
+    }, [closedtabs, tabpopsel, tabid]);
     const overwritetab = useCallback(() => {
         if (!tab) return;
         if (typeof tab.filter === "string" || tab.filter === null) {
@@ -988,7 +988,7 @@ const Tabsview: FC = () => {
         navigate(`/tab/${t.id}`);
         setNavigating({ current: tabid, to: t.id });
         listref.current?.focus();
-    }, [tabs, tabedit]);
+    }, [tabs, tabedit, tabid]);
     const broadcast = useCallback((event: Event, desc: string) => {
         setStatus(`emiting... ${desc}`);
         const postAt = Date.now();
