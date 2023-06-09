@@ -350,7 +350,13 @@ export default () => {
                                 if (decoded.type === "note" || decoded.type === "npub" || decoded.type === "nsec") {
                                     return <>
                                         <TabText>{decoded.data}</TabText>
-                                        {decoded.type === "nsec" && <TabText>{nip19.npubEncode(getPublicKey(decoded.data))}</TabText>}
+                                        {decoded.type === "nsec" && (() => {
+                                            const pk = getPublicKey(decoded.data);
+                                            return <ul>
+                                                <li><TabText>{nip19.npubEncode(pk)}</TabText></li>
+                                                <li><TabText>{pk}</TabText></li>
+                                            </ul>;
+                                        })()}
                                     </>;
                                 }
                                 if (decoded.type === "nevent" || decoded.type === "nprofile" || decoded.type === "naddr") {
