@@ -1010,6 +1010,10 @@ const Tabsview: FC = () => {
         // TODO: timeout? pub.on("forget", () => { });
     }, [noswk, recentpubs]);
     const emitevent = useCallback(async (tev: EventTemplate, desc: string) => {
+        if (tev.content.match(/nsec1[ac-hj-np-z02-9]{10,}/)) {
+            setFlash({ msg: "Don't post a secret key!!", bang: true });
+            throw new Error(`content contains secret key like, ABORTED!`);
+        }
         setStatus(`signing... ${desc}`);
         const event = await (async () => {
             if (account && "privkey" in account) {
