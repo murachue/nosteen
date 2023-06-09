@@ -1,6 +1,6 @@
 import { enableMapSet } from 'immer';
 import { useAtom } from 'jotai/react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import './index.css';

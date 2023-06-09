@@ -563,6 +563,7 @@ const Tabsview: FC = () => {
     const navigate = useNavigate();
     const data = useParams();
     const tabid = data["*"] || "";
+    const [navigating, setNavigating] = useState<{ current: string; to: string; } | null>(null);  // FIXME wtf
     const [account] = useAtom(state.preferences.account);
     const [tabs, setTabs] = useAtom(state.tabs);
     const [tabstates, setTabstates] = useAtom(state.tabstates);
@@ -659,6 +660,11 @@ const Tabsview: FC = () => {
             }
             return tab;
         }
+
+        if (navigating?.current === tabid) {
+            return undefined;
+        }
+
         const ctab = closedtabs.find(t => t.id === tabid);
         if (ctab) {
             setClosedtabs(ctabs => ctabs.filter(t => t.id !== ctab.id));
@@ -689,6 +695,7 @@ const Tabsview: FC = () => {
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
                     if (tabid !== `p/${pk}`) {
                         navigate(`/tab/p/${pk}`, { replace: true });
+                        setNavigating({ current: tabid, to: `p/${pk}` });
                     }
                     return newt;
                 }
@@ -718,6 +725,7 @@ const Tabsview: FC = () => {
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
                     if (tabid !== `e/${nid}`) {
                         navigate(`/tab/e/${nid}`, { replace: true });
+                        setNavigating({ current: tabid, to: `e/${nid}` });
                     }
                     return newt;
                 }
@@ -748,6 +756,7 @@ const Tabsview: FC = () => {
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
                     if (tabid !== `thread/${nid}`) {
                         navigate(`/tab/thread/${nid}`, { replace: true });
+                        setNavigating({ current: tabid, to: `thread/${nid}` });
                     }
                     return newt;
                 }
@@ -782,12 +791,13 @@ const Tabsview: FC = () => {
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
                     if (tabid !== `a/${nid}`) {
                         navigate(`/tab/a/${nid}`, { replace: true });
+                        setNavigating({ current: tabid, to: `a/${nid}` });
                     }
                     return newt;
                 }
             }
         }
-    }, [tabs, tabid, tabzorder, closedtabs])();
+    }, [tabs, tabid, tabzorder, closedtabs, navigating])();
 
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
@@ -955,6 +965,7 @@ const Tabsview: FC = () => {
         setTabpopsel(-999);
         setTabs(tabs => [...tabs, t]);
         navigate(`/tab/${t.id}`);
+        setNavigating({ current: tabid, to: t.id });
         listref.current?.focus();
     }, [closedtabs, tabpopsel]);
     const overwritetab = useCallback(() => {
@@ -975,6 +986,7 @@ const Tabsview: FC = () => {
         const t = { id, name: id.slice(0, 8), filter: JSON.parse(tabedit) };
         setTabs([...tabs, t]);
         navigate(`/tab/${t.id}`);
+        setNavigating({ current: tabid, to: t.id });
         listref.current?.focus();
     }, [tabs, tabedit]);
     const broadcast = useCallback((event: Event, desc: string) => {
@@ -1118,6 +1130,7 @@ const Tabsview: FC = () => {
                             listref.current?.focus();
 
                             navigate(`/tab/thread/${nid}`);
+                            setNavigating({ current: tabid, to: `thread/${nid}` });
                             break;
                         }
 
@@ -1139,16 +1152,19 @@ const Tabsview: FC = () => {
                         if (text.match(/^(npub|nprofile)1/)) {
                             if (!expectn(text, "npub") && !expectn(text, "nprofile")) { break; }
                             navigate(`/tab/p/${text}`);
+                            setNavigating({ current: tabid, to: `p/${text}` });
                             break;
                         }
                         if (text.match(/^(note|nevent)1/)) {
                             if (!expectn(text, "note") && !expectn(text, "nevent")) { break; }
                             navigate(`/tab/e/${text}`);
+                            setNavigating({ current: tabid, to: `e/${text}` });
                             break;
                         }
                         if (text.match(/^naddr1/)) {
                             if (!expectn(text, "naddr")) { break; }
                             navigate(`/tab/a/${text}`);
+                            setNavigating({ current: tabid, to: `a/${text}` });
                             break;
                         }
                         const rmhash = text.match(/^#(.+)/);
@@ -1161,6 +1177,7 @@ const Tabsview: FC = () => {
                             }]);
                             setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
                             navigate(`/tab/${id}`);
+                            setNavigating({ current: tabid, to: id });
                             break;
                         }
 
@@ -1216,6 +1233,7 @@ const Tabsview: FC = () => {
                     const i = tabs.indexOf(tab);
                     const n = tabs[i === 0 ? tabs.length - 1 : i - 1].id;
                     navigate(`/tab/${n}`);
+                    setNavigating({ current: tabid, to: n });
                     break;
                 }
                 case "s": {
@@ -1223,6 +1241,7 @@ const Tabsview: FC = () => {
                     const i = tabs.indexOf(tab);
                     const n = tabs[i === tabs.length - 1 ? 0 : i + 1].id;
                     navigate(`/tab/${n}`);
+                    setNavigating({ current: tabid, to: n });
                     break;
                 }
                 case "j": {
@@ -1546,12 +1565,14 @@ const Tabsview: FC = () => {
                     const t = tabs[Number(e.key) - 1];
                     if (t) {
                         navigate(`/tab/${t.id}`);
+                        setNavigating({ current: tabid, to: t.id });
                     }
                     break;
                 }
                 case "9": {
                     const t = tabs[tabs.length - 1];
                     navigate(`/tab/${t.id}`);
+                    setNavigating({ current: tabid, to: t.id });
                     break;
                 }
                 case " ": {
@@ -1603,6 +1624,7 @@ const Tabsview: FC = () => {
                     // TODO: should popup which user should be opened. like linkpop. default dereferenced.
                     const pk = (post.reposttarget || post.event!).event!.event.pubkey;
                     navigate(`/tab/p/${pk}`);
+                    setNavigating({ current: tabid, to: `p/${pk}` });
                     break;
                 }
                 case "I": {
@@ -1615,6 +1637,7 @@ const Tabsview: FC = () => {
                     const rootid = dereftags.reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
                     const id = rootid || (post?.reposttarget?.id || post.id);
                     navigate(`/tab/thread/${id}`);
+                    setNavigating({ current: tabid, to: `thread/${id}` });
                     break;
                 }
                 case "W": {
@@ -1622,12 +1645,14 @@ const Tabsview: FC = () => {
                     if (typeof tab.filter === "string") {
                         setFlash({ msg: "Cannot close system tabs", bang: true });
                     } else {
-                        setTabs(tabs.filter(t => t.id !== tab.id));
+                        setTabs(tabs => tabs.filter(t => t.id !== tab.id));
                         setTabstates(produce(draft => { draft.delete(tab.id); }));
-                        setClosedtabs([tab, ...closedtabs.filter(t => t.id !== tab.id).slice(0, 4)]);  // "unreads" etc. may dupe
+                        setClosedtabs(closedtabs => [tab, ...closedtabs.filter(t => t.id !== tab.id).slice(0, 4)]);  // "unreads" etc. may dupe
                         const newzorder = tabzorder.filter(t => t !== tab.id);
                         setTabzorder(newzorder);
-                        navigate(`/tab/${newzorder[newzorder.length - 1] || tabs[0].id}`);
+                        const tid = newzorder[newzorder.length - 1] || tabs[0].id;
+                        navigate(`/tab/${tid}`);
+                        setNavigating({ current: tabid, to: tid });
                     }
                     break;
                 }
@@ -1642,6 +1667,7 @@ const Tabsview: FC = () => {
                     setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
                     noswk.overwritePosts(id, tap!.posts.filter(p => !p.hasread));
                     navigate(`/tab/${id}`);
+                    setNavigating({ current: tabid, to: id });
                     break;
                 }
                 case "t": {
@@ -1862,7 +1888,7 @@ const Tabsview: FC = () => {
         };
         document.addEventListener("keydown", handler);
         return () => document.removeEventListener("keydown", handler);
-    }, [tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent, forcedellatch]);
+    }, [tabid, tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent, forcedellatch]);
     const post = useCallback(() => {
         if (kind === null) {
             setFlash({ msg: "kind is not set!?", bang: true });
@@ -1975,13 +2001,21 @@ const Tabsview: FC = () => {
     }, [flash]);
 
     useEffect(() => {
-        if (!tab) {
+        if (!tab && navigating?.current !== tabid/* FIXME wtf */) {
             // redirect to first
             // need to in useEffect
             navigate(`/tab/${tabs[0].id}`, { replace: true });
+            setNavigating({ current: tabid, to: tabs[0].id });
             console.debug(tab, tabs[0]);
         }
-    }, [tab]);
+    }, [tab, navigating, tabid]);
+
+    // FIXME wtf
+    useEffect(() => {
+        if (navigating?.to === tabid) {
+            setNavigating(null);
+        }
+    }, [tabid, navigating]);
 
     return <>
         <Helmet>
