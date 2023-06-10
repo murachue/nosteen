@@ -102,7 +102,7 @@ export default () => {
                     <span ref={fonttextfamilyref} style={{ font: fonttext }} />
                     <span style={{ font: `1em ${["Times", fonttextfamily, "sans-serif"].filter(e => e).join(", ")}` }}>Nosteen</span>
                     {" "}
-                    <span style={{ margin: 0, fontSize: "0.7rem" }}>{import.meta.env.VITE_APP_VERSION}</span>
+                    <span style={{ margin: 0, fontSize: "0.7rem" }} title={import.meta.env.VITE_APP_COMMITDATE}>{import.meta.env.VITE_APP_GITHASH}</span>
                 </h1>
                 <p style={{ margin: 0, fontStyle: "italic" }}>A nostalgic Nostr client for Nostraddicts™</p>
             </div>
