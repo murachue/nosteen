@@ -1906,7 +1906,7 @@ const Tabsview: FC = () => {
         emitevent(ev, `💬${postdraft}`)
             .then(
                 () => {
-                    setStatus(`✔💬: ${postdraft}`);
+                    setStatus(`✔💬${postdraft}`);
                     setPostdraft("");
                     setEdittags(null);
                     setEditingtag(null);
@@ -1915,7 +1915,7 @@ const Tabsview: FC = () => {
                 },
                 e => {
                     console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} post failed: ${e}`);
-                    setStatus(`💔💬: ${e}`);
+                    setStatus(`💔💬${e}`);
                     setPosting(false);
                     posteditor.current?.focus();
                 },
@@ -2327,11 +2327,11 @@ const Tabsview: FC = () => {
                                             const i = rf.length <= i0 ? rf.length - 1 : i0;  // choose last if event is in future.
                                             const rfirst = rf[i];
                                             return rf.map(r => <div key={r[0].url} style={{ display: "flex", flexDirection: "row" }}>
-                                                <div key={`u:${r[0].url}`} style={{ flex: "1", display: "flex", alignItems: "baseline" }}>
+                                                <div style={{ flex: "1", display: "flex", alignItems: "baseline" }}>
                                                     <div style={{ alignSelf: "flex-end", height: "1em" }}>{<img src={identiconStore.png(sha256str(r[0].url))} style={{ height: "100%" }} />}</div>
                                                     <div style={{ ...shortstyle, flex: "1" }}>{r[0].url}</div>
                                                 </div>
-                                                <div key={`a:${r[0].url}`} style={shortstyle}>{r === rfirst ? timefmt(new Date(r[1]), "YYYY-MM-DD hh:mm:ss.SSS") : reltime(r[1] - rfirst[1])}</div>
+                                                <div style={shortstyle}>{r === rfirst ? timefmt(new Date(r[1]), "YYYY-MM-DD hh:mm:ss.SSS") : reltime(r[1] - rfirst[1])}</div>
                                             </div>);
                                         })()}
                                     </div>
@@ -2469,7 +2469,7 @@ const Tabsview: FC = () => {
                                         flexDirection: "row",
                                     }}>
                                         <div style={{ background: colornormal }}>
-                                            {/* XXX: this seems produces broken background on Chrome 114 but works...?? */}
+                                            {/* XXX: this seems produces broken background in the inspector on Chrome 114 but works...?? */}
                                             <div style={{ padding: "0 0.3em", background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                                                 {t[0]}
                                             </div>
@@ -2609,10 +2609,10 @@ const Tabsview: FC = () => {
                                                     onFocus={e => setEditingtag([ti, ei])}
                                                 >{e}</div>
                                         )}
-                                        {ti !== editingtagdelay?.[0] ? null : <>  {/* // FIXME !!! */}
+                                        {ti === editingtagdelay?.[0] && <>  {/* // FIXME !!! */}
                                             <div
                                                 tabIndex={0}
-                                                style={{ padding: "0 0.5em", background: colornormal, color: colorbase, display: "flex", flexDirection: "row", alignItems: "center" }}
+                                                style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "stretch" }}
                                                 onFocus={e => setEditingtag(s => [ti, -1])}
                                                 onBlur={e => setEditingtag(s => s?.[0] === ti ? null : s)}
                                                 onKeyDown={ev => {
@@ -2632,10 +2632,14 @@ const Tabsview: FC = () => {
                                                     setEdittags(produce(draft => { if (!draft) return; draft[ti].push(""); }));
                                                     setEditingtag([ti, e.length]);
                                                 }}
-                                            >+</div>
+                                            >
+                                                <div style={{ padding: "0 0.5em", display: "flex", flexDirection: "row", alignItems: "center", background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                                                    +
+                                                </div>
+                                            </div>
                                             <div
                                                 tabIndex={0}
-                                                style={{ padding: "0 0.5em", background: colornormal, color: colorbase, display: "flex", flexDirection: "row", alignItems: "center" }}
+                                                style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "stretch" }}
                                                 onFocus={e => setEditingtag(s => [ti, -1])}
                                                 onBlur={e => setEditingtag(s => s?.[0] === ti ? null : s)}
                                                 onKeyDown={ev => {
@@ -2665,7 +2669,11 @@ const Tabsview: FC = () => {
                                                         // setEditingtag([ti, e.length - 2]);
                                                     }
                                                 }}
-                                            >-</div>
+                                            >
+                                                <div style={{ padding: "0 0.5em", display: "flex", flexDirection: "row", alignItems: "center", background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                                                    -
+                                                </div>
+                                            </div>
                                         </>}
                                     </div>)
                                 }
@@ -2673,7 +2681,7 @@ const Tabsview: FC = () => {
                                     <div
                                         ref={editingtagaddref}
                                         tabIndex={0}
-                                        style={{ padding: "0 0.5em", background: colornormal, color: colorbase, display: "flex", flexDirection: "row", alignItems: "center" }}
+                                        style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "stretch" }}
                                         onFocus={e => setEditingtag(s => [-1, 0])}
                                         onBlur={e => setEditingtag(s => s?.[0] === -1 ? null : s)}
                                         onKeyDown={ev => {
@@ -2693,12 +2701,18 @@ const Tabsview: FC = () => {
                                             setEdittags([...edittags, ["", ""]]);
                                             setEditingtag([edittags.length, 0]);
                                         }}
-                                    >+</div>
+                                    >
+                                        <div style={{ padding: "0 0.5em", background: colorbase, display: "flex", flexDirection: "row", alignItems: "center", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                                            +
+                                        </div>
+                                    </div>
                                 </div>
                                 <div style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "inline-flex" }}>
-                                    <div
-                                        style={{ padding: "0 2px", background: colornormal, color: colorbase }}
-                                    >kind</div>
+                                    <div style={{ background: colornormal }} >
+                                        <div style={{ padding: "0 2px", display: "flex", flexDirection: "row", alignItems: "center", background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                                            kind
+                                        </div>
+                                    </div>
                                     {editingtagdelay?.[0] === edittags.length + 1  // FIXME !!!
                                         ? <input
                                             ref={editingtag?.[0] === edittags.length + 1 && editingtag?.[1] === 1 ? editingtagref : undefined}
