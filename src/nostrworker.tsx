@@ -550,9 +550,10 @@ export class NostrWorker {
             const su = (() => {
                 if (!fandh.filters) return { filters: null, sid: null };
 
+                const relays = fandh.filters.reduce<string[]>((p, { relays }) => !relays ? p : Array.isArray(relays) ? relays : [relays], this.getLivingRelays().filter(r => r.read).map(r => r.url));
                 const sid = this.mux.sub(
-                    this.getLivingRelays().filter(r => r.read).map(r => r.url),
-                    fandh.filters!,
+                    relays,
+                    fandh.filters.map(({ relays, mute, ...rest }) => rest),
                     { skipVerification: true },  // don't do this on nostr-tools' Pool/Relay; this is vulnerable for knownIds/seenOn
                 );
                 sid.on("event", fandh.handlers.onEvent);
@@ -567,6 +568,9 @@ export class NostrWorker {
             })();
             this.subs.set(name, su);
         }
+    }
+    getSubscribeFilters(name: string) {
+        return this.subs.get(name)?.filters;
     }
     getAllPosts() {
         return this.posts;

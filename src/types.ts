@@ -24,7 +24,11 @@ export type Post = {
 };
 
 export type Filled<T extends unknown[]> = [T[number], ...T];
-export type FilledFilters = Filled<Filter[]>;
+export type ExFilter = Filter & {
+    relays?: string | string[];
+    mute?: boolean;
+};
+export type FilledFilters = Filled<ExFilter[]>;
 export type EventMessageFromRelay = { event: Event, relay: Relay; };
 
 export type MetadataContent = {

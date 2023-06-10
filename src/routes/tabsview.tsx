@@ -409,7 +409,8 @@ class PostStreamWrapper {
         if (!stream) {
             return this.emptystream;
         }
-        const filteredPosts = stream.posts.filter(p => {
+        const dontmute = this.noswk.getSubscribeFilters(name)?.some(f => f.mute === false);
+        const filteredPosts = dontmute ? stream.posts : stream.posts.filter(p => {
             const ev = p.event?.event?.event;
             if (!ev) return true;  // XXX ?
             if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) {
@@ -434,7 +435,7 @@ class PostStreamWrapper {
         const news = {
             posts: filteredPosts,
             eose: stream.eose,
-            nunreads: filteredPosts.reduce((p, c) => p + (c.hasread ? 0 : 1), 0) /* stream.nunreads */, // TODO: minus mute?
+            nunreads: filteredPosts.reduce((p, c) => p + (c.hasread ? 0 : 1), 0) /* stream.nunreads */,
         };
         this.streams.set(name, news);
         return news;
