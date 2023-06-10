@@ -409,7 +409,8 @@ class PostStreamWrapper {
         if (!stream) {
             return this.emptystream;
         }
-        const dontmute = this.noswk.getSubscribeFilters(name)?.some(f => f.mute === false);
+        const sf = this.noswk.getSubscribeFilters(name);
+        const dontmute = !sf || sf?.some(f => f.mute === false);
         const filteredPosts = dontmute ? stream.posts : stream.posts.filter(p => {
             const ev = p.event?.event?.event;
             if (!ev) return true;  // XXX ?
