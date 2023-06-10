@@ -322,9 +322,9 @@ export default () => {
                                     <li><TabText>{nip19.noteEncode(aktext)}</TabText></li>
                                     <li><TabText>{nip19.neventEncode({ id: aktext })}</TabText></li>
                                     <li><TabText>{nip19.npubEncode(aktext)}</TabText></li>
+                                    <li><TabText>{nip19.nprofileEncode({ pubkey: aktext })}</TabText></li>
                                     <li><TabText>{nip19.nsecEncode(aktext)}</TabText></li>
                                     <li style={{ marginLeft: "1em" }}><TabText>{nip19.npubEncode(getPublicKey(aktext))}</TabText></li>
-                                    <li><TabText>{nip19.nprofileEncode({ pubkey: aktext })}</TabText></li>
                                 </ul>;
                             }
                         }
@@ -350,13 +350,17 @@ export default () => {
                                 if (decoded.type === "note" || decoded.type === "npub" || decoded.type === "nsec") {
                                     return <>
                                         <TabText>{decoded.data}</TabText>
-                                        {decoded.type === "nsec" && (() => {
-                                            const pk = getPublicKey(decoded.data);
-                                            return <ul>
-                                                <li><TabText>{nip19.npubEncode(pk)}</TabText></li>
-                                                <li><TabText>{pk}</TabText></li>
-                                            </ul>;
-                                        })()}
+                                        <ul>
+                                            {decoded.type === "note" && <li><TabText onKeyDown={e => !e.shiftKey && !e.ctrlKey && !e.altKey && e.key === "Enter" && setAktext(nip19.neventEncode({ id: decoded.data }))}>{nip19.neventEncode({ id: decoded.data })}</TabText></li>}
+                                            {decoded.type === "npub" && <li><TabText onKeyDown={e => !e.shiftKey && !e.ctrlKey && !e.altKey && e.key === "Enter" && setAktext(nip19.nprofileEncode({ pubkey: decoded.data }))}>{nip19.nprofileEncode({ pubkey: decoded.data })}</TabText></li>}
+                                            {decoded.type === "nsec" && (() => {
+                                                const pk = getPublicKey(decoded.data);
+                                                return <ul>
+                                                    <li><TabText>{nip19.npubEncode(pk)}</TabText></li>
+                                                    <li><TabText>{pk}</TabText></li>
+                                                </ul>;
+                                            })()}
+                                        </ul>
                                     </>;
                                 }
                                 if (decoded.type === "nevent" || decoded.type === "nprofile" || decoded.type === "naddr") {
@@ -367,34 +371,46 @@ export default () => {
                                                     case "nevent": return <>
                                                         <li><div style={{ display: "flex", flexDirection: "row" }}>
                                                             <div>id:&nbsp;</div>
-                                                            <TabText>{decoded.data.id}</TabText></div>
-                                                        </li>
+                                                            <div style={{ display: "flex", flexDirection: "column" }}>
+                                                                <div><TabText>{decoded.data.id}</TabText></div>
+                                                                <div><TabText>{nip19.noteEncode(decoded.data.id)}</TabText></div>
+                                                            </div>
+                                                        </div></li>
                                                         <li>{decoded.data.author
                                                             ? <div style={{ display: "flex", flexDirection: "row" }}>
                                                                 <div>author:&nbsp;</div>
-                                                                <TabText>{decoded.data.author}</TabText>
+                                                                <div style={{ display: "flex", flexDirection: "column" }}>
+                                                                    <div><TabText>{decoded.data.author}</TabText></div>
+                                                                    <div><TabText>{nip19.npubEncode(decoded.data.author)}</TabText></div>
+                                                                </div>
                                                             </div>
                                                             : "author not included"}</li>
                                                     </>;
                                                     case "nprofile": return <>
                                                         <li><div style={{ display: "flex", flexDirection: "row" }}>
                                                             <div>pubkey:&nbsp;</div>
-                                                            <TabText>{decoded.data.pubkey}</TabText></div>
-                                                        </li>
+                                                            <div style={{ display: "flex", flexDirection: "column" }}>
+                                                                <div><TabText>{decoded.data.pubkey}</TabText></div>
+                                                                <div><TabText>{nip19.npubEncode(decoded.data.pubkey)}</TabText></div>
+                                                            </div>
+                                                        </div></li>
                                                     </>;
                                                     case "naddr": return <>
                                                         <li><div style={{ display: "flex", flexDirection: "row" }}>
                                                             <div>kind:&nbsp;</div>
-                                                            <TabText>{decoded.data.kind}</TabText></div>
-                                                        </li>
+                                                            <TabText>{decoded.data.kind}</TabText>
+                                                        </div></li>
                                                         <li><div style={{ display: "flex", flexDirection: "row" }}>
                                                             <div>pubkey:&nbsp;</div>
-                                                            <TabText>{decoded.data.pubkey}</TabText></div>
-                                                        </li>
+                                                            <div style={{ display: "flex", flexDirection: "column" }}>
+                                                                <div><TabText>{decoded.data.pubkey}</TabText></div>
+                                                                <div><TabText>{nip19.npubEncode(decoded.data.pubkey)}</TabText></div>
+                                                            </div>
+                                                        </div></li>
                                                         <li><div style={{ display: "flex", flexDirection: "row" }}>
                                                             <div>identifier:&nbsp;</div>
-                                                            <TabText>{decoded.data.identifier}</TabText></div>
-                                                        </li>
+                                                            <TabText>{decoded.data.identifier}</TabText>
+                                                        </div></li>
                                                     </>;
                                                     default:
                                                         throw new Error(`program error: bad switch: ${(decoded as any).type}`);
