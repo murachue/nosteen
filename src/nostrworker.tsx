@@ -434,7 +434,7 @@ export class NostrWorker {
                 return [
                     {
                         "#p": [this.pubkey],
-                        kinds: [Kinds.post, Kinds.delete],
+                        kinds: [Kinds.post, Kinds.delete, Kind.Zap],
                         limit: 30,
                     },
                 ];
@@ -876,6 +876,9 @@ export class NostrWorker {
                 // sad
                 continue;
             }
+
+            // FIXME: when we recv deleter->deletee in an instant which deleter matches filter but deletee is not, we accidentally adds to posts.
+            //        so we should check matchFilter the recv.event...
 
             const post = getmk(this.posts, pid, () => ({
                 id: pid,
