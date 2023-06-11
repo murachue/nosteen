@@ -799,6 +799,25 @@ const Tabsview: FC = () => {
                 }
             }
         }
+        {
+            const mt = tabid.match(/^t\/(.+)$/);
+            if (mt) {
+                const tag = mt[1];
+                const newt: Tabdef = {
+                    id: `t/${tag}`,
+                    name: `#${tag.slice(0, 8)}`,
+                    // should not limit to post to fetch also repost/reaction/zap/etc.?
+                    filter: [{ "#t": [tag], kinds: [Kinds.post], limit: 50 }],
+                };
+                setTabs([...tabs, newt]);
+                setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
+                if (tabid !== `t/${tag}`) {
+                    navigate(`/tab/t/${tag}`, { replace: true });
+                    setNavigating({ current: tabid, to: `t/${tag}` });
+                }
+                return newt;
+            }
+        }
     }, [tabs, tabid, tabzorder, closedtabs, navigating])();
 
     const tap = useSyncExternalStore(
