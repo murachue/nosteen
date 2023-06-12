@@ -600,7 +600,6 @@ const Tabsview: FC = () => {
     const linkselref = useRef<HTMLDivElement>(null);
     const [flash, setFlash] = useState<{ msg: string, bang: boolean; } | null>(null);
     const [profpopping, setProfpopping] = useState("");
-    // const profpopref = useRef<HTMLDivElement>(null);
     const [followtime, setFollowtime] = useState(0);
     const [author, setAuthor] = useState<MetadataContent | null>(null);
     const [rpauthor, setRpauthor] = useState<MetadataContent | null>(null);
@@ -2007,9 +2006,6 @@ const Tabsview: FC = () => {
             if (!evinfopopref.current?.contains(e.target as any)) {
                 setEvinfopopping(false);
             }
-            // if (!profpopref.current?.contains(e.target as any)) {
-            //     setProfpopping(false);
-            // }
             setProfpopping("");
             if (!tabpopref.current?.contains(e.target as any)) {
                 setTabpopping(false);
@@ -2283,7 +2279,6 @@ const Tabsview: FC = () => {
                             {(!selev || !profpopping) ? null : (() => {
                                 const p = !prof.metadata ? null : metadatajsoncontent(prof.metadata);
                                 return <div
-                                    // ref={profpopref}
                                     style={{
                                         display: "grid",
                                         // flexDirection: "column",
