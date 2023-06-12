@@ -133,16 +133,16 @@ const reactedIdFromTag = (e: Event): string | null => {
 
 const getPostId = (e: Event): string | null => {
     switch (e.kind) {
-        case Kinds.reaction: {
+        case Kind.Reaction: {
             return reactedIdFromTag(e);
         }
-        case Kinds.delete: {
+        case Kind.EventDeletion: {
             // delete is another layer; no originate event.
             return null;
         }
-        case Kinds.profile:
-        case Kinds.contacts:
-        case Kinds.relays: {
+        case Kind.Metadata:
+        case Kind.Contacts:
+        case Kind.RelayList: {
             // I think they are not a post.
             return null;
         }
@@ -218,7 +218,7 @@ export class FetchProfile extends FetchPred {
         super(uncached);
         this.pks = [pk];
     }
-    filter() { return [{ authors: this.pks, kinds: [Kinds.profile], limit: this.pks.length }]; };
+    filter() { return [{ authors: this.pks, kinds: [Kind.Metadata], limit: this.pks.length }]; };
     merge(other: FetchPred) {
         if (!(other instanceof FetchProfile)) return null;
         const p = new FetchProfile(this.pks[0]);
@@ -232,7 +232,7 @@ export class FetchContacts extends FetchPred {
         super(uncached);
         this.pks = [pk];
     }
-    filter() { return [{ authors: this.pks, kinds: [Kinds.contacts], limit: this.pks.length }]; };
+    filter() { return [{ authors: this.pks, kinds: [Kind.Contacts], limit: this.pks.length }]; };
     merge(other: FetchPred) {
         if (!(other instanceof FetchContacts)) return null;
         const p = new FetchContacts(this.pks[0]);
@@ -244,7 +244,7 @@ export class FetchFollowers extends FetchPred {
     constructor(/* private */public pk: string, uncached?: boolean) {
         super(uncached);
     }
-    filter() { return [{ "#p": [this.pk], kinds: [Kinds.contacts] /* no limit... nostr-filter? */ }]; };
+    filter() { return [{ "#p": [this.pk], kinds: [Kind.Contacts] /* no limit... nostr-filter? */ }]; };
     merge(other: FetchPred) {
         // if (!(other instanceof FetchFollowers)) return null;
         return null;
@@ -358,14 +358,14 @@ export class NostrWorker {
         // TODO: recent, reply, etc. should be wiped if pubkey changed, but it is callers resp?
 
         // getProfile is oneshot. but need continuous...
-        // this.getProfile(pubkey, Kinds.contacts).catch(console.error);
+        // this.getProfile(pubkey, Kind.Contacts).catch(console.error);
         const insubs: [string, { filters: FilledFilters | null; handlers: SubHandlers; }][] =
             !pubkey
                 ? []
                 : [["_myprofile", {
                     filters: [{
                         authors: [pubkey],
-                        kinds: [Kinds.contacts],
+                        kinds: [Kind.Contacts],
                         limit: 1,  // for each relay. some relays (ex. nostr-filter) notice "limit must be <=500"
                     }],
                     handlers: {
@@ -376,7 +376,7 @@ export class NostrWorker {
                                 if (!newer) continue;
                                 const ev = dev.event?.event;
                                 if (!ev) continue;
-                                if (ev.pubkey !== pubkey || ev.kind !== Kinds.contacts) {
+                                if (ev.pubkey !== pubkey || ev.kind !== Kind.Contacts) {
                                     // !?
                                     continue;
                                 }
@@ -409,19 +409,19 @@ export class NostrWorker {
                     // following events but we don't need their reactions
                     {
                         authors: uniq([this.pubkey, ...followingpks].sort()),
-                        kinds: [Kinds.post, Kinds.delete, Kinds.repost],
+                        kinds: [Kind.Text, Kind.EventDeletion, Kind.Repost],
                         limit: 100,
                     },
                     // reply to (tagged) me XXX: duped "reply"
                     {
                         "#p": [this.pubkey],
-                        kinds: [Kinds.post, Kinds.delete, Kinds.repost],
+                        kinds: [Kind.Text, Kind.EventDeletion, Kind.Repost],
                         limit: 30,
                     },
                     // and my reactions (duped with "favs")
                     {
                         authors: [this.pubkey],
-                        kinds: [Kinds.reaction],
+                        kinds: [Kind.Reaction],
                         limit: 30,
                     },
                 ];
@@ -434,7 +434,7 @@ export class NostrWorker {
                 return [
                     {
                         "#p": [this.pubkey],
-                        kinds: [Kinds.post, Kinds.delete, Kind.Zap],
+                        kinds: [Kind.Text, Kind.EventDeletion, Kind.Zap],
                         limit: 30,
                     },
                 ];
@@ -447,12 +447,12 @@ export class NostrWorker {
                 return [
                     {
                         authors: [this.pubkey],
-                        kinds: [Kinds.dm],
+                        kinds: [Kind.EncryptedDirectMessage],
                         limit: 30,
                     },
                     {
                         "#p": [this.pubkey],
-                        kinds: [Kinds.dm],
+                        kinds: [Kind.EncryptedDirectMessage],
                         limit: 30,
                     },
                 ];
@@ -465,7 +465,7 @@ export class NostrWorker {
                 return [
                     {
                         authors: [this.pubkey],
-                        kinds: [Kinds.reaction],
+                        kinds: [Kind.Reaction],
                         limit: 30,
                     },
                 ];
@@ -691,9 +691,9 @@ export class NostrWorker {
 
         const pred = (() => {
             switch (kind) {
-                case Kinds.profile: return new FetchProfile(pk, true);
-                case Kinds.contacts: return new FetchContacts(pk, true);
-                // case Kinds.relays: return new FetchRelays(key, true);
+                case Kind.Metadata: return new FetchProfile(pk, true);
+                case Kind.Contacts: return new FetchContacts(pk, true);
+                // case Kind.RelayList: return new FetchRelays(key, true);
                 default: throw new Error(`getprofile pred not supported ${kind}: ${pk}`);
             }
         })();
@@ -740,9 +740,9 @@ export class NostrWorker {
 
     private profkey(kind: number): keyof ProfileEvents {
         switch (kind) {
-            case Kinds.profile: return "profile";
-            case Kinds.contacts: return "contacts";
-            case Kinds.relays: return "relays";
+            case Kind.Metadata: return "profile";
+            case Kind.Contacts: return "contacts";
+            case Kind.RelayList: return "relays";
             default: throw new Error(`profkey with unknown kind ${kind}`);
         }
     }
@@ -891,7 +891,7 @@ export class NostrWorker {
             posted.push(post);
             const wasempty = !post.event;
 
-            if (recv.event.event.kind === Kinds.repost) {
+            if (recv.event.event.kind === Kind.Repost) {
                 post.event = recv;
                 const tid = repostedId(recv.event.event);
                 if (tid) {
@@ -902,7 +902,7 @@ export class NostrWorker {
                         // TODO: fetch request with remembering ev.id (repost N:1 target)
                     }
                 }
-            } else if (recv.event.event.kind === Kinds.reaction) {
+            } else if (recv.event.event.kind === Kind.Reaction) {
                 if (recv.event.event.pubkey === this.pubkey) {
                     post.myreaction = recv;
                     if (!post.event) {

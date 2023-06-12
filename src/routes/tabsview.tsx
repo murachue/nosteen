@@ -43,12 +43,12 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
 
     const [author, setAuthor] = useState(() => {
         if (!derefev?.event) return undefined;
-        const cached = noswk.getProfile(derefev.event.event.pubkey, Kinds.profile, ev => setAuthor(metadatajsoncontent(ev)));
+        const cached = noswk.getProfile(derefev.event.event.pubkey, Kind.Metadata, ev => setAuthor(metadatajsoncontent(ev)));
         return cached && metadatajsoncontent(cached);
     });
     const [rpauthor, setRpauthor] = useState(() => {
         if (!post.reposttarget || !ev) return null;
-        const cached = noswk.getProfile(ev.pubkey, Kinds.profile, ev => setRpauthor(metadatajsoncontent(ev)));
+        const cached = noswk.getProfile(ev.pubkey, Kind.Metadata, ev => setRpauthor(metadatajsoncontent(ev)));
         return cached && metadatajsoncontent(cached);
     });
 
@@ -691,7 +691,7 @@ const Tabsview: FC = () => {
                     const newt: Tabdef = {
                         id: `p/${pk}`,
                         name: `p/${pk.slice(0, 8)}`,
-                        filter: [{ authors: [pk], kinds: [Kinds.post, Kinds.delete, Kinds.repost], limit: 50 }],
+                        filter: [{ authors: [pk], kinds: [Kind.Text, Kind.EventDeletion, Kind.Repost], limit: 50 }],
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
@@ -721,7 +721,7 @@ const Tabsview: FC = () => {
                     const newt: Tabdef = {
                         id: `e/${nid}`,
                         name: `e/${nid.slice(0, 8)}`,
-                        filter: [{ ids: [nid]/* , kinds: [Kinds.post], *//* , limit: 1 */ }],
+                        filter: [{ ids: [nid]/* , kinds: [Kind.Text], *//* , limit: 1 */ }],
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
@@ -752,7 +752,7 @@ const Tabsview: FC = () => {
                         id: `thread/${nid}`,
                         name: `t/${nid.slice(0, 8)}`,
                         // don't limit to post to fetch also repost/reaction/zap/etc.
-                        filter: [{ ids: [nid]/* , kinds: [Kinds.post] *//* , limit: 1 */ }, { "#e": [nid]/* , kinds: [Kinds.post] */ }],
+                        filter: [{ ids: [nid]/* , kinds: [Kind.Text] *//* , limit: 1 */ }, { "#e": [nid]/* , kinds: [Kind.Text] */ }],
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
@@ -807,7 +807,7 @@ const Tabsview: FC = () => {
                     id: `t/${tag}`,
                     name: `#${tag.slice(0, 8)}`,
                     // should not limit to post to fetch also repost/reaction/zap/etc.?
-                    filter: [{ "#t": [tag], kinds: [Kinds.post], limit: 50 }],
+                    filter: [{ "#t": [tag], kinds: [Kind.Text], limit: 50 }],
                 };
                 setTabs([...tabs, newt]);
                 setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
@@ -1413,7 +1413,7 @@ const Tabsview: FC = () => {
                         setPostpopping(s => !s);
                     } else {
                         if (!selev) break;
-                        if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                        if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
                         if (readonlyuser) break;
                         const derefev = selrpev || selev;
 
@@ -1716,7 +1716,7 @@ const Tabsview: FC = () => {
                 }
                 case "F": {
                     if (!tab || !selpost) break;
-                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                    if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
                     const targetev = derefev.event?.event;
@@ -1778,7 +1778,7 @@ const Tabsview: FC = () => {
                 }
                 case "R": {
                     if (!tab || !selpost) break;
-                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                    if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
                     const derev = derefev.event;
@@ -1790,7 +1790,7 @@ const Tabsview: FC = () => {
 
                     const tev = {
                         created_at: Math.floor(Date.now() / 1000),
-                        kind: Kinds.repost,
+                        kind: Kind.Repost,
                         content: "",
                         tags: [
                             ["e", derefev.id, recvfrom.url],
@@ -1809,7 +1809,7 @@ const Tabsview: FC = () => {
                 }
                 case "q": {
                     if (!selev) break;
-                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                    if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
                     if (readonlyuser) break;
                     const derefev = selrpev || selev;
 
@@ -1834,7 +1834,7 @@ const Tabsview: FC = () => {
                 }
                 case "E": {
                     if (!tab || !selpost) break;
-                    if (selpost.event?.event?.event.kind === Kinds.repost && !selpost.reposttarget) break;
+                    if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
                     // TODO: should popup which event should be broadcasted. like linkpop.
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
@@ -1971,7 +1971,7 @@ const Tabsview: FC = () => {
         // FIXME: this code breaks when selev changed while fetching.
         if (selev?.event) {
             let cachedrpauthor: DeletableEvent | null | undefined;
-            const cachedauthor = noswk.getProfile(selev.event.event.pubkey, Kinds.profile, ev => {
+            const cachedauthor = noswk.getProfile(selev.event.event.pubkey, Kind.Metadata, ev => {
                 setTimeout(() => {
                     const cachedauthor = ev;
                     setAuthor(metadatajsoncontent(ev));
@@ -1985,7 +1985,7 @@ const Tabsview: FC = () => {
             }, undefined, profpopping ? 5 * 60 * 1000 : undefined);
             setAuthor(cachedauthor && metadatajsoncontent(cachedauthor));
             if (selrpev?.event) {
-                cachedrpauthor = noswk.getProfile(selrpev.event.event.pubkey, Kinds.profile, ev => {
+                cachedrpauthor = noswk.getProfile(selrpev.event.event.pubkey, Kind.Metadata, ev => {
                     setTimeout(() => {
                         cachedrpauthor = ev;
                         setRpauthor(metadatajsoncontent(ev));
@@ -2007,7 +2007,7 @@ const Tabsview: FC = () => {
                     setProf(p => ({ ...p, metadata: null, contacts: null }));
                 }
 
-                const cachedcontacts = noswk.getProfile((selrpev?.event || selev.event).event.pubkey, Kinds.contacts, ev => {
+                const cachedcontacts = noswk.getProfile((selrpev?.event || selev.event).event.pubkey, Kind.Contacts, ev => {
                     setProf(p => ({ ...p, contacts: ev }));
                 }, undefined, 5 * 60 * 1000);
                 setProf(p => ({ ...p, contacts: cachedcontacts }));

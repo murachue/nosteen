@@ -46,18 +46,6 @@ export type MetadataContent = {
     lud16?: string;
 };
 
-// TODO: should use nostr-tools' Kind (<v1.11.1)
-export const Kinds = {
-    profile: Kind.Metadata,
-    post: Kind.Text,
-    contacts: Kind.Contacts,
-    dm: Kind.EncryptedDirectMessage,
-    delete: Kind.EventDeletion,
-    repost: 6,
-    reaction: Kind.Reaction,
-    relays: Kind.RelayList,
-};
-
 declare global {
     interface Window {
         // NIP-07
