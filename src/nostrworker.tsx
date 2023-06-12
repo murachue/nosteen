@@ -3,7 +3,7 @@ import { FC, PropsWithChildren, createContext, useContext } from "react";
 import invariant from "tiny-invariant";
 import { MuxPool, RelayWrap } from "./pool";
 import { Relay } from "./relay";
-import { DeletableEvent, EventMessageFromRelay, FilledFilters, Kinds, Post } from "./types";
+import { DeletableEvent, EventMessageFromRelay, FilledFilters, Post } from "./types";
 import { SimpleEmitter, getmk, postindex, postupsertindex, rescue } from "./util";
 
 export type RelayWithMode = {
@@ -365,23 +365,25 @@ export class NostrWorker {
                 : [["_myprofile", {
                     filters: [{
                         authors: [pubkey],
-                        kinds: [Kind.Contacts],
-                        limit: 1,  // for each relay. some relays (ex. nostr-filter) notice "limit must be <=500"
+                        kinds: [Kind.Contacts, Kind.RelayList],
+                        // limit: 1,  // for each relay. some relays (ex. nostr-filter) notice "limit must be <=500"
                     }],
                     handlers: {
                         onEvent: receives => this.enqueueVerify(receives, r => {
                             if (!r) return;
                             for (const dev of r.ok.values()) {
-                                const newer = this.putProfile(dev);
-                                if (!newer) continue;
                                 const ev = dev.event?.event;
                                 if (!ev) continue;
                                 if (ev.pubkey !== pubkey || ev.kind !== Kind.Contacts) {
                                     // !?
                                     continue;
                                 }
+                                const newer = this.putProfile(dev);
+                                if (!newer) continue;
                                 // if eosed?
-                                this.onMyContacts.emit("", dev);
+                                if (ev.kind === Kind.Contacts) {
+                                    this.onMyContacts.emit("", dev);
+                                }
                             }
                         }),
                         // onEose: () => this.enqueueVerify(null, r => {
@@ -395,6 +397,15 @@ export class NostrWorker {
                 }]];
         // XXX: sub on here seems ugly
         this.setInSubscribes(new Map(insubs));
+    }
+    getIdentity() {
+        if (!this.pubkey) return null;
+        const profs = this.profiles.get(this.pubkey);
+        if (!profs) return null;
+        return {
+            ...profs,
+            pubkey: this.pubkey,
+        };
     }
     // must return arrays in predictable order to easier deep-compare.
     getFilter(type: "recent" | "reply" | "dm" | "favs"): FilledFilters | null {
@@ -679,10 +690,10 @@ export class NostrWorker {
             }
         }
     }
-    tryGetProfile(pk: string, kind: typeof Kinds[keyof typeof Kinds]) {
+    tryGetProfile(pk: string, kind: typeof Kind[keyof typeof Kind]) {
         return this.profiles.get(pk)?.[this.profkey(kind)];
     }
-    getProfile(pk: string, kind: typeof Kinds[keyof typeof Kinds], onEvent: (ev: DeletableEvent) => void, onEnd?: () => void, ttl?: number): DeletableEvent | null {
+    getProfile(pk: string, kind: typeof Kind[keyof typeof Kind], onEvent: (ev: DeletableEvent) => void, onEnd?: () => void, ttl?: number): DeletableEvent | null {
         const profkey = this.profkey(kind);
         const pcache = this.profiles.get(pk)?.[profkey];
         if (pcache && Date.now() < pcache.fetchedAt + (ttl ?? Infinity)) {

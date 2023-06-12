@@ -12,7 +12,7 @@ import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker 
 import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { RecentPost, Tabdef, newtabstate } from "../state";
-import { DeletableEvent, Kinds, MetadataContent, Post } from "../types";
+import { DeletableEvent, MetadataContent, Post } from "../types";
 import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue, seleltext, sha256str, shortstyle } from "../util";
 
 const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
@@ -599,8 +599,9 @@ const Tabsview: FC = () => {
     const [linksel, setLinksel] = useState<number | null>(null);
     const linkselref = useRef<HTMLDivElement>(null);
     const [flash, setFlash] = useState<{ msg: string, bang: boolean; } | null>(null);
-    const [profpopping, setProfpopping] = useState(false);
-    const profpopref = useRef<HTMLDivElement>(null);
+    const [profpopping, setProfpopping] = useState("");
+    // const profpopref = useRef<HTMLDivElement>(null);
+    const [followtime, setFollowtime] = useState(0);
     const [author, setAuthor] = useState<MetadataContent | null>(null);
     const [rpauthor, setRpauthor] = useState<MetadataContent | null>(null);
     const [prof, setProf] = useState<{ metadata?: DeletableEvent | null; contacts?: DeletableEvent | null; }>({});
@@ -1210,9 +1211,59 @@ const Tabsview: FC = () => {
             }
             if (profpopping) {
                 switch (e.key) {
-                    case "Escape": {
-                        setProfpopping(false);
+                    case "Escape":
+                    case "u": {
+                        setProfpopping("");
                         listref.current?.focus();
+                        return;
+                    }
+                    case "t": {
+                        setProfpopping("");
+                        navigate(`/tab/p/${profpopping}`);
+                        setNavigating({ current: tabid, to: `p/${profpopping}` });
+                        return;
+                    }
+                    case "F": {
+                        const contacts = noswk.getIdentity()?.contacts;
+                        if (!contacts && followtime + 1000 < Date.now()) {
+                            setFlash({ msg: "once more to reset contact!", bang: true });
+                            setFollowtime(Date.now());
+                            return;
+                        }
+                        const tags = contacts?.event?.event?.event?.tags || [];
+                        if (tags.find(t => t[0] === "p" && t[1] === profpopping)) {
+                            setFlash({ msg: "already followed", bang: true });
+                            return;
+                        }
+                        const prof = noswk.tryGetProfile(profpopping, Kind.Metadata);
+                        const disp = (prof?.event && metadatajsoncontent(prof.event)?.name) || profpopping;
+                        emitevent({
+                            kind: Kind.Contacts,
+                            content: prof?.event?.event?.event?.content || "",
+                            tags: [...tags, ["p", profpopping]],  // relay and petname?
+                            created_at: Math.floor(Date.now() / 1000),
+                        }, `🌿${tags.filter(t => t[0] === "p").length}+1 ${disp}`);
+                        return;
+                    }
+                    case "U": {
+                        const contacts = noswk.getIdentity()?.contacts;
+                        if (!contacts) {
+                            setFlash({ msg: "contacts not received", bang: true });
+                            return;
+                        }
+                        const tags = contacts?.event?.event?.event?.tags || [];
+                        if (!tags.find(t => t[0] === "p" && t[1] === profpopping)) {
+                            setFlash({ msg: "already unfollowed", bang: true });
+                            return;
+                        }
+                        const prof = noswk.tryGetProfile(profpopping, Kind.Metadata);
+                        const disp = (prof?.event && metadatajsoncontent(prof.event)?.name) || profpopping;
+                        emitevent({
+                            kind: Kind.Contacts,
+                            content: prof?.event?.event?.event?.content || "",
+                            tags: tags.filter(t => !(t[0] === "p" && t[1] === profpopping)),
+                            created_at: Math.floor(Date.now() / 1000),
+                        }, `🍃${tags.filter(t => t[0] === "p").length}-1 ${disp}`);
                         return;
                     }
                 }
@@ -1633,7 +1684,18 @@ const Tabsview: FC = () => {
                     break;
                 }
                 case "u": {
-                    setProfpopping(s => !s);
+                    if (profpopping) {
+                        setProfpopping("");
+                    } else {
+                        if (!tas || !tap) break;
+                        if (tas.selected.id === null) break;
+                        const ci = postindexwithhint(tap.posts, tas.selected);
+                        if (ci === null) break;
+                        const post = tap.posts[ci];
+                        // TODO: should popup which user should be opened. like linkpop. default dereferenced.
+                        const pk = (post.reposttarget || post.event!).event!.event.pubkey;
+                        setProfpopping(pk);
+                    }
                     break;
                 }
                 case "U": {
@@ -1909,7 +1971,7 @@ const Tabsview: FC = () => {
         };
         document.addEventListener("keydown", handler);
         return () => document.removeEventListener("keydown", handler);
-    }, [tabid, tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent, forcedellatch]);
+    }, [tabid, tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent, forcedellatch, followtime]);
     const post = useCallback(() => {
         if (kind === null) {
             setFlash({ msg: "kind is not set!?", bang: true });
@@ -1945,9 +2007,10 @@ const Tabsview: FC = () => {
             if (!evinfopopref.current?.contains(e.target as any)) {
                 setEvinfopopping(false);
             }
-            if (!profpopref.current?.contains(e.target as any)) {
-                setProfpopping(false);
-            }
+            // if (!profpopref.current?.contains(e.target as any)) {
+            //     setProfpopping(false);
+            // }
+            setProfpopping("");
             if (!tabpopref.current?.contains(e.target as any)) {
                 setTabpopping(false);
                 setTabpopsel(-999);
@@ -2191,7 +2254,7 @@ const Tabsview: FC = () => {
                 <div style={{ flex: "1", minWidth: "0", /* display: "flex", flexDirection: "column" */ }}>
                     <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex" }}>
                         <div style={{ flex: "1", minWidth: "0", position: "relative", height: "1em", display: "flex", alignItems: "center" }}>
-                            <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, display: "flex", alignItems: "baseline" }} onClick={e => setProfpopping(s => !s)}>
+                            <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, display: "flex", alignItems: "baseline" }} onClick={e => setProfpopping((selev && (selrpev || selev).event?.event?.pubkey) || "")}>
                                 {!selev ? "name..." : (() => {
                                     const ael =
                                         author
@@ -2220,7 +2283,7 @@ const Tabsview: FC = () => {
                             {(!selev || !profpopping) ? null : (() => {
                                 const p = !prof.metadata ? null : metadatajsoncontent(prof.metadata);
                                 return <div
-                                    ref={profpopref}
+                                    // ref={profpopref}
                                     style={{
                                         display: "grid",
                                         // flexDirection: "column",
@@ -2237,22 +2300,23 @@ const Tabsview: FC = () => {
                                         gridTemplateColumns: "max-content 20em",
                                         columnGap: "0.5em",
                                     }}
+                                    onPointerDown={e => { e.stopPropagation(); }}
                                 >
                                     <div style={{ textAlign: "right" }}>pubkey:</div>
                                     <div>
-                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(false), listref.current?.focus(); }}>{(() => {
+                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{(() => {
                                             const rev = (selrpev || selev).event;
                                             if (!rev) return "";
                                             return nip19.npubEncode(rev.event.pubkey);
                                         })()}</TabText>
-                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(false), listref.current?.focus(); }}>{(() => {
+                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{(() => {
                                             const rev = (selrpev || selev).event;
                                             if (!rev) return "";
                                             const pk: Relay | undefined = rev.receivedfrom.values().next().value;
                                             // should we use kind0's receivedfrom or kind10002? but using kind1's receivedfrom that is _real_/_in use_
                                             return nip19.nprofileEncode({ pubkey: rev.event.pubkey, relays: pk ? [pk.url] : undefined });
                                         })()}</TabText>
-                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(false), listref.current?.focus(); }}>{(selrpev || selev).event?.event?.pubkey}</TabText>
+                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{(selrpev || selev).event?.event?.pubkey}</TabText>
                                     </div>
                                     <div style={{ textAlign: "right" }}>name:</div>
                                     <div style={shortstyle}>{String(p?.name)}</div>
@@ -2301,7 +2365,7 @@ const Tabsview: FC = () => {
                                     {/* <div style={{ textAlign: "right" }}>notes, reactions</div>
                                     <div style={shortstyle}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>json:</div>
-                                    <TabText style={{ ...shortstyle, maxWidth: "20em" }} onCopy={e => { setProfpopping(false), listref.current?.focus(); }}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</TabText>
+                                    <TabText style={{ ...shortstyle, maxWidth: "20em" }} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</TabText>
                                 </div>;
                             })()}
                         </div>
