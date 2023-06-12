@@ -2333,7 +2333,7 @@ const Tabsview: FC = () => {
                                     <div style={shortstyle}>{
                                         !account?.pubkey
                                             ? "-"
-                                            : noswk.tryGetProfile(account.pubkey, Kind.Contacts)?.event?.event?.event?.tags?.some(t => t[0] === "p" && t[1] === prof.metadata?.event?.event?.pubkey)
+                                            : noswk.tryGetProfile(account.pubkey, Kind.Contacts)?.event?.event?.event?.tags?.some(t => t[0] === "p" && t[1] === selev.event!.event.pubkey)
                                                 ? "Following"
                                                 : "NOT following"
                                     } / {
