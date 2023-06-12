@@ -95,7 +95,7 @@ export default () => {
     return <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", color: colornormal }}>
         <div style={{ padding: "2em", display: "flex", flexDirection: "row", alignItems: "center" }}>
             <div style={{ display: "flex", flexDirection: "column" }}>
-                <img src={icon} />
+                <img src={icon} width="256" height="256" />
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
                 <h1 style={{ margin: 0 }}>
