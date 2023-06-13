@@ -2314,21 +2314,21 @@ const Tabsview: FC = () => {
                                         <TabText style={shortstyle} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{profpopping}</TabText>
                                     </div>
                                     <div style={{ textAlign: "right" }}>name:</div>
-                                    <div style={shortstyle}>{String(p?.name)}</div>
+                                    <div style={{ ...shortstyle, fontStyle: p?.name === undefined ? "italic" : undefined }}>{String(p?.name)}</div>
                                     <div style={{ textAlign: "right" }}>display_name:</div>
-                                    <div style={shortstyle}>{String(p?.display_name)}</div>
+                                    <div style={{ ...shortstyle, fontStyle: p?.display_name === undefined ? "italic" : undefined }}>{String(p?.display_name)}</div>
                                     <div style={{ textAlign: "right" }}>rewritten at:</div>
                                     <div style={shortstyle}>{!profprof.metadata ? "?" : timefmt(new Date(profprof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
                                     <div style={{ textAlign: "right" }}>picture:</div>
-                                    <div style={shortstyle}>{String(p?.picture)}</div>
+                                    <div style={{ ...shortstyle, fontStyle: p?.picture === undefined ? "italic" : undefined }}>{String(p?.picture)}</div>
                                     <div style={{ textAlign: "right" }}>banner:</div>
-                                    <div style={shortstyle}>{String(p?.banner)}</div>
+                                    <div style={{ ...shortstyle, fontStyle: p?.banner === undefined ? "italic" : undefined }}>{String(p?.banner)}</div>
                                     <div style={{ textAlign: "right" }}>website:</div>
-                                    <div style={shortstyle}>{String(p?.website)}</div>
+                                    <div style={{ ...shortstyle, fontStyle: p?.website === undefined ? "italic" : undefined }}>{String(p?.website)}</div>
                                     <div style={{ textAlign: "right" }}>nip05:</div>
-                                    <div style={shortstyle}>{String(p?.nip05)}</div>
+                                    <div style={{ ...shortstyle, fontStyle: p?.nip05 === undefined ? "italic" : undefined }}>{String(p?.nip05)}</div>
                                     <div style={{ textAlign: "right" }}>lud06/16:</div>
-                                    <div style={shortstyle}>{String(p?.lud16 || p?.lud06)}</div>
+                                    <div style={{ ...shortstyle, fontStyle: (p?.lud16 || p?.lud06) === undefined ? "italic" : undefined }}>{String(p?.lud16 || p?.lud06)}</div>
                                     <div style={{ textAlign: "right" }}>following? ed?</div>
                                     <div style={shortstyle}>{
                                         !account?.pubkey
@@ -2352,6 +2352,7 @@ const Tabsview: FC = () => {
                                         // nasty prefix hell
                                         maskImage: "linear-gradient(to bottom, #000f 3em, #0000 3.5em)",
                                         WebkitMaskImage: "linear-gradient(to bottom, #000f 3em, #0000 3.5em)",
+                                        fontStyle: p?.about === undefined ? "italic" : undefined,
                                     }}>{String(p?.about)}</div>
                                     {/* <div style={{ textAlign: "right" }}>recent note</div>
                                     <div style={shortstyle}>{ }</div> */}
