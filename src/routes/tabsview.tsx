@@ -1907,7 +1907,7 @@ const Tabsview: FC = () => {
                     })();
                     if (!targetev) break; // XXX: should not happen
                     try {
-                        broadcast(targetev, desc);
+                        broadcast(targetev, `${emo}${desc}`);
                         setStatus(`✔${emo}${desc}`);
                     } catch (e) {
                         console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} broadcast failed: ${e}`);
@@ -2613,7 +2613,7 @@ const Tabsview: FC = () => {
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, display: "flex" }}>
                 {
                     edittags && !posting
-                        ? <div style={{ flex: "1", border: "2px inset", background: colorbase }}>
+                        ? <div style={{ flex: "1", border: "2px inset", background: colorbase, maxHeight: "5em", overflow: "auto" }}>
                             <datalist id="tagkeys">
                                 <option value="content-warning" />
                                 <option value="g" />
