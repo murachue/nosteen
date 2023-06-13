@@ -140,12 +140,12 @@ const getPostId = (e: Event): string | null => {
             // delete is another layer; no originate event.
             return null;
         }
-        case Kind.Metadata:
-        case Kind.Contacts:
-        case Kind.RelayList: {
-            // I think they are not a post.
-            return null;
-        }
+        // case Kind.Metadata:
+        // case Kind.Contacts:
+        // case Kind.RelayList: {
+        //     // I think they are not a post.
+        //     return null;
+        // }
         default: {
             // post, dm, repost or unknown... itself is a post.
             return e.id;
