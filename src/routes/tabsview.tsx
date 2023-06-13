@@ -1246,7 +1246,7 @@ const Tabsview: FC = () => {
                         const disp = (prof?.event && metadatajsoncontent(prof.event)?.name) || profpopping;
                         emitevent({
                             kind: Kind.Contacts,
-                            content: prof?.event?.event?.event?.content || "",
+                            content: contacts?.event?.event?.event?.content || "",
                             tags: [...tags, ["p", profpopping]],  // relay and petname?
                             created_at: Math.floor(Date.now() / 1000),
                         }, "🌿", `${tags.filter(t => t[0] === "p").length}+1 ${disp}`);
@@ -1258,7 +1258,7 @@ const Tabsview: FC = () => {
                             setFlash({ msg: "contacts not received", bang: true });
                             return;
                         }
-                        const tags = contacts?.event?.event?.event?.tags || [];
+                        const tags = contacts.event?.event?.event?.tags || [];
                         if (!tags.find(t => t[0] === "p" && t[1] === profpopping)) {
                             setFlash({ msg: "already unfollowed", bang: true });
                             return;
@@ -1267,7 +1267,7 @@ const Tabsview: FC = () => {
                         const disp = (prof?.event && metadatajsoncontent(prof.event)?.name) || profpopping;
                         emitevent({
                             kind: Kind.Contacts,
-                            content: prof?.event?.event?.event?.content || "",
+                            content: contacts.event?.event?.event?.content || "",
                             tags: tags.filter(t => !(t[0] === "p" && t[1] === profpopping)),
                             created_at: Math.floor(Date.now() / 1000),
                         }, "🍃", `${tags.filter(t => t[0] === "p").length}-1 ${disp}`);
