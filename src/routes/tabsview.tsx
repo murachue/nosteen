@@ -1,7 +1,7 @@
 import { produce } from "immer";
 import { useAtom } from "jotai";
 import { Event, EventTemplate, Kind, finishEvent, nip13, nip19, utils } from "nostr-tools";
-import { CSSProperties, FC, ForwardedRef, Fragment, ReactHTMLElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { CSSProperties, FC, ForwardedRef, Fragment, ReactHTMLElement, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ListView, { TBody, TD, TH, TR } from "../components/listview";
@@ -600,6 +600,7 @@ const Tabsview: FC = () => {
     const linkselref = useRef<HTMLDivElement>(null);
     const [flash, setFlash] = useState<{ msg: string, bang: boolean; } | null>(null);
     const [profpopping, setProfpopping] = useState("");
+    const [profprof, setProfprof] = useState<{ pubkey: string; metadata: DeletableEvent | null; contacts: DeletableEvent | null; }>({ pubkey: "", metadata: null, contacts: null });
     const [followtime, setFollowtime] = useState(0);
     const [author, setAuthor] = useState<MetadataContent | null>(null);
     const [rpauthor, setRpauthor] = useState<MetadataContent | null>(null);
@@ -2055,6 +2056,28 @@ const Tabsview: FC = () => {
             }
         }
     }, [selev, profpopping]);
+    useLayoutEffect(() => {
+        // FIXME: this code block also smells.
+        if (!profpopping) {
+            setProfprof({ pubkey: "", metadata: null, contacts: null });
+            return;
+        }
+        const metadata = noswk.getProfile(
+            profpopping,
+            Kind.Metadata,
+            ev => setProfprof(s => s.pubkey !== ev.event?.event?.pubkey ? s : { ...s, metadata: ev }),
+            undefined,
+            5 * 60 * 1000,
+        );
+        const contacts = noswk.getProfile(
+            profpopping,
+            Kind.Contacts,
+            ev => setProfprof(s => s.pubkey !== ev.event?.event?.pubkey ? s : { ...s, contacts: ev }),
+            undefined,
+            5 * 60 * 1000,
+        );
+        setProfprof(s => s.pubkey && s.pubkey !== profpopping ? s : { pubkey: profpopping, metadata, contacts });
+    }, [profpopping]);
     useEffect(() => {
         // set opacity/transition after a moment
         if (flash?.bang) {
@@ -2258,8 +2281,8 @@ const Tabsview: FC = () => {
                                         : ael;
                                 })()}
                             </div>
-                            {(!selev || !profpopping) ? null : (() => {
-                                const p = !prof.metadata ? null : metadatajsoncontent(prof.metadata);
+                            {profpopping && (() => {
+                                const p = profprof.metadata && metadatajsoncontent(profprof.metadata);
                                 return <div
                                     style={{
                                         display: "grid",
@@ -2281,26 +2304,21 @@ const Tabsview: FC = () => {
                                 >
                                     <div style={{ textAlign: "right" }}>pubkey:</div>
                                     <div>
+                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{nip19.npubEncode(profpopping)}</TabText>
                                         <TabText style={shortstyle} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{(() => {
-                                            const rev = (selrpev || selev).event;
-                                            if (!rev) return "";
-                                            return nip19.npubEncode(rev.event.pubkey);
-                                        })()}</TabText>
-                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{(() => {
-                                            const rev = (selrpev || selev).event;
-                                            if (!rev) return "";
-                                            const pk: Relay | undefined = rev.receivedfrom.values().next().value;
+                                            const metaev = profprof.metadata?.event;
+                                            const relay: Relay | undefined = metaev && metaev.receivedfrom.keys().next().value;
                                             // should we use kind0's receivedfrom or kind10002? but using kind1's receivedfrom that is _real_/_in use_
-                                            return nip19.nprofileEncode({ pubkey: rev.event.pubkey, relays: pk ? [pk.url] : undefined });
+                                            return nip19.nprofileEncode({ pubkey: profpopping, relays: relay && [relay.url] });
                                         })()}</TabText>
-                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{(selrpev || selev).event?.event?.pubkey}</TabText>
+                                        <TabText style={shortstyle} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{profpopping}</TabText>
                                     </div>
                                     <div style={{ textAlign: "right" }}>name:</div>
                                     <div style={shortstyle}>{String(p?.name)}</div>
                                     <div style={{ textAlign: "right" }}>display_name:</div>
                                     <div style={shortstyle}>{String(p?.display_name)}</div>
                                     <div style={{ textAlign: "right" }}>rewritten at:</div>
-                                    <div style={shortstyle}>{!prof.metadata ? "?" : timefmt(new Date(prof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
+                                    <div style={shortstyle}>{!profprof.metadata ? "?" : timefmt(new Date(profprof.metadata.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
                                     <div style={{ textAlign: "right" }}>picture:</div>
                                     <div style={shortstyle}>{String(p?.picture)}</div>
                                     <div style={{ textAlign: "right" }}>banner:</div>
@@ -2315,13 +2333,13 @@ const Tabsview: FC = () => {
                                     <div style={shortstyle}>{
                                         !account?.pubkey
                                             ? "-"
-                                            : noswk.tryGetProfile(account.pubkey, Kind.Contacts)?.event?.event?.event?.tags?.some(t => t[0] === "p" && t[1] === selev.event!.event.pubkey)
+                                            : noswk.tryGetProfile(account.pubkey, Kind.Contacts)?.event?.event?.event?.tags?.some(t => t[0] === "p" && t[1] === profprof.pubkey)
                                                 ? "Following"
                                                 : "NOT following"
                                     } / {
-                                            !prof.contacts?.event
+                                            !profprof.contacts?.event
                                                 ? "?"
-                                                : (prof.contacts.event.event.tags.some(t => t[0] === "p" && t[1] === account?.pubkey)
+                                                : (profprof.contacts.event.event.tags.some(t => t[0] === "p" && t[1] === account?.pubkey)
                                                     ? "Followed"
                                                     : "NOT followed")
                                         }</div>
@@ -2338,11 +2356,11 @@ const Tabsview: FC = () => {
                                     {/* <div style={{ textAlign: "right" }}>recent note</div>
                                     <div style={shortstyle}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>followings, ers:</div>
-                                    <div style={shortstyle}>{prof.contacts?.event ? prof.contacts.event.event.tags.filter(t => t[0] === "p").length : "?"} / ENOTIMPL</div>
+                                    <div style={shortstyle}>{!profprof.contacts?.event ? "?" : profprof.contacts.event.event.tags.filter(t => t[0] === "p").length} / ENOTIMPL</div>
                                     {/* <div style={{ textAlign: "right" }}>notes, reactions</div>
                                     <div style={shortstyle}>{ }</div> */}
                                     <div style={{ textAlign: "right" }}>json:</div>
-                                    <TabText style={{ ...shortstyle, maxWidth: "20em" }} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{!prof.metadata ? "?" : JSON.stringify(prof.metadata.event?.event)}</TabText>
+                                    <TabText style={{ ...shortstyle, maxWidth: "20em" }} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{!profprof.metadata ? "?" : JSON.stringify(profprof.metadata.event?.event)}</TabText>
                                 </div>;
                             })()}
                         </div>
