@@ -1180,9 +1180,9 @@ const Tabsview: FC = () => {
                         // XXX: we should use raw-form instead of bech32, to avoid redundant navigate()
                         const text = linkpop[linksel].text;
                         if (text.match(/^(npub|nprofile)1/)) {
-                            if (!expectn(text, "npub") && !expectn(text, "nprofile")) { break; }
-                            navigate(`/tab/p/${text}`);
-                            setNavigating({ current: tabid, to: `p/${text}` });
+                            const dec = rescue(() => nip19.decode(text), undefined);
+                            if (!dec) break;
+                            setProfpopping(dec.type === "npub" ? dec.data : dec.type === "nprofile" ? dec.data.pubkey : "");
                             break;
                         }
                         if (text.match(/^(note|nevent)1/)) {
@@ -2490,22 +2490,30 @@ const Tabsview: FC = () => {
                                         switch (s.type) {
                                             case "url": {
                                                 // TODO: more regular appearance for non-URL.parse-able
-                                                return <a key={i} href={s.href} style={{ color: colorlinktext, textDecoration: s.auto ? "underline dotted" : "underline" }} tabIndex={-1}>{s.href}</a>;
+                                                return <a key={i} href={s.href} target="_blank" style={{ color: colorlinktext, textDecoration: s.auto ? "underline dotted" : "underline" }} tabIndex={-1}>{s.href}</a>;
                                             }
                                             case "ref": {
                                                 if (s.text) {
+                                                    const puser = s.text.match(/^npub1|^nprofile1/);
                                                     return <span key={i} style={{ display: "inline-flex" }}>
-                                                        {!s.text.match(/^npub1|^nprofile1/) || !s.hex
+                                                        {!puser || !s.hex
                                                             ? null
                                                             : <img src={identiconStore.png(s.hex)} style={{ height: "1em" }} />}
-                                                        <span style={{
-                                                            ...shortstyle,
-                                                            display: "inline-block",
-                                                            textDecoration: "underline",
-                                                            width: "8em",
-                                                            height: "1em",
-                                                            verticalAlign: "text-bottom"
-                                                        }}>{s.text}</span>
+                                                        <span
+                                                            style={{
+                                                                ...shortstyle,
+                                                                display: "inline-block",
+                                                                textDecoration: "underline",
+                                                                width: "8em",
+                                                                height: "1em",
+                                                                verticalAlign: "text-bottom",
+                                                                cursor: puser ? "pointer" : undefined,
+                                                            }}
+                                                            onClick={e => {
+                                                                if (!puser) return;
+                                                                setProfpopping(s.hex || "");
+                                                            }}
+                                                        >{s.text}</span>
                                                     </span>;
                                                 } else {
                                                     return <span key={i} style={{ textDecoration: "underline dotted" }}>{JSON.stringify(s.tag)}</span>; // TODO nice display
@@ -2515,18 +2523,26 @@ const Tabsview: FC = () => {
                                                 return <span key={i} style={{ textDecoration: s.auto ? "underline dotted" : "underline" }}>#{s.text}</span>;
                                             }
                                             case "nip19": {
+                                                const puser = s.text.match(/^npub1|^nprofile1/);
                                                 return <span key={i} style={{ display: "inline-flex" }}>
-                                                    {!s.text.match(/^npub1|^nprofile1/) || !s.hex
+                                                    {!puser || !s.hex
                                                         ? null
                                                         : <img src={identiconStore.png(s.hex)} style={{ height: "1em" }} />}
-                                                    <span style={{
-                                                        ...shortstyle,
-                                                        display: "inline-block",
-                                                        textDecoration: s.auto ? "underline dotted" : "underline",
-                                                        width: "8em",
-                                                        height: "1em",
-                                                        verticalAlign: "text-bottom",
-                                                    }}>{s.text}</span>
+                                                    <span
+                                                        style={{
+                                                            ...shortstyle,
+                                                            display: "inline-block",
+                                                            textDecoration: s.auto ? "underline dotted" : "underline",
+                                                            width: "8em",
+                                                            height: "1em",
+                                                            verticalAlign: "text-bottom",
+                                                            cursor: puser ? "pointer" : undefined,
+                                                        }}
+                                                        onClick={e => {
+                                                            if (!puser) return;
+                                                            setProfpopping(s.hex || "");
+                                                        }}
+                                                    >{s.text}</span>
                                                 </span>;
                                             }
                                             case "text": {
