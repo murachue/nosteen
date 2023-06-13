@@ -495,7 +495,7 @@ export default () => {
                 <a style={{ color: colornormal }} href="https://twitter.com/opentween">@OpenTween contributors</a>...
             </p>
             <p>
-                <span style={{ letterSpacing: "-0.2em" }}>&mdash;&mdash;</span> Murachue<br />
+                &mdash;&mdash; Murachue<br />
                 <span style={{ fontFamily: "monospace" }}>
                     npub1amhc78pnl6lva0y0uz4ten6zv6zl2cy9a6x7zr47jgq24zhr774sym0hf9
                 </span>
