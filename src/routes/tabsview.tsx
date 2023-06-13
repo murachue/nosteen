@@ -1011,7 +1011,7 @@ const Tabsview: FC = () => {
         listref.current?.focus();
     }, [tabs, tabedit, tabid]);
     const broadcast = useCallback((event: Event, desc: string) => {
-        setStatus(`emiting... ${desc}`);
+        setStatus(`emitting... ${desc}`);
         const postAt = Date.now();
         const post = noswk.postEvent(event);
 
@@ -1042,26 +1042,34 @@ const Tabsview: FC = () => {
         })));
         // TODO: timeout? pub.on("forget", () => { });
     }, [noswk, recentpubs]);
-    const emitevent = useCallback(async (tev: EventTemplate, desc: string) => {
-        if (tev.content.match(/nsec1[ac-hj-np-z02-9]{10,}/)) {
-            setFlash({ msg: "Don't post a secret key!!", bang: true });
-            throw new Error(`content contains secret key like, ABORTED!`);
-        }
-        setStatus(`signing... ${desc}`);
-        const event = await (async () => {
-            if (account && "privkey" in account) {
-                return finishEvent(tev, account.privkey);
-            } else if (window.nostr?.signEvent) {
-                const sev = await window.nostr.signEvent(tev);
-                if (sev.pubkey !== account?.pubkey) {
-                    throw new Error(`NIP-07 set unexpected pubkey for: ${desc} (pk=${sev.pubkey}, expected=${account?.pubkey})`);
-                }
-                return sev;
-            } else {
-                throw new Error(`could not sign: no private key nor NIP-07 signEvent; ${desc}`);
+    const emitevent = useCallback(async (tev: EventTemplate, emo: string, desc: string) => {
+        try {
+            if (tev.content.match(/nsec1[ac-hj-np-z02-9]{10,}/)) {
+                setFlash({ msg: "Don't post a secret key!!", bang: true });
+                throw new Error(`content contains secret key like, ABORTED!`);
             }
-        })();
-        broadcast(event, desc);
+            setStatus(`signing... ${emo}${desc}`);
+            const event = await (async () => {
+                if (account && "privkey" in account) {
+                    return finishEvent(tev, account.privkey);
+                } else if (window.nostr?.signEvent) {
+                    const sev = await window.nostr.signEvent(tev);
+                    if (sev.pubkey !== account?.pubkey) {
+                        throw new Error(`NIP-07 set unexpected pubkey for: ${emo}${desc} (pk=${sev.pubkey}, expected=${account?.pubkey})`);
+                    }
+                    return sev;
+                } else {
+                    throw new Error(`could not sign: no private key nor NIP-07 signEvent; ${emo}${desc}`);
+                }
+            })();
+            broadcast(event, `${emo}${desc}`);
+            setStatus(`✔${emo}${desc}`);
+            return null;
+        } catch (e) {
+            console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} ${emo} failed: ${e}`);
+            setStatus(`💔${emo}${e}`);
+            return e;
+        }
     }, [account, window.nostr, broadcast]);
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -1241,7 +1249,7 @@ const Tabsview: FC = () => {
                             content: prof?.event?.event?.event?.content || "",
                             tags: [...tags, ["p", profpopping]],  // relay and petname?
                             created_at: Math.floor(Date.now() / 1000),
-                        }, `🌿${tags.filter(t => t[0] === "p").length}+1 ${disp}`);
+                        }, "🌿", `${tags.filter(t => t[0] === "p").length}+1 ${disp}`);
                         return;
                     }
                     case "U": {
@@ -1262,7 +1270,7 @@ const Tabsview: FC = () => {
                             content: prof?.event?.event?.event?.content || "",
                             tags: tags.filter(t => !(t[0] === "p" && t[1] === profpopping)),
                             created_at: Math.floor(Date.now() / 1000),
-                        }, `🍃${tags.filter(t => t[0] === "p").length}-1 ${disp}`);
+                        }, "🍃", `${tags.filter(t => t[0] === "p").length}-1 ${disp}`);
                         return;
                     }
                 }
@@ -1783,7 +1791,7 @@ const Tabsview: FC = () => {
                     const targetev = derefev.event?.event;
                     if (!targetev) break; // XXX: should not happen
                     // FIXME: favoriting repost have a bug... on receive side.
-                    const { desc, event: tev } = (() => {
+                    const { emo, desc, event: tev } = (() => {
                         if (!selpost.myreaction || selpost.myreaction.deleteevent) {
                             // reaction: copy #e and #p. last #e and #p must be reacted event/pubkey.
                             // TODO: popup content selection?
@@ -1800,7 +1808,8 @@ const Tabsview: FC = () => {
                             etags.delete(targetev.id);
                             ptags.delete(targetev.pubkey);
                             return {
-                                desc: `⭐${targetev.content}`,
+                                emo: "⭐",
+                                desc: `${targetev.content}`,
                                 event: {
                                     created_at: Math.floor(Date.now() / 1000),
                                     kind: Kind.Reaction,
@@ -1816,7 +1825,8 @@ const Tabsview: FC = () => {
                         } else {
                             // delete reaction
                             return {
-                                desc: `❌⭐${targetev.content}`,
+                                emo: "❌⭐",
+                                desc: `${targetev.content}`,
                                 event: {
                                     created_at: Math.floor(Date.now() / 1000),
                                     kind: Kind.EventDeletion,
@@ -1828,13 +1838,7 @@ const Tabsview: FC = () => {
                             };
                         }
                     })();
-                    emitevent(tev, desc)
-                        .then(
-                            () => setStatus(`✔${desc}`),
-                            e => {
-                                console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} reaction failed: ${e}`);
-                                setStatus(`💔⭐${e}`);
-                            });
+                    emitevent(tev, emo, desc);
                     break;
                 }
                 case "R": {
@@ -1858,14 +1862,7 @@ const Tabsview: FC = () => {
                             ["p", targetev.pubkey],  // TODO: relay and petname?
                         ],
                     };
-                    const desc = `👁‍🗨${targetev.content}`;
-                    emitevent(tev, desc)
-                        .then(
-                            () => setStatus(`✔${desc}`),
-                            e => {
-                                console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} repost failed: ${e}`);
-                                setStatus(`💔👁‍🗨${e}`);
-                            });
+                    emitevent(tev, "👁‍🗨", targetev.content);
                     break;
                 }
                 case "q": {
@@ -1900,21 +1897,21 @@ const Tabsview: FC = () => {
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
                     // broadcasting kind5 event have higher priority.
-                    const { event: targetev, desc } = (() => {
+                    const { event: targetev, emo, desc } = (() => {
                         const tev = derefev.event?.event;
                         const dev = derefev.deleteevent?.event;
                         if (dev) {
-                            return { event: dev, desc: `❌📣${tev ? tev.content : dev.content}` };
+                            return { event: dev, emo: "❌📣", desc: tev ? tev.content : dev.content };
                         }
-                        return { event: tev, desc: `📣${tev?.content}` };
+                        return { event: tev, emo: "📣", desc: tev?.content || "" };
                     })();
                     if (!targetev) break; // XXX: should not happen
                     try {
                         broadcast(targetev, desc);
-                        setStatus(`✔${desc}`);
+                        setStatus(`✔${emo}${desc}`);
                     } catch (e) {
                         console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} broadcast failed: ${e}`);
-                        setStatus(`💔📣${e}`);
+                        setStatus(`💔${emo}${e}`);
                     }
                     break;
                 }
@@ -1937,7 +1934,6 @@ const Tabsview: FC = () => {
                             break;
                         }
                     }
-                    const desc = `❌${targetev.content}`;
                     emitevent({
                         created_at: Math.floor(Date.now() / 1000),
                         kind: Kind.EventDeletion,
@@ -1945,14 +1941,7 @@ const Tabsview: FC = () => {
                         tags: [
                             ["e", targetev.id],  // we should not add a relay... that may be a hint of original.
                         ],
-                    }, desc)
-                        .then(
-                            () => setStatus(`✔${desc}`),
-                            e => {
-                                console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} deletion failed: ${e}`);
-                                setStatus(`💔❌${e}`);
-                            },
-                        );
+                    }, "❌", targetev.content);
                     break;
                 }
                 case "<": {
@@ -1983,23 +1972,16 @@ const Tabsview: FC = () => {
             tags: edittags!,
         };
         setPosting(true);
-        emitevent(ev, `💬${postdraft}`)
-            .then(
-                () => {
-                    setStatus(`✔💬${postdraft}`);
-                    setPostdraft("");
-                    setEdittags(null);
-                    setEditingtag(null);
-                    setKind(null);
-                    setPosting(false);
-                },
-                e => {
-                    console.error(`${timefmt(new Date(), "YYYY-MM-DD hh:mm:ss.SSS")} post failed: ${e}`);
-                    setStatus(`💔💬${e}`);
-                    setPosting(false);
-                    posteditor.current?.focus();
-                },
-            );
+        emitevent(ev, "💬", postdraft)
+            .then(err => {
+                setPosting(false);
+                if (err) return;
+
+                setPostdraft("");
+                setEdittags(null);
+                setEditingtag(null);
+                setKind(null);
+            });
     }, [kind, postdraft, edittags, emitevent]);
     useEffect(() => {
         const handler = (e: PointerEvent) => {
