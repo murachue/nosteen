@@ -8,7 +8,7 @@ import ListView, { TBody, TD, TH, TR } from "../components/listview";
 import Tab from "../components/tab";
 import TabText from "../components/tabtext";
 import TextInput from "../components/textinput";
-import { MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
+import { FetchId, MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNostrWorker } from "../nostrworker";
 import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { RecentPost, Tabdef, newtabstate } from "../state";
@@ -24,7 +24,34 @@ const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
     return null;
 };
 
-const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Post | null; }>(({ post, mypubkey, selected }, ref) => {
+const lookupreposttarget = (noswk: NostrWorker, post: Post, update: (post: DeletableEvent) => void) => {
+    // if already resolved, return it.
+    if (post.reposttarget) return post.reposttarget;
+
+    // if we are looking non-repost, none.
+    if (post.event?.event?.event?.kind !== Kind.Repost) return null;
+
+    // repost target must be found...
+    const targetid = post.event.event.event.tags.find(t => t[0] === "e")?.[1];
+    if (!targetid) return null;
+    // TODO: should take a relay from #e... many client does not include it though.
+
+    // if found in pool, return it.
+    const reposted = noswk.getDelev(targetid);  // I assume reposted is not another repost...
+    if (reposted) return reposted;  // immediately found
+
+    // dynamic lookup! we'll update() later.
+    noswk.enqueueFetchEventFor([{
+        pred: new FetchId(targetid),
+        onEvent: recv => {
+            update(recv[0]);
+        },
+    }]);
+    // we don't have it yet, return null.
+    return null;
+};
+
+const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: string | undefined; selected: Pick<Post, "id" | "event" | "reposttarget"> | null; }>(({ post, mypubkey, selected }, ref) => {
     const noswk = useNostrWorker();
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorrepost] = useAtom(state.preferences.colors.repost);
@@ -38,8 +65,10 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [identiconStore] = useAtom(state.identiconStore);
 
+    const [repostev, setRepostev] = useState<DeletableEvent | null>(() => lookupreposttarget(noswk, post, dev => { setRepostev(dev); }));
+
     const ev = post.event?.event?.event;
-    const derefev = post.reposttarget || post.event;
+    const derefev = repostev || post.event;
 
     const [author, setAuthor] = useState(() => {
         if (!derefev?.event) return undefined;
@@ -47,13 +76,13 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
         return cached && metadatajsoncontent(cached);
     });
     const [rpauthor, setRpauthor] = useState(() => {
-        if (!post.reposttarget || !ev) return null;
+        if (!repostev || !ev) return null;
         const cached = noswk.getProfile(ev.pubkey, Kind.Metadata, ev => setRpauthor(metadatajsoncontent(ev)));
         return cached && metadatajsoncontent(cached);
     });
 
     const [bg, text] = (() => {
-        if (post === selected) {
+        if (post.id === selected?.id) {
             return [colorselbg, colorseltext];
         }
 
@@ -71,7 +100,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
         if (ev) {
             const evpub = ev.pubkey;
             const evid = ev.id;
-            const selev = !selected ? undefined : (selected.reposttarget || selected.event)?.event?.event;
+            const selev = selected && (selected.reposttarget || selected.event)?.event?.event;
             const selpub = selected?.event?.event?.event?.pubkey;
             if (selpub && evpub === selpub) {
                 bg = colorthempost;
@@ -100,7 +129,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                         : derefev && derefev.event?.event?.tags?.find(t => t[0] === "p")
                             ? "→"
                             : ""}
-                    {(post.event!.deleteevent || post.reposttarget?.deleteevent) ? "×" : ""}
+                    {(post.event!.deleteevent || repostev?.deleteevent) ? "×" : ""}
                 </div>
             </TD>
             <TD>
@@ -115,8 +144,8 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
             <TD style={{ alignSelf: "stretch", display: "flex", alignItems: "center" }}>
                 <div style={{ flex: "1", maxHeight: "1em", overflow: "hidden", display: "flex", alignItems: "center" }}>
                     <div style={shortstyle}>
-                        {post.reposttarget
-                            ? `${author?.name || post.reposttarget.event?.event?.pubkey} (RP: ${rpauthor?.name || ev?.pubkey})`
+                        {repostev
+                            ? `${author?.name || repostev.event?.event?.pubkey} (RP: ${rpauthor?.name || ev?.pubkey})`
                             : (author?.name || ev?.pubkey)
                         }
                     </div>
@@ -169,10 +198,29 @@ type TheListProps = {
     scrollTo?: { pixel: number; } | { index: number; toTop?: boolean; } | { lastIfVisible: boolean; };
 };
 const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, selection, onSelect, onScroll, onFocus, scrollTo }, ref) => {
+    const noswk = useNostrWorker();
     const [coloruitext] = useAtom(state.preferences.colors.uitext);
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontui] = useAtom(state.preferences.fonts.ui);
-    const selpost = selection !== null ? posts[selection] : null;
+    const getselpost = () => {
+        if (selection === null) return null;
+        const p = posts[selection];
+        return {
+            id: p.id,
+            event: p.event,
+            reposttarget: lookupreposttarget(noswk, p, dev => setSelpost(s => s && s.id !== p.id ? s : {
+                // ...s, // => undefined...?
+                id: p.id,
+                event: p.event,
+                reposttarget: dev,
+            })),
+        };
+    };
+    const [selpost, setSelpost] = useState<Pick<Post, "id" | "event" | "reposttarget"> | null>(getselpost);
+    // FIXME: so smells
+    useEffect(() => {
+        setSelpost(getselpost());
+    }, [selection]);
 
     const listref = useRef<HTMLDivElement | null>(null);
     const itemsref = useRef<HTMLDivElement>(null);
@@ -880,7 +928,24 @@ const Tabsview: FC = () => {
         streams.setMutes({ users: [...muteuserpublic, ...muteuserprivate, ...muteuserlocal], regexs: muteregexlocal });
     }, [streams, muteuserpublic, muteuserprivate, muteuserlocal, muteregexlocal]);
     const tas = !tab ? undefined : tabstates.get(tab.id);
-    const selpost = !tas?.selected?.id ? undefined : noswk.getPost(tas.selected.id);
+    const getselpost = (): Post | null => {
+        if (!tas?.selected?.id) return null;
+        const p = noswk.getPost(tas.selected.id);
+        if (!p) return null;
+        return {
+            ...p,
+            reposttarget: lookupreposttarget(noswk, p, dev => setSelpost(s => s && s.id !== p.id ? s : {
+                // ...s, // => undefined...?
+                ...p,
+                reposttarget: dev,
+            })),
+        };
+    };
+    const [selpost, setSelpost] = useState<Post | null>(getselpost);
+    // FIXME: so smells
+    useEffect(() => {
+        setSelpost(getselpost());
+    }, [tas, tas?.selected?.id, noswk]);
     const selev = selpost?.event;
     const selrpev = selpost?.reposttarget;
     const speeds = useCallback((() => {

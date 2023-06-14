@@ -625,6 +625,9 @@ export class NostrWorker {
     getPost(id: string) {
         return this.posts.get(id);
     }
+    getDelev(id: string) {
+        return this.events.get(id);
+    }
     overwritePosts(name: string, posts: Post[]) {
         const strm = getmk(this.postStreams, name, () => ({ posts: [], eose: false, nunreads: 0 }));
         strm.posts.splice(0, strm.posts.length, ...posts);
