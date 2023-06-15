@@ -191,7 +191,7 @@ const setref = function <T>(ref: ForwardedRef<T> | undefined, value: T | null) {
 type TheListProps = {
     posts: Post[];
     mypubkey: string | undefined;
-    selection: number | null;
+    selection: number | null;  // FIXME: this can be eventid now.
     onSelect?: (sel: { id: string; index: number; }) => void;
     onScroll?: React.HTMLAttributes<HTMLDivElement>["onScroll"];
     onFocus?: React.HTMLAttributes<HTMLDivElement>["onFocus"];
@@ -941,11 +941,11 @@ const Tabsview: FC = () => {
             })),
         };
     };
-    const [selpost, setSelpost] = useState<Post | null>(getselpost);
+    const [selpost, setSelpost] = useState<Post | null>(() => getselpost());
     // FIXME: so smells
     useEffect(() => {
         setSelpost(getselpost());
-    }, [tas, tas?.selected?.id, noswk]);
+    }, [tas, noswk]);
     const selev = selpost?.event;
     const selrpev = selpost?.reposttarget;
     const speeds = useCallback((() => {
@@ -1444,12 +1444,12 @@ const Tabsview: FC = () => {
                     break;
                 }
                 case "[": {
-                    if (!tas || !tap || !tab) break;
-                    if (tas.selected.id === null) break;
+                    if (!tas || !tap || !tab || !selpost) break;
+                    // if (tas.selected.id === null) break;
                     // const ci = postindexwithhint(tap.posts, tas.selected);
                     // if (ci === null) break;
                     // const selpost = tap.posts[ci];
-                    if (!selpost) break;  //!?
+                    // if (!selpost) break;  //!?
                     const ev = selpost.reposttarget || selpost.event!;
                     // get reply target #e. (if no "reply" marker) NIP-10 states that.
                     const etag = ev.event!.event.tags.reduce<string[] | undefined>((p, c) => c[0] !== "e" ? p : p?.[3] === "reply" ? p : c, undefined);
@@ -1473,12 +1473,12 @@ const Tabsview: FC = () => {
                     break;
                 }
                 case "]": {
-                    if (!tas || !tap || !tab) break;
-                    if (tas.selected.id === null) break;
+                    if (!tas || !tap || !tab || !selpost) break;
+                    // if (tas.selected.id === null) break;
                     // const ci = postindexwithhint(tap.posts, tas.selected);
                     // if (ci === null) break;
                     // const selpost = tap.posts[ci];
-                    if (!selpost) break;  //!?
+                    // if (!selpost) break;  //!?
 
                     const target = (() => {
                         const rp = [...tas.replypath];
@@ -1732,11 +1732,12 @@ const Tabsview: FC = () => {
                     break;
                 }
                 case "b": {
-                    if (!tas || !tab || !tap) break;
-                    if (tas.selected.id === null) break;
-                    const ci = postindexwithhint(tap.posts, tas.selected);
-                    if (ci === null) break;
-                    const ev = tap.posts[ci].event?.event?.event;
+                    if (!tas || !tab || !tap || !selpost) break;
+                    // if (tas.selected.id === null) break;
+                    // const ci = postindexwithhint(tap.posts, tas.selected);
+                    // if (ci === null) break;
+                    // const ev = tap.posts[ci].event?.event?.event;
+                    const ev = selpost.event?.event?.event;
                     if (!ev) break;
                     // index may not match between noswk.stream and noswkwrapper.posts
                     const i = postindex(noswk.getPostStream(tab.id)?.posts || [], ev);
@@ -1745,11 +1746,12 @@ const Tabsview: FC = () => {
                     break;
                 }
                 case "B": {
-                    if (!tas || !tab || !tap) break;
-                    if (tas.selected.id === null) break;
-                    const ci = postindexwithhint(tap.posts, tas.selected);
-                    if (ci === null) break;
-                    const ev = tap.posts[ci].event?.event?.event;
+                    if (!tas || !tab || !tap || !selpost) break;
+                    // if (tas.selected.id === null) break;
+                    // const ci = postindexwithhint(tap.posts, tas.selected);
+                    // if (ci === null) break;
+                    // const ev = tap.posts[ci].event?.event?.event;
+                    const ev = selpost.event?.event?.event;
                     if (!ev) break;
                     // index may not match between noswk.stream and noswkwrapper.posts
                     const i = postindex(noswk.getPostStream(tab.id)?.posts || [], ev);
@@ -1761,11 +1763,12 @@ const Tabsview: FC = () => {
                     if (profpopping) {
                         setProfpopping("");
                     } else {
-                        if (!tas || !tap) break;
-                        if (tas.selected.id === null) break;
-                        const ci = postindexwithhint(tap.posts, tas.selected);
-                        if (ci === null) break;
-                        const post = tap.posts[ci];
+                        if (!tas || !tap || !selpost) break;
+                        // if (tas.selected.id === null) break;
+                        // const ci = postindexwithhint(tap.posts, tas.selected);
+                        // if (ci === null) break;
+                        // const post = tap.posts[ci];
+                        const post = selpost;
                         // TODO: should popup which user should be opened. like linkpop. default dereferenced.
                         const pk = (post.reposttarget || post.event!).event!.event.pubkey;
                         setProfpopping(pk);
@@ -1773,11 +1776,12 @@ const Tabsview: FC = () => {
                     break;
                 }
                 case "U": {
-                    if (!tas || !tap) break;
-                    if (tas.selected.id === null) break;
-                    const ci = postindexwithhint(tap.posts, tas.selected);
-                    if (ci === null) break;
-                    const post = tap.posts[ci];
+                    if (!tas || !tap || !selpost) break;
+                    // if (tas.selected.id === null) break;
+                    // const ci = postindexwithhint(tap.posts, tas.selected);
+                    // if (ci === null) break;
+                    // const post = tap.posts[ci];
+                    const post = selpost;
                     // TODO: should popup which user should be opened. like linkpop. default dereferenced.
                     const pk = (post.reposttarget || post.event!).event!.event.pubkey;
                     navigate(`/tab/p/${pk}`);
@@ -1785,11 +1789,12 @@ const Tabsview: FC = () => {
                     break;
                 }
                 case "I": {
-                    if (!tas || !tap) break;
-                    if (tas.selected.id === null) break;
-                    const ci = postindexwithhint(tap.posts, tas.selected);
-                    if (ci === null) break;
-                    const post = tap.posts[ci];
+                    if (!tas || !tap || !selpost) break;
+                    // if (tas.selected.id === null) break;
+                    // const ci = postindexwithhint(tap.posts, tas.selected);
+                    // if (ci === null) break;
+                    // const post = tap.posts[ci];
+                    const post = selpost;
                     const dereftags = (post.reposttarget?.event || post.event?.event)?.event?.tags || [];
                     const rootid = dereftags.reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
                     const id = rootid || (post?.reposttarget?.id || post.id);
@@ -2026,7 +2031,7 @@ const Tabsview: FC = () => {
         };
         document.addEventListener("keydown", handler);
         return () => document.removeEventListener("keydown", handler);
-    }, [tabid, tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent, forcedellatch, followtime]);
+    }, [tabid, tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent, forcedellatch, followtime, selpost]);
     const post = useCallback(() => {
         if (kind === null) {
             setFlash({ msg: "kind is not set!?", bang: true });
