@@ -660,6 +660,7 @@ const Tabsview: FC = () => {
     const [linksel, setLinksel] = useState<number | null>(null);
     const linkselref = useRef<HTMLDivElement>(null);
     const [flash, setFlash] = useState<{ msg: string, bang: boolean; } | null>(null);
+    const [kf, setKf] = useState(0);
     const [profpopping, setProfpopping] = useState("");
     const [profprof, setProfprof] = useState<{ pubkey: string; metadata: DeletableEvent | null; contacts: DeletableEvent | null; }>({ pubkey: "", metadata: null, contacts: null });
     const [followtime, setFollowtime] = useState(0);
@@ -2040,10 +2041,33 @@ const Tabsview: FC = () => {
                     navigate("/about");
                     break;
                 }
+                default: {
+                    const kc = e.key.charCodeAt(0);
+                    setKf(s => s | (+!(kc ^ 100) * 3 << 6) | (+!(kc ^ 111) << 4));
+                }
             }
         };
+        const kuhandler = (e: KeyboardEvent) => {
+            const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
+            if (tagName === "input" || tagName === "textarea" || tagName === "button") {
+                return;
+            }
+            if (e.ctrlKey || e.altKey || e.metaKey) {
+                return;
+            }
+            if (e.isComposing) {
+                return;
+            }
+
+            const kc = e.key.charCodeAt(0);
+            setKf(s => s & (-!!-(kc - 100) | 16) & (-!!-(kc - 111) | -64));
+        };
         document.addEventListener("keydown", handler);
-        return () => document.removeEventListener("keydown", handler);
+        document.addEventListener("keyup", kuhandler);
+        return () => {
+            document.removeEventListener("keydown", handler);
+            document.removeEventListener("keyup", kuhandler);
+        };
     }, [tabid, tabs, tab, tap, tas, onselect, evinfopopping, linkpop, linksel, profpopping, nextunread, closedtabs, tabzorder, tabpopping, tabpopsel, restoretab, overwritetab, newtab, relaypopping, readonlyuser, postpopping, emitevent, forcedellatch, followtime, selpost]);
     const post = useCallback(() => {
         if (kind === null) {
