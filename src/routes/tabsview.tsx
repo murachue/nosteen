@@ -463,21 +463,19 @@ class PostStreamWrapper {
         const filteredPosts = dontmute ? stream.posts : stream.posts.filter(p => {
             const ev = p.event?.event?.event;
             if (!ev) return true;  // XXX ?
-            if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) {
-                return false;
-            }
+            if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) return false;
             // TODO: this should be able to toggled off
-            if (ev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) {
-                return false;
-            }
+            if (ev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) return false;
+            // TODO: this should be able to toggled off
+            if (this.testMutePatternsToNameOf(ev)) return false;
+
             const rpev = p.reposttarget?.event?.event;
-            if (rpev && (this.muteusers.test(rpev.pubkey) || this.mutepatterns.test(rpev.content))) {
-                return false;
-            }
+            if (!rpev) return true;
+            if ((this.muteusers.test(rpev.pubkey) || this.mutepatterns.test(rpev.content))) return false;
             // TODO: this should be able to toggled off
-            if (rpev && rpev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) {
-                return false;
-            }
+            if (rpev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) return false;
+            // TODO: this should be able to toggled off
+            if (this.testMutePatternsToNameOf(rpev)) return false;
             return true;
         });
         // shallow copy "posts" to notify immutable change
@@ -489,6 +487,19 @@ class PostStreamWrapper {
         };
         this.streams.set(name, news);
         return news;
+    }
+
+    private nameof(pk: string) {
+        const metaev = this.noswk.tryGetProfile(pk, Kind.Metadata);
+        if (!metaev?.event) return null;
+        const meta = metadatajsoncontent(metaev.event);
+        if (!meta) return null;
+        return meta.name;
+    }
+    private testMutePatternsToNameOf(ev: Event) {
+        const name = this.nameof(ev.pubkey);
+        if (!name && name !== "") return false;
+        return this.mutepatterns.test(name);
     }
 }
 
