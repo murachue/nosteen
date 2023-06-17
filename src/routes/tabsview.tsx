@@ -205,6 +205,7 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
     const getselpost = () => {
         if (selection === null) return null;
         const p = posts[selection];
+        if (!p) return null;  // muted later?
         return {
             id: p.id,
             event: p.event,
