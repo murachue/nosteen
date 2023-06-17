@@ -2027,7 +2027,14 @@ const Tabsview: FC = () => {
                         tags: [
                             ["e", targetev.id],  // we should not add a relay... that may be a hint of original.
                         ],
-                    }, "❌", targetev.content);
+                    }, "❌", targetev.content).then(e => {
+                        if (e) return;
+                        // overwrite with deleted
+                        setPostdraft(targetev.content);
+                        setKind(targetev.kind);
+                        setEdittags(targetev.tags);
+                        posteditor.current?.focus();
+                    });
                     break;
                 }
                 case "<": {
