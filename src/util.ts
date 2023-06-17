@@ -106,7 +106,10 @@ export const seleltext = (el: HTMLElement) => {
     const range = document.createRange();
     range.selectNodeContents(el);
     selection.removeAllRanges();
-    selection.addRange(range);
+    // FIXME: Chrome 114 is ok without setTimeout but Firefox 114 clears selection... with setTimeout both works.
+    setTimeout(() => {
+        selection.addRange(range);
+    }, 0);
 };
 
 export const NeverMatch = /(?!)/;

@@ -185,9 +185,11 @@ export default () => {
                             : { pubkey: normhex(npub, "npub"), privkey: normhex(nsec, "nsec") }
                 );
             }}>Set</button>
-            <button onClick={e => {
-                // TODO: NIP-07
-                alert("ENOTIMPL");
+            <button onClick={async e => {
+                const pk = await rescue(() => window.nostr?.getPublicKey?.(), undefined);
+                if (pk) {
+                    setNpub(normb32(pk, "npub"));
+                }
             }}>Login with extension</button>
             <button onClick={e => {
                 const sk = generatePrivateKey();
