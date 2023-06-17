@@ -191,7 +191,7 @@ const setref = function <T>(ref: ForwardedRef<T> | undefined, value: T | null) {
 type TheListProps = {
     posts: Post[];
     mypubkey: string | undefined;
-    selection: number | null;  // FIXME: this can be eventid now.
+    selection: string | null;
     onSelect?: (sel: { id: string; index: number; }) => void;
     onScroll?: React.HTMLAttributes<HTMLDivElement>["onScroll"];
     onFocus?: React.HTMLAttributes<HTMLDivElement>["onFocus"];
@@ -203,8 +203,8 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fontui] = useAtom(state.preferences.fonts.ui);
     const getselpost = () => {
-        if (selection === null) return null;
-        const p = posts[selection];
+        if (!selection) return null;
+        const p = noswk.getPost(selection);
         if (!p) return null;  // muted later?
         return {
             id: p.id,
@@ -895,6 +895,7 @@ const Tabsview: FC = () => {
         }, [streams, tab?.id]),
     );
 
+    // TODO: we could use created_at?received_at for disappeared (muted later?) case
     const postindexwithhint = useCallback((posts: Post[], cursor: { id: string | null, index: number | null; }) => {
         if (!cursor.id) return null;
         if (cursor.index !== null && posts[cursor.index]?.id === cursor.id) {
@@ -2194,7 +2195,7 @@ const Tabsview: FC = () => {
                 {<TheList
                     posts={tap?.posts || []}
                     mypubkey={account?.pubkey}
-                    selection={tas?.selected?.index ?? null}
+                    selection={tas?.selected?.id ?? null}
                     ref={listref}
                     onSelect={onselect}
                     onScroll={() => {
