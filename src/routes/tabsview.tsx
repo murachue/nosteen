@@ -2542,67 +2542,97 @@ const Tabsview: FC = () => {
                         </div>
                     </div>
                     <div style={{ position: "relative" }}>
-                        <div
-                            ref={linkpopref}
-                            style={{
-                                display: 0 < linkpop.length ? "flex" : "none",
-                                flexDirection: "column",
-                                position: "absolute",
-                                bottom: "100%",
-                                left: "0px",
-                                padding: "5px",
-                                minWidth: "10em",
-                                maxWidth: "40em",
-                                border: "2px outset",
-                                background: coloruibg,
-                                color: coloruitext,
-                                font: fontui,
-                                gridTemplateColumns: "max-content 20em",
-                                rowGap: "0.5em",
-                            }}
-                        >
-                            {linkpop.map((l, i) =>
-                                <div
-                                    key={i}
-                                    ref={i === linksel ? linkselref : null}
-                                    style={{
-                                        ...shortstyle,
-                                        textDecoration: l.auto ? "underline dotted" : undefined,
-                                        width: "100%",
-                                        color: i === linksel ? "highlighttext" : undefined,
-                                        background: i === linksel ? "highlight" : undefined,
-                                        padding: "0 0 2px 2px",
-                                    }}
-                                    tabIndex={0}
-                                    onFocus={e => {
-                                        seleltext(e.target);
-                                        setLinksel(i);
-                                    }}
-                                    onCopy={e => {
-                                        // ugh. dismissing make fail to copy. copy it here...
-                                        navigator.clipboard.writeText(l.text);
-                                        setLinkpop([]);
-                                        setLinksel(null);
-                                        listref.current?.focus();
-                                    }}
-                                >
-                                    {l.text}
-                                </div>)}
-                        </div>
-                        <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext }}>
-                            <div>
-                                {/* TODO: twemoji? */}
-                                {!selev ? "text..." : (() => {
-                                    const ev = (selrpev || selev).event?.event;
-                                    if (!ev) return [];
-                                    return spans(ev).map((s, i) => {
-                                        switch (s.type) {
-                                            case "url": {
-                                                // TODO: more regular appearance for non-URL.parse-able
-                                                return <a key={i} href={s.href} target="_blank" style={{ color: colorlinktext, textDecoration: s.auto ? "underline dotted" : "underline" }} tabIndex={-1}>{s.href}</a>;
-                                            }
-                                            case "ref": {
-                                                if (s.text) {
+                        <div>
+                            <div
+                                ref={linkpopref}
+                                style={{
+                                    display: 0 < linkpop.length ? "flex" : "none",
+                                    flexDirection: "column",
+                                    position: "absolute",
+                                    bottom: "100%",
+                                    left: "0px",
+                                    padding: "5px",
+                                    minWidth: "10em",
+                                    maxWidth: "40em",
+                                    border: "2px outset",
+                                    background: coloruibg,
+                                    color: coloruitext,
+                                    font: fontui,
+                                    gridTemplateColumns: "max-content 20em",
+                                    rowGap: "0.5em",
+                                }}
+                            >
+                                {linkpop.map((l, i) =>
+                                    <div
+                                        key={i}
+                                        ref={i === linksel ? linkselref : null}
+                                        style={{
+                                            ...shortstyle,
+                                            textDecoration: l.auto ? "underline dotted" : undefined,
+                                            width: "100%",
+                                            color: i === linksel ? "highlighttext" : undefined,
+                                            background: i === linksel ? "highlight" : undefined,
+                                            padding: "0 0 2px 2px",
+                                        }}
+                                        tabIndex={0}
+                                        onFocus={e => {
+                                            seleltext(e.target);
+                                            setLinksel(i);
+                                        }}
+                                        onCopy={e => {
+                                            // ugh. dismissing make fail to copy. copy it here...
+                                            navigator.clipboard.writeText(l.text);
+                                            setLinkpop([]);
+                                            setLinksel(null);
+                                            listref.current?.focus();
+                                        }}
+                                    >
+                                        {l.text}
+                                    </div>)}
+                            </div>
+                            <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext, position: "relative" }}>
+                                <div>
+                                    {/* TODO: twemoji? */}
+                                    {!selev ? "text..." : (() => {
+                                        const ev = (selrpev || selev).event?.event;
+                                        if (!ev) return [];
+                                        return spans(ev).map((s, i) => {
+                                            switch (s.type) {
+                                                case "url": {
+                                                    // TODO: more regular appearance for non-URL.parse-able
+                                                    return <a key={i} href={s.href} target="_blank" style={{ color: colorlinktext, textDecoration: s.auto ? "underline dotted" : "underline" }} tabIndex={-1}>{s.href}</a>;
+                                                }
+                                                case "ref": {
+                                                    if (s.text) {
+                                                        const puser = s.text.match(/^npub1|^nprofile1/);
+                                                        return <span key={i} style={{ display: "inline-flex" }}>
+                                                            {!puser || !s.hex
+                                                                ? null
+                                                                : <img src={identiconStore.png(s.hex)} style={{ height: "1em" }} />}
+                                                            <span
+                                                                style={{
+                                                                    ...shortstyle,
+                                                                    display: "inline-block",
+                                                                    textDecoration: "underline",
+                                                                    width: "8em",
+                                                                    height: "1em",
+                                                                    verticalAlign: "text-bottom",
+                                                                    cursor: puser ? "pointer" : undefined,
+                                                                }}
+                                                                onClick={e => {
+                                                                    if (!puser) return;
+                                                                    setProfpopping(s.hex || "");
+                                                                }}
+                                                            >{s.text}</span>
+                                                        </span>;
+                                                    } else {
+                                                        return <span key={i} style={{ textDecoration: "underline dotted" }}>{JSON.stringify(s.tag)}</span>; // TODO nice display
+                                                    }
+                                                }
+                                                case "hashtag": {
+                                                    return <span key={i} style={{ textDecoration: s.auto ? "underline dotted" : "underline" }}>#{s.text}</span>;
+                                                }
+                                                case "nip19": {
                                                     const puser = s.text.match(/^npub1|^nprofile1/);
                                                     return <span key={i} style={{ display: "inline-flex" }}>
                                                         {!puser || !s.hex
@@ -2612,7 +2642,7 @@ const Tabsview: FC = () => {
                                                             style={{
                                                                 ...shortstyle,
                                                                 display: "inline-block",
-                                                                textDecoration: "underline",
+                                                                textDecoration: s.auto ? "underline dotted" : "underline",
                                                                 width: "8em",
                                                                 height: "1em",
                                                                 verticalAlign: "text-bottom",
@@ -2624,46 +2654,15 @@ const Tabsview: FC = () => {
                                                             }}
                                                         >{s.text}</span>
                                                     </span>;
-                                                } else {
-                                                    return <span key={i} style={{ textDecoration: "underline dotted" }}>{JSON.stringify(s.tag)}</span>; // TODO nice display
+                                                }
+                                                case "text": {
+                                                    return s.text;
                                                 }
                                             }
-                                            case "hashtag": {
-                                                return <span key={i} style={{ textDecoration: s.auto ? "underline dotted" : "underline" }}>#{s.text}</span>;
-                                            }
-                                            case "nip19": {
-                                                const puser = s.text.match(/^npub1|^nprofile1/);
-                                                return <span key={i} style={{ display: "inline-flex" }}>
-                                                    {!puser || !s.hex
-                                                        ? null
-                                                        : <img src={identiconStore.png(s.hex)} style={{ height: "1em" }} />}
-                                                    <span
-                                                        style={{
-                                                            ...shortstyle,
-                                                            display: "inline-block",
-                                                            textDecoration: s.auto ? "underline dotted" : "underline",
-                                                            width: "8em",
-                                                            height: "1em",
-                                                            verticalAlign: "text-bottom",
-                                                            cursor: puser ? "pointer" : undefined,
-                                                        }}
-                                                        onClick={e => {
-                                                            if (!puser) return;
-                                                            setProfpopping(s.hex || "");
-                                                        }}
-                                                    >{s.text}</span>
-                                                </span>;
-                                            }
-                                            case "text": {
-                                                return s.text;
-                                            }
-                                        }
-                                    });
-                                })()}
-                            </div>
-                            {!selev
-                                ? null
-                                : <div style={{ margin: "0.5em", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px" }}>
+                                        });
+                                    })()}
+                                </div>
+                                {selev && <div style={{ margin: "0.5em", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px" }}>
                                     {((selrpev || selev)?.event?.event?.tags || []).map((t, i) => <div key={i} style={{
                                         border: "1px solid",
                                         borderColor: colornormal,
@@ -2691,7 +2690,13 @@ const Tabsview: FC = () => {
                                         </div>;
                                     })()}
                                 </div>}
+                            </div>
                         </div>
+                        {(selev?.deleteevent || selrpev?.deleteevent) && kf !== 0xd0 && <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, right: 0, backdropFilter: "blur(4px)", background: "#0004" }}>
+                            <div style={{ padding: "0.5em", font: fonttext }}>
+                                deleted
+                            </div>
+                        </div>}
                     </div>
                 </div>
                 {/* <div style={{ width: "100px", border: "1px solid white" }}>img</div> */}
