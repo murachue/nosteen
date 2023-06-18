@@ -273,7 +273,7 @@ export default () => {
                             ...(rly.scope === "remove"
                                 ? { textDecoration: "line-through" }
                                 : rly.scope !== prefrelays[i]?.scope
-                                    ? { fontStyle: "italic" }
+                                    ? { fontWeight: "bold" }
                                     : {}
                             ),
                             flex: "1",
@@ -285,8 +285,8 @@ export default () => {
                         </div>
                     </div>
                     <div style={{ display: "flex", gap: "0.5em" }}>
-                        <div><label style={{ fontStyle: rly.read !== prefrelays[i]?.read ? "italic" : undefined }}><input type="checkbox" checked={rly.read} onChange={e => relays.setValue(produce(draft => { draft[i].read = e.target.checked; }))} />read</label></div>
-                        <div><label style={{ fontStyle: rly.write !== prefrelays[i]?.write ? "italic" : undefined }}><input type="checkbox" checked={rly.write} onChange={e => relays.setValue(produce(draft => { draft[i].write = e.target.checked; }))} />write</label></div>
+                        <div><label style={{ ...(rly.read !== prefrelays[i]?.read ? { fontWeight: "bold" } : {}) }}><input type="checkbox" checked={rly.read} onChange={e => relays.setValue(produce(draft => { draft[i].read = e.target.checked; }))} />read</label></div>
+                        <div><label style={{ ...(rly.write !== prefrelays[i]?.write ? { fontWeight: "bold" } : {}) }}><input type="checkbox" checked={rly.write} onChange={e => relays.setValue(produce(draft => { draft[i].write = e.target.checked; }))} />write</label></div>
                     </div>
                     <button onClick={e => { relays.setValue(produce(draft => { draft[i].scope = rot(draft[i].scope, ["public", "local", "remove"]); })); }}>{rly.scope}</button>
                 </Fragment>);
@@ -338,7 +338,7 @@ export default () => {
                                 rent.read = perms.read;
                                 rent.write = perms.write;
                             } else {
-                                draft.push({ url: url, read: perms.read, write: perms.write, scope: "local" });
+                                draft.push({ url: url, read: perms.read, write: perms.write, scope: "public" });
                             }
                         }
 
@@ -360,7 +360,7 @@ export default () => {
                             rent.read = r.read;
                             rent.write = r.write;
                         } else {
-                            draft.push({ url: url, read: r.read, write: r.write, scope: "local" });
+                            draft.push({ url: url, read: r.read, write: r.write, scope: "public" });
                         }
                     }
 
@@ -490,7 +490,7 @@ export default () => {
             {(() => {
                 const prefval = mutepks.prefvalue();
                 return mutepks.value().map((m, i) => <Fragment key={m.pk}>
-                    <div style={{ ...(m.scope === "remove" ? { textDecoration: "line-through" } : m.scope !== prefval[i]?.scope ? { fontStyle: "italic" } : {}) }}>
+                    <div style={{ ...(m.scope === "remove" ? { textDecoration: "line-through" } : m.scope !== prefval[i]?.scope ? { fontWeight: "bold" } : {}) }}>
                         <PubkeyText pk={m.pk} />
                     </div>
                     <div style={{ marginLeft: "1em", display: "flex" }}>
@@ -530,7 +530,7 @@ export default () => {
                                 ...(m.scope === "remove"
                                     ? { textDecoration: "line-through" }
                                     : m.pattern !== prefval[i]?.pattern
-                                        ? { fontStyle: "italic" }
+                                        ? { fontWeight: "bold" }
                                         : {}),
                                 fontFamily: "monospace",
                                 flex: 1,
