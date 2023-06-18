@@ -1,13 +1,13 @@
 import { produce } from "immer";
 import { PrimitiveAtom, useAtom } from "jotai";
 import { Event, EventTemplate, Kind, finishEvent, generatePrivateKey, getPublicKey, nip19, utils } from "nostr-tools";
-import { FC, Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { FC, Fragment, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
 import TextInput from "../components/textinput";
 import { NostrWorker, useNostrWorker } from "../nostrworker";
 import state from "../state";
-import { expectn, metadatajsoncontent, rescue, sha256str, shortstyle } from "../util";
+import { contactsjsoncontent, expectn, metadatajsoncontent, rescue, sha256str, shortstyle } from "../util";
 import { MuxPub } from "../pool";
 
 const MultiInput: FC<Omit<Parameters<typeof TextInput>[0], "value" | "onChange"> & {
@@ -50,9 +50,9 @@ function usePref<T, U = T>(pr: { atom: PrimitiveAtom<T>, load?: (v: T) => U, sav
         }
     }, [prefValue]);
 
-    return {
+    return useMemo(() => ({
         value: () => value,
-        setValue: setValue,
+        setValue,
         prefvalue: () => prefValue,
         reload: () => {
             const v = load(prefValue);
@@ -65,7 +65,7 @@ function usePref<T, U = T>(pr: { atom: PrimitiveAtom<T>, load?: (v: T) => U, sav
             setValue(load(pv));
             return pv;
         }
-    };
+    }), [value, prefValue]);
 };
 
 function rot<T>(value: T, list: T[]) {
@@ -122,6 +122,14 @@ const emitevent = async (noswk: NostrWorker, account: null | { pubkey: string; }
     })();
     return broadcast(noswk, event, onRealize);
 };
+
+function useEventSnapshot<T>(subscribe: (onStoreChange: () => void) => () => void, getSnapshot: () => T): T {
+    const [value, setValue] = useState(() => getSnapshot());
+    useEffect(() => {
+        return subscribe(() => setValue(getSnapshot()));
+    }, [subscribe, getSnapshot]);
+    return value;
+}
 
 export default () => {
     const noswk = useNostrWorker();
@@ -212,6 +220,30 @@ export default () => {
         save: v => v.filter((m): m is { pattern: string; scope: "local"; } => m.scope !== "remove"),
     });
 
+    const relaysonnet = useEventSnapshot(
+        useCallback(onStoreChange => {
+            noswk.onMyContacts.on("", onStoreChange);
+            noswk.onMyRelayList.on("", onStoreChange);
+            return () => {
+                noswk.onMyContacts.off("", onStoreChange);
+                noswk.onMyRelayList.off("", onStoreChange);
+            };
+        }, [noswk]),
+        useCallback(() => {
+            const pk = account.prefvalue()?.pubkey;
+            if (!pk) return null;
+            const rltags = noswk.tryGetProfile(pk, Kind.RelayList)?.event?.event?.event?.tags;
+            if (rltags) return rltags.filter(t => t[0] === "r").map(t => ({ url: t[1], read: t[2] !== "write", write: t[2] !== "read" }));
+            const cc = rescue(() => {
+                const x = noswk.tryGetProfile(pk, Kind.Contacts)?.event;
+                if (!x) return null;
+                return contactsjsoncontent(x);
+            }, null);
+            if (!cc) return null;
+            return Object.entries(cc).map(([k, v]) => ({ url: k, read: !!v.read, write: !!v.write }));
+        }, [noswk, account]),
+    );
+
     const [url, setUrl] = useState([""]);
     const [nsecmask, setNsecmask] = useState(true);
     const [mutepk, setMutepk] = useState([""]);
@@ -296,8 +328,7 @@ export default () => {
                     // TODO: some experience
                 });
             }}>Save & Publish</button>
-            <button onClick={() => { relays.reload(); }}>Reset</button>
-            <button onClick={() => {
+            <button disabled={!window.nostr} style={{ marginLeft: "1em" }} onClick={() => {
                 window.nostr?.getRelays?.()?.then(rs => {
                     relays.setValue(produce(draft => {
                         for (const [unnurl, perms] of Object.entries(rs)) {
@@ -310,9 +341,37 @@ export default () => {
                                 draft.push({ url: url, read: perms.read, write: perms.write, scope: "local" });
                             }
                         }
+
+                        const normrs = new Set(Object.keys(rs).map(r => utils.normalizeURL(r)));
+                        for (const r of draft) {
+                            if (normrs.has(utils.normalizeURL(r.url))) continue;
+                            r.scope = "remove";
+                        }
                     }));
                 });
             }}>Load from extension</button>
+            <button disabled={!relaysonnet} onClick={() => {
+                if (!relaysonnet) return;
+                relays.setValue(produce(draft => {
+                    for (const r of relaysonnet) {
+                        const url = utils.normalizeURL(r.url);
+                        const rent = draft.find(r => r.url === url);
+                        if (rent) {
+                            rent.read = r.read;
+                            rent.write = r.write;
+                        } else {
+                            draft.push({ url: url, read: r.read, write: r.write, scope: "local" });
+                        }
+                    }
+
+                    const normrs = new Set(relaysonnet.map(r => utils.normalizeURL(r.url)));
+                    for (const r of draft) {
+                        if (normrs.has(utils.normalizeURL(r.url))) continue;
+                        r.scope = "remove";
+                    }
+                }));
+            }}>Load from relays{relaysonnet && ` (${relaysonnet.length})`}</button>
+            <button onClick={() => { relays.reload(); }}>Reset</button>
         </p>
         <h2>Account:</h2>
         <ul>
@@ -344,7 +403,7 @@ export default () => {
         <p style={{ display: "flex", gap: "0.5em" }}>
             <button disabled={!((account.value().pk === "" && account.value().sk === "") || (npubok && nsecvalid))} onClick={e => {
                 account.save();
-            }}>Set</button>
+            }}>Save</button>
             <button onClick={async e => {
                 const pk = await rescue(() => window.nostr?.getPublicKey?.(), undefined);
                 if (pk) {
@@ -507,9 +566,18 @@ export default () => {
             <button onClick={() => {
                 mutepks.save();
                 muteregexs.save();
-                // TODO: publish?
                 // TODO: notify UI?
             }}>Save</button>
+            <button onClick={() => {
+                mutepks.save();
+                muteregexs.save();
+                // TODO: publish
+                // TODO: notify UI?
+            }}>Save & Publish</button>
+            <button style={{ marginLeft: "1em" }} onClick={() => {
+                // TODO: load
+                // TODO: notify UI?
+            }}>Load from relays</button>
             <button onClick={() => {
                 mutepks.reload();
                 muteregexs.reload();

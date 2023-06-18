@@ -46,6 +46,10 @@ export type MetadataContent = {
     lud16?: string;
 };
 
+export type ContactsContent = {
+    [url: string]: { read: boolean; write: boolean; };
+};
+
 declare global {
     interface Window {
         // NIP-07

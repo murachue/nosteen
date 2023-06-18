@@ -1959,6 +1959,8 @@ const Tabsview: FC = () => {
                     const tev = {
                         created_at: Math.floor(Date.now() / 1000),
                         kind: Kind.Repost,
+                        // I don't prefer include the original event to respect poster's right/possibility of deletion (NIP-09 kind5),
+                        // NIP-18 states it is "not recommended" though.
                         content: "",
                         tags: [
                             ["e", derefev.id, recvfrom.url],

@@ -285,6 +285,7 @@ export class NostrWorker {
     profsid: ReturnType<MuxPool["sub"]> | null = null;
     onHealthy = new SimpleEmitter<MuxRelayEvent>();
     onMyContacts = new SimpleEmitter<DeletableEvent>();
+    onMyRelayList = new SimpleEmitter<DeletableEvent>();
     onAuth = new SimpleEmitter<{ relay: Relay; challenge: string; }>();
     onNotice = new SimpleEmitter<{ relay: Relay; msg: string; }>();
     onFetch = new SimpleEmitter<{ length: number; }>();
@@ -383,6 +384,9 @@ export class NostrWorker {
                                 // if eosed?
                                 if (ev.kind === Kind.Contacts) {
                                     this.onMyContacts.emit("", dev);
+                                }
+                                if (ev.kind === Kind.RelayList) {
+                                    this.onMyRelayList.emit("", dev);
                                 }
                             }
                         }),
