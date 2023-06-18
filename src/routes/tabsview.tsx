@@ -1321,6 +1321,24 @@ const Tabsview: FC = () => {
                         setNavigating({ current: tabid, to: `p/${profpopping}` });
                         return;
                     }
+                    case "r": {
+                        const metadata = noswk.getProfile(
+                            profpopping,
+                            Kind.Metadata,
+                            ev => setProfprof(s => s.pubkey !== ev.event?.event?.pubkey ? s : { ...s, metadata: ev }),
+                            undefined,
+                            0,
+                        );
+                        const contacts = noswk.getProfile(
+                            profpopping,
+                            Kind.Contacts,
+                            ev => setProfprof(s => s.pubkey !== ev.event?.event?.pubkey ? s : { ...s, contacts: ev }),
+                            undefined,
+                            0,
+                        );
+                        setProfprof(s => s.pubkey && s.pubkey !== profpopping ? s : { pubkey: profpopping, metadata, contacts });
+                        return;
+                    }
                     case "F": {
                         const contacts = noswk.getIdentity()?.contacts;
                         if (!contacts && followtime + 1000 < Date.now()) {
