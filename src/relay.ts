@@ -8,7 +8,7 @@ import { Event, Filter, matchFilters, validateEvent, verifySignature } from 'nos
 
 type RelayEvent = {
     connect: () => void | Promise<void>;
-    disconnect: () => void | Promise<void>;
+    disconnect: (ev: CloseEvent) => void | Promise<void>;
     error: (reason?: unknown) => void | Promise<void>;
     notice: (msg: string) => void | Promise<void>;
     auth: (challenge: string) => void | Promise<void>;
@@ -155,8 +155,8 @@ export function relayInit(
                 reset();
                 reject();
             };
-            ws.onclose = async () => {
-                listeners.disconnect.forEach(cb => cb());
+            ws.onclose = async ev => {
+                listeners.disconnect.forEach(cb => cb(ev));
                 reset();
             };
 

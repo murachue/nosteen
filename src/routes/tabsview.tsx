@@ -919,7 +919,17 @@ const Tabsview: FC = () => {
     }, [streams, tab?.id]);
     useEffect(() => {
         const handler = (ev: MuxRelayEvent): void => {
-            setStatus(ev.event === "connected" ? `connected: ${ev.relay.url}` : `disconnected:${ev.reason ? `${String(ev.reason)}: ` : ""} ${ev.relay.url}`);
+            const rsn = (() => {
+                if (!ev.reason) return "";
+                if (typeof ev.reason === "object" && "code" in ev.reason && "reason" in ev.reason) {
+                    // seems CloseEvent; special format
+                    return `(${ev.reason.code}${!ev.reason ? "" : ` ${ev.reason}`})`;
+                } else {
+                    // dunno; just rely on String()
+                    return String(ev.reason);
+                }
+            })();
+            setStatus(ev.event === "connected" ? `connected: ${ev.relay.url}` : `disconnected: ${rsn}${ev.relay.url}`);
         };
         noswk.onHealthy.on("", handler);
         return () => { noswk.onHealthy.off("", handler); };

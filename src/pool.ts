@@ -20,7 +20,11 @@ export class RelayWrap {
 
     constructor(...args: Parameters<typeof relayInit>) {
         this.relay = relayInit(...args);
-        this.relay.on("disconnect", () => {
+        this.relay.on("disconnect", ev => {
+            if (ev.code === 4000) {
+                // nips@36e9fd59e93730c2d2002ec7aac58a53e58143a3 states that we should not reconnect on code=4000.
+                this.wantonline = false;
+            }
             this.died();
         });
         this.relay.on("connect", () => {
@@ -187,7 +191,7 @@ export class MuxPool {
             });
             r.relay.on('connect', () => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'connected' })));
             r.relay.on('error', reason => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'disconnected', reason })));
-            r.relay.on('disconnect', () => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'disconnected' })));
+            r.relay.on('disconnect', ev => this.listeners.health.forEach(cb => cb({ relay: r.relay, event: 'disconnected', reason: ev })));
             r.relay.on('auth', challenge => this.listeners.auth.forEach(cb => cb({ relay: r.relay, challenge })));
             r.relay.on('notice', msg => this.listeners.notice.forEach(cb => cb({ relay: r.relay, msg })));
             this._conn[nm] = r;
