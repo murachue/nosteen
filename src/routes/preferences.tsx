@@ -1,13 +1,14 @@
 import { produce } from "immer";
-import { useAtom } from "jotai";
-import { generatePrivateKey, getPublicKey, nip19 } from "nostr-tools";
-import { FC, Fragment, useCallback, useState } from "react";
+import { PrimitiveAtom, useAtom } from "jotai";
+import { Event, EventTemplate, Kind, finishEvent, generatePrivateKey, getPublicKey, nip19, utils } from "nostr-tools";
+import { FC, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import invariant from "tiny-invariant";
 import TextInput from "../components/textinput";
-import { useNostrWorker } from "../nostrworker";
+import { NostrWorker, useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { expectn, rescue, sha256str } from "../util";
+import { MuxPub } from "../pool";
 
 const MultiInput: FC<Omit<Parameters<typeof TextInput>[0], "value" | "onChange"> & {
     value: string | string[];
@@ -19,32 +20,99 @@ const MultiInput: FC<Omit<Parameters<typeof TextInput>[0], "value" | "onChange">
         onChange={text => onChange(text.split("\n"))}
     />;
 
-export default () => {
-    const mux = useNostrWorker();
-    const [identiconStore] = useAtom(state.identiconStore);
+function usePref<T, U = T>(pr: { atom: PrimitiveAtom<T>, load?: (v: T) => U, save?: (v: U) => T; }) {
+    const load = pr.load || ((v: T): U => v as unknown as U);
+    const save = pr.save || ((v: U): T => v as unknown as T);
+    const [prefValue, setPrefValue] = useAtom(pr.atom);
+    const [initialPrefValue] = useState(prefValue);
+    const [value, setValue] = useState(() => load(prefValue));
 
-    // TODO: open this pref page directly cause lost-load pref values
-    const [prefrelays, setPrefrelays] = useAtom(state.preferences.relays);
-    const [prefaccount, setPrefaccount] = useAtom(state.preferences.account);
-    const [prefColorNormal, setPrefColorNormal] = useAtom(state.preferences.colors.normal);
-    const [prefColorRepost, setPrefColorRepost] = useAtom(state.preferences.colors.repost);
-    const [prefColorReacted, setPrefColorReacted] = useAtom(state.preferences.colors.reacted);
-    const [prefColorBase, setPrefColorBase] = useAtom(state.preferences.colors.base);
-    const [prefColorSelectedText, setPrefColorSelectedText] = useAtom(state.preferences.colors.selectedtext);
-    const [prefColorSelectedBg, setPrefColorSelectedBg] = useAtom(state.preferences.colors.selectedbg);
-    const [prefColorMypost, setPrefColorMypost] = useAtom(state.preferences.colors.mypost);
-    const [prefColorReplytome, setPrefColorReplytome] = useAtom(state.preferences.colors.replytome);
-    const [prefColorThempost, setPrefColorThempost] = useAtom(state.preferences.colors.thempost);
-    const [prefColorThemreplyto, setPrefColorThemreplyto] = useAtom(state.preferences.colors.themreplyto);
-    const [prefColorLinkText, setPrefColorLinkText] = useAtom(state.preferences.colors.linktext);
-    const [prefColorUiText, setPrefColorUiText] = useAtom(state.preferences.colors.uitext);
-    const [prefColorUiBg, setPrefColorUiBg] = useAtom(state.preferences.colors.uibg);
-    const [prefFontText, setPrefFontText] = useAtom(state.preferences.fonts.text);
-    const [prefFontUi, setPrefFontUi] = useAtom(state.preferences.fonts.ui);
-    const [prefMuteUserpublic, setPrefMuteUserpublic] = useAtom(state.preferences.mute.userpublic);
-    const [prefMuteUserprivate, setPrefMuteUserprivate] = useAtom(state.preferences.mute.userprivate);
-    const [prefMuteUserlocal, setPrefMuteUserlocal] = useAtom(state.preferences.mute.userlocal);
-    const [prefMuteRegexlocal, setPrefMuteRegexlocal] = useAtom(state.preferences.mute.regexlocal);
+    // support page direct access (useAtom lazily loads)
+    // XXX: this is hacky.
+    useEffect(() => {
+        const f = pr.atom as unknown === state.preferences.account;
+        (() => { const z = f; })();
+        if (prefValue !== initialPrefValue) {
+            setValue(load(prefValue));
+        }
+    }, [prefValue]);
+
+    return {
+        value: () => value,
+        setValue: setValue,
+        prefvalue: () => prefValue,
+        reload: () => {
+            const v = load(prefValue);
+            setValue(v);
+            return v;
+        },
+        save: () => {
+            const pv = save(value);
+            setPrefValue(pv);
+            setValue(load(pv));
+            return pv;
+        }
+    };
+};
+
+function rot<T>(value: T, list: T[]) {
+    const i = list.indexOf(value);
+    return list[0 <= i && i < list.length - 1 ? i + 1 : 0];
+}
+
+type RelayPosts = {
+    event: Event;
+    postAt: number;
+    postByRelay: Map<string, null | { relay: string; recvAt: number; ok: boolean; reason: string; }>;
+    pub: MuxPub;
+};
+const broadcast = (noswk: NostrWorker, event: Event, onRealize: (repo: RelayPosts) => void): RelayPosts => {
+    const postAt = Date.now();
+    const post = noswk.postEvent(event);
+
+    const repo: RelayPosts = {
+        event,
+        postAt,
+        postByRelay: new Map(post.relays.map(r => [utils.normalizeURL(r.relay.relay.url), null])),
+        pub: post.pub,
+    };
+    post.pub.on("ok", recv => {
+        const recvAt = Date.now();
+        for (const r of recv) {
+            repo.postByRelay.set(utils.normalizeURL(r.relay.url), { relay: r.relay.url, recvAt, ok: true, reason: r.reason });
+        }
+        onRealize(repo);
+    });
+    post.pub.on("failed", recv => {
+        const recvAt = Date.now();
+        repo.postByRelay.set(utils.normalizeURL(recv.relay), { relay: recv.relay, recvAt, ok: false, reason: String(recv.reason) });
+        onRealize(repo);
+    });
+    // TODO: timeout? pub.on("forget", () => { });
+
+    // repo.pub.forget() is callers responsibility.
+    return repo;
+};
+const emitevent = async (noswk: NostrWorker, account: null | { pubkey: string; } | { privkey: string; }, tev: EventTemplate, onRealize: (repo: ReturnType<typeof broadcast>) => void) => {
+    const event = await (async () => {
+        if (account && "privkey" in account) {
+            return finishEvent(tev, account.privkey);
+        } else if (window.nostr?.signEvent) {
+            const sev = await window.nostr.signEvent(tev);
+            if (sev.pubkey !== account?.pubkey) {
+                throw new Error(`NIP-07 set unexpected pubkey: pk=${sev.pubkey}, expected=${account?.pubkey}`);
+            }
+            return sev;
+        } else {
+            throw new Error("could not sign: no private key nor NIP-07 signEvent");
+        }
+    })();
+    return broadcast(noswk, event, onRealize);
+};
+
+export default () => {
+    const noswk = useNostrWorker();
+    const [identiconStore] = useAtom(state.identiconStore);
 
     const normhex = (s: string, tag: "npub" | "nsec") => {
         if (!s.startsWith(tag)) {
@@ -63,296 +131,382 @@ export default () => {
         return tag === "npub" ? nip19.npubEncode(s) : nip19.nsecEncode(s);
     };
 
-    const prefrelayurls = new Set(prefrelays.map(r => r.url));
-    const [relays, setRelays] = useState(prefrelays.map(r => ({ ...r, added: false, removed: false })));
-    const [colorNormal, setColorNormal] = useState(prefColorNormal);
-    const [colorRepost, setColorRepost] = useState(prefColorRepost);
-    const [colorReacted, setColorReacted] = useState(prefColorReacted);
-    const [colorBase, setColorBase] = useState(prefColorBase);
-    const [colorSelectedText, setColorSelectedText] = useState(prefColorSelectedText);
-    const [colorSelectedBg, setColorSelectedBg] = useState(prefColorSelectedBg);
-    const [colorMypost, setColorMypost] = useState(prefColorMypost);
-    const [colorReplytome, setColorReplytome] = useState(prefColorReplytome);
-    const [colorThempost, setColorThempost] = useState(prefColorThempost);
-    const [colorThemreplyto, setColorThemreplyto] = useState(prefColorThemreplyto);
-    const [colorLinkText, setColorLinkText] = useState(prefColorLinkText);
-    const [colorUiText, setColorUiText] = useState(prefColorUiText);
-    const [colorUiBg, setColorUiBg] = useState(prefColorUiBg);
-    const [fontText, setFontText] = useState(prefFontText);
-    const [fontUi, setFontUi] = useState(prefFontUi);
-    const [muteUsers, setMuteUsers] = useState<{ pk: string; scope: "public" | "private" | "local" | "remove"; added: boolean; }[]>([
-        ...(prefMuteUserpublic.map(u => ({ pk: nip19.npubEncode(u), scope: "public" as const, added: false }))),
-        ...(prefMuteUserprivate.map(u => ({ pk: nip19.npubEncode(u), scope: "private" as const, added: false }))),
-        ...(prefMuteUserlocal.map(u => ({ pk: nip19.npubEncode(u), scope: "local" as const, added: false }))),
-    ]);
-    const [muteRegexlocal, setMuteRegexlocal] = useState(prefMuteRegexlocal.map(pattern => ({ pattern, added: false, removed: false })));
+    const relays = usePref<
+        {
+            url: string;
+            read: boolean;
+            write: boolean;
+            scope: "public" | "local";
+        }[],
+        {
+            url: string;
+            read: boolean;
+            write: boolean;
+            scope: "public" | "local" | "remove";
+        }[]
+    >({
+        atom: state.preferences.relays,
+        save: v => v.filter((r): r is {
+            url: string;
+            read: boolean;
+            write: boolean;
+            scope: "public" | "local";
+        } => r.scope !== "remove"),
+    });
+    const account = usePref({
+        atom: state.preferences.account,
+        load: s => {
+            return {
+                pk: normb32(s?.pubkey || "", "npub"),
+                sk: normb32(s && "privkey" in s ? s.privkey : "", "nsec"),
+            };
+        },
+        save: v => {
+            return v.sk
+                ? { pubkey: normhex(v.pk, "npub"), privkey: normhex(v.sk, "nsec") }
+                : v.pk
+                    ? { pubkey: normhex(v.pk, "npub") }
+                    : null;
+        },
+    });
+    const colorNormal = usePref({ atom: state.preferences.colors.normal });
+    const colorRepost = usePref({ atom: state.preferences.colors.repost });
+    const colorReacted = usePref({ atom: state.preferences.colors.reacted });
+    const colorBase = usePref({ atom: state.preferences.colors.base });
+    const colorSelectedText = usePref({ atom: state.preferences.colors.selectedtext });
+    const colorSelectedBg = usePref({ atom: state.preferences.colors.selectedbg });
+    const colorMypost = usePref({ atom: state.preferences.colors.mypost });
+    const colorReplytome = usePref({ atom: state.preferences.colors.replytome });
+    const colorThempost = usePref({ atom: state.preferences.colors.thempost });
+    const colorThemreplyto = usePref({ atom: state.preferences.colors.themreplyto });
+    const colorLinkText = usePref({ atom: state.preferences.colors.linktext });
+    const colorUiText = usePref({ atom: state.preferences.colors.uitext });
+    const colorUiBg = usePref({ atom: state.preferences.colors.uibg });
+    const fontText = usePref({ atom: state.preferences.fonts.text });
+    const fontUi = usePref({ atom: state.preferences.fonts.ui });
+    const mutepks = usePref<
+        { pk: string; scope: "public" | "private" | "local"; }[],
+        { pk: string; scope: "public" | "private" | "local" | "remove"; }[]
+    >({
+        atom: state.preferences.mute.pubkeys,
+        load: s => s.map(m => ({ pk: nip19.npubEncode(m.pk), scope: m.scope })),
+        save: v => v.filter((m): m is { pk: string; scope: "public" | "private" | "local"; } => m.scope !== "remove").map(v => {
+            const d = nip19.decode(v.pk);
+            if (d.type !== "npub") throw new Error(`program error: not a npub: ${d.type}`);
+            return {
+                pk: d.data,
+                scope: v.scope
+            };
+        }),
+    });
+    const muteregexs = usePref<
+        { pattern: string; scope: "local"; }[],
+        { pattern: string; scope: "local" | "remove"; }[]
+    >({
+        atom: state.preferences.mute.regexs,
+        save: v => v.filter((m): m is { pattern: string; scope: "local"; } => m.scope !== "remove"),
+    });
 
     const [url, setUrl] = useState([""]);
-    const [npub, setNpub] = useState(normb32(prefaccount?.pubkey || "", "npub"));
-    const [nsec, setNsec] = useState(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec"));
     const [nsecmask, setNsecmask] = useState(true);
     const [mutepk, setMutepk] = useState([""]);
     const [mutepat, setMutepat] = useState([""]);
 
     const navigate = useNavigate();
 
-    const saverelays = useCallback(() => {
-        const filteredRelays = relays.filter(r => !r.removed);
-        mux!.setRelays(filteredRelays.map(r => ({ url: r.url, read: r.read, write: r.write })));
+    const npubok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(account.value().pk, "npub")); // it really should <secp250k1.p but ignore for simplicity.
+    const nsecvalid = !account.value().pk || (npubok && !!/^$|^[0-9A-Fa-f]{64}$/.exec(normhex(account.value().sk, "nsec"))); // it really should <secp250k1.n but ignore for simplicity.
+    const nsecok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(account.value().sk, "nsec")); // it really should <secp250k1.n but ignore for simplicity.
 
-        setPrefrelays(filteredRelays.map(({ url, read, write, public: ispublic }) => ({ url, read, write, public: ispublic })));
-        setRelays(filteredRelays.map(r => ({ ...r, added: false })));
-    }, [relays, prefrelayurls]);
-
-    const npubok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(npub, "npub")); // it really should <secp250k1.p but ignore for simplicity.
-    const nsecvalid = (nsec === "" && npubok) || !!/^[0-9A-Fa-f]{64}$/.exec(normhex(nsec, "nsec")); // it really should <secp250k1.n but ignore for simplicity.
-    const nsecok = !!/^[0-9A-Fa-f]{64}$/.exec(normhex(nsec, "nsec")); // it really should <secp250k1.n but ignore for simplicity.
+    // FIXME: smells.
+    useEffect(() => {
+        if (relays.value().every(r => r.scope !== "public" || r.read || r.write)) return;
+        relays.setValue(rs => rs.map(r => r.scope !== "public" || r.read || r.write ? r : { ...r, scope: "local" }));
+    }, [relays.value()]);
 
     return <div style={{ height: "100%", overflowY: "auto" }}>
         <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>Preferences</h1>
         <h2>Relays:</h2>
-        <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "max-content max-content", columnGap: "0.5em" }}>
-            {relays.map((rly, i) => <Fragment key={rly.url}>
-                <div style={{ display: "flex", gap: "0.5em" }}>
-                    <div style={{ ...(rly.removed ? { textDecoration: "line-through" } : rly.added ? { fontStyle: "italic" } : {}), flex: "1", marginRight: "1em", display: "flex" }}>
-                        <div style={{ alignSelf: "center", height: "1em" }}>{<img src={identiconStore.png(sha256str(rly.url))} style={{ height: "100%" }} />}</div>
-                        <div>{rly.url}</div>
+        <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "minmax(20em, max-content) max-content max-content", columnGap: "0.5em" }}>
+            {(() => {
+                const prefrelays = relays.prefvalue();
+                return relays.value().map((rly, i) => <Fragment key={rly.url}>
+                    <div style={{ display: "flex", gap: "0.5em" }}>
+                        <div style={{
+                            ...(rly.scope === "remove"
+                                ? { textDecoration: "line-through" }
+                                : rly.scope !== prefrelays[i]?.scope
+                                    ? { fontStyle: "italic" }
+                                    : {}
+                            ),
+                            flex: "1",
+                            marginRight: "1em",
+                            display: "flex"
+                        }}>
+                            <div style={{ alignSelf: "center", height: "1em" }}>{<img src={identiconStore.png(sha256str(rly.url))} style={{ height: "100%" }} />}</div>
+                            <div>{rly.url}</div>
+                        </div>
                     </div>
-                    <div><label><input type="checkbox" checked={rly.read} onChange={e => setRelays(produce(draft => { draft[i].read = e.target.checked; }))} />read</label></div>
-                    <div><label><input type="checkbox" checked={rly.write} onChange={e => setRelays(produce(draft => { draft[i].write = e.target.checked; }))} />write</label></div>
-                    <div><label><input type="checkbox" checked={rly.public} onChange={e => setRelays(produce(draft => { draft[i].public = e.target.checked; }))} />publish?</label></div>
-                </div>
-                <button onClick={e => {
-                    setRelays(produce(draft => {
-                        const r = draft.find(r => r.url === rly.url);
-                        invariant(r, "inconsistent relays");
-                        r.removed = !r.removed;
-                    }));
-                }}>{rly.removed ? "Undo" : "Remove"}</button>
-            </Fragment>)}
-            <div style={{ display: "flex" }}>
+                    <div style={{ display: "flex", gap: "0.5em" }}>
+                        <div><label style={{ fontStyle: rly.read !== prefrelays[i]?.read ? "italic" : undefined }}><input type="checkbox" checked={rly.read} onChange={e => relays.setValue(produce(draft => { draft[i].read = e.target.checked; }))} />read</label></div>
+                        <div><label style={{ fontStyle: rly.write !== prefrelays[i]?.write ? "italic" : undefined }}><input type="checkbox" checked={rly.write} onChange={e => relays.setValue(produce(draft => { draft[i].write = e.target.checked; }))} />write</label></div>
+                    </div>
+                    <button onClick={e => { relays.setValue(produce(draft => { draft[i].scope = rot(draft[i].scope, ["public", "local", "remove"]); })); }}>{rly.scope}</button>
+                </Fragment>);
+            })()}
+            <div style={{ gridColumn: "1/3", display: "flex" }}>
                 <MultiInput placeholder="wss://..." value={url} onChange={lines => setUrl(lines)} style={{ flex: "1" }} />
             </div>
             <div>
                 <button style={{ width: "100%" }} disabled={!url.every(url => /^wss?:\/\/.+/.exec(url))} onClick={e => {
-                    setRelays(produce(draft => {
+                    relays.setValue(produce(draft => {
                         draft.push(...url
+                            .map(url => utils.normalizeURL(url))
                             .filter(url => !draft.find(r => r.url === url))
-                            .map(url => ({ url, read: true, write: true, public: true, added: true, removed: false })));
+                            .map(url => ({ url, read: true, write: true, scope: "public" as const })));
                     }));
                     setUrl([""]);
                 }}>Add</button>
             </div>
         </div>
         <p style={{ display: "flex", gap: "0.5em" }}>
-            <button onClick={() => { saverelays(); }}>Save</button>
-            <button onClick={() => { saverelays(); /* TODO publish */ }}>Save & Publish</button>
-            <button onClick={() => { setRelays(prefrelays.map(r => ({ ...r, added: false, removed: false }))); }}>Reset</button>
+            <button onClick={() => { relays.save(); }}>Save</button>
+            <button onClick={() => {
+                const rs = relays.save();
+                if (!account.prefvalue()?.pubkey) {
+                    alert("account not ready");
+                }
+                if (noswk.getRelays().filter(r => r.write && r.healthy).length === 0) {
+                    alert("no writable relays available");
+                }
+                // XXX: NIP-65 states "not for configuring one's client" but we temporarily use it for configuring...
+                //      saving relays to kind3.content is not acceptable for me.
+                // FIXME: use emitevent() for check publish status but it requires refactoring.
+                emitevent(noswk, account.prefvalue(), {
+                    kind: Kind.RelayList,
+                    content: "",
+                    tags: rs.filter(r => r.scope === "public" && (r.read || r.write)).map(r => ["r", r.url, ...(r.read && r.write ? [] : r.read ? ["read"] : ["write"])]),
+                    created_at: Math.floor(Date.now() / 1000),
+                }, repo => {
+                    // TODO: some experience
+                });
+            }}>Save & Publish</button>
+            <button onClick={() => { relays.reload(); }}>Reset</button>
+            <button onClick={() => {
+                window.nostr?.getRelays?.()?.then(rs => {
+                    relays.setValue(produce(draft => {
+                        for (const [unnurl, perms] of Object.entries(rs)) {
+                            const url = utils.normalizeURL(unnurl);
+                            const rent = draft.find(r => r.url === url);
+                            if (rent) {
+                                rent.read = perms.read;
+                                rent.write = perms.write;
+                            } else {
+                                draft.push({ url: url, read: perms.read, write: perms.write, scope: "local" });
+                            }
+                        }
+                    }));
+                });
+            }}>Load from extension</button>
         </p>
         <h2>Account:</h2>
         <ul>
             <li>pubkey:
                 <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: npubok ? "#0f08" : "#f008" }}>
-                    <input type="text" placeholder="npub1... or hex (auto-filled when correct privkey is set)" size={64} disabled={nsecok} value={npub} style={{ fontFamily: "monospace" }} onChange={e => {
-                        const s = e.target.value;
-                        const p = s.startsWith("nprofile1") ? rescue(() => {
-                            const d = nip19.decode(s);
-                            return d.type === "nprofile" ? d.data.pubkey : s;
-                        }, s) : s;
-                        setNpub(normb32(p, "npub"));
+                    <input type="text" placeholder="npub1... or hex (auto-filled when correct privkey is set)" size={64} disabled={nsecok} value={account.value().pk} style={{ fontFamily: "monospace" }} onChange={e => {
+                        const v = e.target.value;
+                        const p = v.startsWith("nprofile1") ? rescue(() => {
+                            const d = nip19.decode(v);
+                            return d.type === "nprofile" ? d.data.pubkey : v;
+                        }, v) : v;
+                        account.setValue(s => ({ ...s, pk: normb32(p, "npub") }));
                     }} />
                 </div>
             </li>
             <li>privkey:
                 <div style={{ display: "inline-block", borderWidth: "1px", borderStyle: "solid", borderColor: nsecvalid ? "#0f08" : "#f008" }}>
-                    <input type={nsecmask ? "password" : "text"} placeholder="nsec1... or hex (NIP-07 extension is very recommended)" size={64} value={nsec} style={{ fontFamily: "monospace" }} onChange={e => {
-                        const s = e.target.value;
-                        setNsec(normb32(s, "nsec"));
-                        const hs = normhex(s, "nsec");
+                    <input type={nsecmask ? "password" : "text"} placeholder="nsec1... or hex (NIP-07 extension is very recommended)" size={64} value={account.value().sk} style={{ fontFamily: "monospace" }} onChange={e => {
+                        const v = e.target.value;
+                        account.setValue(s => ({ ...s, sk: normb32(v, "nsec") }));
+                        const hs = normhex(v, "nsec");
                         if (/^[0-9A-Fa-f]{64}$/.exec(hs)) {
-                            setNpub(nip19.npubEncode(getPublicKey(hs)));
+                            account.setValue(s => ({ ...s, pk: nip19.npubEncode(getPublicKey(hs)) }));
                         }
                     }} onFocus={e => setNsecmask(false)} onBlur={e => setNsecmask(true)} />
                 </div>
             </li>
         </ul>
         <p style={{ display: "flex", gap: "0.5em" }}>
-            <button disabled={!((npub === "" && nsec === "") || (npubok && nsecvalid))} onClick={e => {
-                // TODO: NIP-07
-                setPrefaccount(
-                    (npub === "" && nsec === "") ? null
-                        : (npubok && nsec === "") ? { pubkey: normhex(npub, "npub") }
-                            : { pubkey: normhex(npub, "npub"), privkey: normhex(nsec, "nsec") }
-                );
+            <button disabled={!((account.value().pk === "" && account.value().sk === "") || (npubok && nsecvalid))} onClick={e => {
+                account.save();
             }}>Set</button>
             <button onClick={async e => {
                 const pk = await rescue(() => window.nostr?.getPublicKey?.(), undefined);
                 if (pk) {
-                    setNpub(normb32(pk, "npub"));
+                    account.setValue(s => ({ ...s, pk: normb32(pk, "npub") }));
                 }
             }}>Login with extension</button>
             <button onClick={e => {
                 const sk = generatePrivateKey();
-                setNsec(nip19.nsecEncode(sk));
-                setNpub(nip19.npubEncode(getPublicKey(sk)));
+                account.setValue({
+                    sk: nip19.nsecEncode(sk),
+                    pk: nip19.npubEncode(getPublicKey(sk)),
+                });
             }}>Generate</button>
             <button onClick={e => {
-                setNpub(normb32(prefaccount?.pubkey || "", "npub"));
-                setNsec(normb32(prefaccount && "privkey" in prefaccount ? prefaccount.privkey : "", "nsec"));
+                account.reload();
             }}>Reset</button>
         </p>
         <h2>Colors:</h2>
         <ul>
-            <li>normal: <input type="text" value={colorNormal} style={{ background: colorBase, color: colorNormal }} onChange={e => setColorNormal(e.target.value)} /></li>
-            <li>repost: <input type="text" value={colorRepost} style={{ background: colorBase, color: colorRepost }} onChange={e => setColorRepost(e.target.value)} /></li>
-            <li>reacted: <input type="text" value={colorReacted} style={{ background: colorBase, color: colorReacted }} onChange={e => setColorReacted(e.target.value)} /></li>
-            <li>base: <input type="text" value={colorBase} style={{ background: colorBase, color: colorNormal }} onChange={e => setColorBase(e.target.value)} /></li>
-            <li>mypost: <input type="text" value={colorMypost} style={{ background: colorMypost, color: colorNormal }} onChange={e => setColorMypost(e.target.value)} /></li>
-            <li>reply to me: <input type="text" value={colorReplytome} style={{ background: colorReplytome, color: colorNormal }} onChange={e => setColorReplytome(e.target.value)} /></li>
-            <li>their post: <input type="text" value={colorThempost} style={{ background: colorThempost, color: colorNormal }} onChange={e => setColorThempost(e.target.value)} /></li>
-            <li>their reply target: <input type="text" value={colorThemreplyto} style={{ background: colorThemreplyto, color: colorNormal }} onChange={e => setColorThemreplyto(e.target.value)} /></li>
-            <li>link text: <input type="text" value={colorLinkText} style={{ background: colorBase, color: colorLinkText }} onChange={e => setColorLinkText(e.target.value)} /></li>
-            <li>UI text: <input type="text" value={colorUiText} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiText(e.target.value)} /></li>
-            <li>UI bg: <input type="text" value={colorUiBg} style={{ background: colorUiBg, color: colorUiText }} onChange={e => setColorUiBg(e.target.value)} /></li>
-            <li>selected text: <input type="text" value={colorSelectedText} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedText(e.target.value)} /></li>
-            <li>selected bg: <input type="text" value={colorSelectedBg} style={{ background: colorSelectedBg, color: colorSelectedText }} onChange={e => setColorSelectedBg(e.target.value)} /></li>
+            <li>normal: <input type="text" value={colorNormal.value()} style={{ background: colorBase.value(), color: colorNormal.value() }} onChange={e => colorNormal.setValue(e.target.value)} /></li>
+            <li>repost: <input type="text" value={colorRepost.value()} style={{ background: colorBase.value(), color: colorRepost.value() }} onChange={e => colorRepost.setValue(e.target.value)} /></li>
+            <li>reacted: <input type="text" value={colorReacted.value()} style={{ background: colorBase.value(), color: colorReacted.value() }} onChange={e => colorReacted.setValue(e.target.value)} /></li>
+            <li>base: <input type="text" value={colorBase.value()} style={{ background: colorBase.value(), color: colorNormal.value() }} onChange={e => colorBase.setValue(e.target.value)} /></li>
+            <li>mypost: <input type="text" value={colorMypost.value()} style={{ background: colorMypost.value(), color: colorNormal.value() }} onChange={e => colorMypost.setValue(e.target.value)} /></li>
+            <li>reply to me: <input type="text" value={colorReplytome.value()} style={{ background: colorReplytome.value(), color: colorNormal.value() }} onChange={e => colorReplytome.setValue(e.target.value)} /></li>
+            <li>their post: <input type="text" value={colorThempost.value()} style={{ background: colorThempost.value(), color: colorNormal.value() }} onChange={e => colorThempost.setValue(e.target.value)} /></li>
+            <li>their reply target: <input type="text" value={colorThemreplyto.value()} style={{ background: colorThemreplyto.value(), color: colorNormal.value() }} onChange={e => colorThemreplyto.setValue(e.target.value)} /></li>
+            <li>link text: <input type="text" value={colorLinkText.value()} style={{ background: colorBase.value(), color: colorLinkText.value() }} onChange={e => colorLinkText.setValue(e.target.value)} /></li>
+            <li>UI text: <input type="text" value={colorUiText.value()} style={{ background: colorUiBg.value(), color: colorUiText.value() }} onChange={e => colorUiText.setValue(e.target.value)} /></li>
+            <li>UI bg: <input type="text" value={colorUiBg.value()} style={{ background: colorUiBg.value(), color: colorUiText.value() }} onChange={e => colorUiBg.setValue(e.target.value)} /></li>
+            <li>selected text: <input type="text" value={colorSelectedText.value()} style={{ background: colorSelectedBg.value(), color: colorSelectedText.value() }} onChange={e => colorSelectedText.setValue(e.target.value)} /></li>
+            <li>selected bg: <input type="text" value={colorSelectedBg.value()} style={{ background: colorSelectedBg.value(), color: colorSelectedText.value() }} onChange={e => colorSelectedBg.setValue(e.target.value)} /></li>
         </ul>
         <p style={{ display: "flex", gap: "0.5em" }}>
             <button onClick={() => {
-                setPrefColorNormal(colorNormal);
-                setPrefColorRepost(colorRepost);
-                setPrefColorReacted(colorReacted);
-                setPrefColorBase(colorBase);
-                setPrefColorMypost(colorMypost);
-                setPrefColorReplytome(colorReplytome);
-                setPrefColorThempost(colorThempost);
-                setPrefColorThemreplyto(colorThemreplyto);
-                setPrefColorLinkText(colorLinkText);
-                setPrefColorUiText(colorUiText);
-                setPrefColorUiBg(colorUiBg);
-                setPrefColorSelectedText(colorSelectedText);
-                setPrefColorSelectedBg(colorSelectedBg);
+                colorNormal.save();
+                colorRepost.save();
+                colorReacted.save();
+                colorBase.save();
+                colorMypost.save();
+                colorReplytome.save();
+                colorThempost.save();
+                colorThemreplyto.save();
+                colorLinkText.save();
+                colorUiText.save();
+                colorUiBg.save();
+                colorSelectedText.save();
+                colorSelectedBg.save();
             }}>Save</button>
             <button onClick={() => {
-                setColorNormal(prefColorNormal);
-                setColorRepost(prefColorRepost);
-                setColorReacted(prefColorReacted);
-                setColorBase(prefColorBase);
-                setColorMypost(prefColorMypost);
-                setColorReplytome(prefColorReplytome);
-                setColorThempost(prefColorThempost);
-                setColorThemreplyto(prefColorThemreplyto);
-                setColorLinkText(prefColorLinkText);
-                setColorUiText(prefColorUiText);
-                setColorUiBg(prefColorUiBg);
-                setColorSelectedText(prefColorSelectedText);
-                setColorSelectedBg(prefColorSelectedBg);
+                colorNormal.reload();
+                colorRepost.reload();
+                colorReacted.reload();
+                colorBase.reload();
+                colorMypost.reload();
+                colorReplytome.reload();
+                colorThempost.reload();
+                colorThemreplyto.reload();
+                colorLinkText.reload();
+                colorUiText.reload();
+                colorUiBg.reload();
+                colorSelectedText.reload();
+                colorSelectedBg.reload();
             }}>Reset</button>
         </p>
         <h2>Fonts:</h2>
         <ul>
-            <li>text: <input type="text" value={fontText} style={{ font: fontText }} onChange={e => setFontText(e.target.value)} /></li>
-            <li>ui: <input type="text" value={fontUi} style={{ font: fontUi }} onChange={e => setFontUi(e.target.value)} /></li>
+            <li>text: <input type="text" value={fontText.value()} style={{ font: fontText.value() }} onChange={e => fontText.setValue(e.target.value)} /></li>
+            <li>ui: <input type="text" value={fontUi.value()} style={{ font: fontUi.value() }} onChange={e => fontUi.setValue(e.target.value)} /></li>
         </ul>
         <p style={{ display: "flex", gap: "0.5em" }}>
             <button onClick={() => {
-                setPrefFontText(fontText);
-                setPrefFontUi(fontUi);
+                fontText.save();
+                fontUi.save();
             }}>Save</button>
             <button onClick={() => {
-                setFontText(prefFontText);
-                setFontUi(prefFontUi);
+                fontText.reload();
+                fontUi.reload();
             }}>Reset</button>
         </p>
         <h2>Block/Mute:</h2>
         <p>users:</p>
         <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "max-content max-content", columnGap: "0.5em" }}>
-            {muteUsers.map(m => <>
-                <div key={`p:${m.pk}`} style={{ ...(m.scope === "remove" ? { textDecoration: "line-through" } : m.added ? { fontStyle: "italic" } : {}) }}>{m.pk}</div>
-                <div key={`b:${m.pk}`} style={{ marginLeft: "1em", display: "flex" }}>
-                    <button style={{ flex: 1 }} onClick={e => setMuteUsers(produce(draft => {
-                        const r = draft.find(r => r.pk === m.pk);
-                        if (r) r.scope = ({ public: "private", private: "local", local: "remove", remove: "public" } as const)[m.scope];
-                    }))}>{m.scope}</button>
-                </div>
-            </>)}
+            {(() => {
+                const prefval = mutepks.prefvalue();
+                return mutepks.value().map((m, i) => <Fragment key={m.pk}>
+                    <div style={{ ...(m.scope === "remove" ? { textDecoration: "line-through" } : m.scope !== prefval[i]?.scope ? { fontStyle: "italic" } : {}) }}>{m.pk}</div>
+                    <div style={{ marginLeft: "1em", display: "flex" }}>
+                        <button style={{ flex: 1 }} onClick={e => mutepks.setValue(produce(draft => {
+                            const r = draft.find(r => r.pk === m.pk);
+                            if (r) r.scope = ({ public: "private", private: "local", local: "remove", remove: "public" } as const)[m.scope];
+                        }))}>{m.scope}</button>
+                    </div>
+                </Fragment>);
+            })()}
             <div>
                 <MultiInput value={mutepk} placeholder="npub or hex..." style={{ fontFamily: "monospace" }} size={64} onChange={s => {
                     setMutepk(s.map(s => normb32(s, "npub")));
                 }} />
             </div>
-            <div style={{ marginLeft: "1em", display: "flex" }}>
-                <button style={{ flex: 1 }} disabled={mutepk.some(p => !expectn(p, "npub"))} onClick={e => setMuteUsers(produce(draft => {
+            <div style={{ marginLeft: "1em" }}>
+                <button style={{ width: "100%" }} disabled={mutepk.some(p => !expectn(p, "npub"))} onClick={e => mutepks.setValue(produce(draft => {
                     const pks = mutepk.filter(p => !draft.find(r => r.pk === p));
                     if (pks.length === 0) {
                         return;
                     }
                     draft.push(...pks.map(pk => ({ pk, scope: "private", added: true } as const)));
                     setMutepk([""]);
-                }))}>add</button>
+                }))}>Add</button>
             </div>
         </div>
         <p>text pattern:</p>
         <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "max-content max-content", columnGap: "0.5em" }}>
-            {muteRegexlocal.map((m, i) => <>
-                <div key={`p:${i}`}>
-                    <input
-                        type="text"
-                        value={m.pattern}
-                        style={{ ...(m.removed ? { textDecoration: "line-through" } : m.added ? { fontStyle: "italic" } : {}), fontFamily: "monospace" }}
-                        onChange={e => {
-                            const value = e.target.value;
-                            if (muteRegexlocal[i].pattern !== value) {
-                                setMuteRegexlocal(produce(draft => { draft[i].pattern = value; }));
-                            }
-                        }}
-                    />
-                </div>
-                <div key={`b:${i}`} style={{ marginLeft: "1em", display: "flex" }}>
-                    <button style={{ flex: 1 }} onClick={e => setMuteRegexlocal(produce(draft => {
-                        draft[i].removed = !draft[i].removed;
-                    }))}>{m.removed ? "Undo" : "Remove"}</button>
-                </div>
-            </>)}
+            {(() => {
+                const prefval = muteregexs.prefvalue();
+                return muteregexs.value().map((m, i) => <Fragment key={i}>
+                    <div style={{ flex: 1, display: "flex" }}>
+                        <input
+                            type="text"
+                            value={m.pattern}
+                            style={{
+                                ...(m.scope === "remove"
+                                    ? { textDecoration: "line-through" }
+                                    : m.pattern !== prefval[i]?.pattern
+                                        ? { fontStyle: "italic" }
+                                        : {}),
+                                fontFamily: "monospace",
+                                flex: 1,
+                            }}
+                            onChange={e => {
+                                const value = e.target.value;
+                                muteregexs.setValue(produce(draft => { draft[i].pattern = value; }));
+                            }}
+                        />
+                    </div>
+                    <div style={{ display: "flex" }}>
+                        <button style={{ flex: 1 }} onClick={e => muteregexs.setValue(produce(draft => {
+                            draft[i].scope = rot(draft[i].scope, ["local", "remove"]);
+                        }))}>{m.scope}</button>
+                    </div>
+                </Fragment>);
+            })()}
             <div>
                 <MultiInput value={mutepat} placeholder="regex..." style={{ fontFamily: "monospace" }} size={50} onChange={s => setMutepat(s)} />
             </div>
-            <div style={{ marginLeft: "1em", display: "flex" }}>
-                <button style={{ flex: 1 }} disabled={mutepat.some(s => s === "")} onClick={e => setMuteRegexlocal(produce(draft => {
+            <div>
+                <button style={{ width: "100%" }} disabled={mutepat.some(s => s === "")} onClick={e => muteregexs.setValue(produce(draft => {
                     const rs = mutepat.filter(mp => !draft.find(r => r.pattern === mp));
                     if (rs.length === 0) {
                         return;
                     }
-                    draft.push(...rs.map(r => ({ pattern: r, added: true, removed: false } as const)));
+                    draft.push(...rs.map(r => ({ pattern: r, scope: "local" as const })));
                     setMutepat([""]);
-                }))}>add</button>
+                }))}>Add</button>
             </div>
         </div>
         <p style={{ display: "flex", gap: "0.5em" }}>
             <button onClick={() => {
-                setPrefMuteUserpublic(muteUsers.filter(u => u.scope === "public").map(u => nip19.decode(u.pk).data as string));
-                setPrefMuteUserprivate(muteUsers.filter(u => u.scope === "private").map(u => nip19.decode(u.pk).data as string));
-                setPrefMuteUserlocal(muteUsers.filter(u => u.scope === "local").map(u => nip19.decode(u.pk).data as string));
-                setPrefMuteRegexlocal(muteRegexlocal.filter(r => !r.removed).map(r => r.pattern));
-
-                setMuteUsers([
-                    ...(muteUsers.filter(u => u.scope === "public").map(u => ({ ...u, added: false }))),
-                    ...(muteUsers.filter(u => u.scope === "private").map(u => ({ ...u, added: false }))),
-                    ...(muteUsers.filter(u => u.scope === "local").map(u => ({ ...u, added: false }))),
-                ]);
-                setMuteRegexlocal(muteRegexlocal.filter(r => !r.removed).map(r => ({ pattern: r.pattern, added: false, removed: false })));
-
-                // TODO: publish
-                // TODO: flush noswk streams
+                mutepks.save();
+                muteregexs.save();
+                // TODO: publish?
+                // TODO: notify UI?
             }}>Save</button>
             <button onClick={() => {
-                setMuteUsers([
-                    ...(prefMuteUserpublic.map(pk => ({ pk: nip19.npubEncode(pk), scope: "public" as const, added: false }))),
-                    ...(prefMuteUserprivate.map(pk => ({ pk: nip19.npubEncode(pk), scope: "private" as const, added: false }))),
-                    ...(prefMuteUserlocal.map(pk => ({ pk: nip19.npubEncode(pk), scope: "local" as const, added: false }))),
-                ]);
-                setMuteRegexlocal(prefMuteRegexlocal.map(pattern => ({ pattern, added: false, removed: false })));
+                mutepks.reload();
+                muteregexs.reload();
             }}>Reset</button>
         </p>
-    </div>;
+    </div >;
 };

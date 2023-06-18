@@ -374,7 +374,7 @@ export class NostrWorker {
                             for (const dev of r.ok.values()) {
                                 const ev = dev.event?.event;
                                 if (!ev) continue;
-                                if (ev.pubkey !== pubkey || ev.kind !== Kind.Contacts) {
+                                if (ev.pubkey !== pubkey || ![Kind.Contacts, Kind.RelayList].includes(ev.kind)) {
                                     // !?
                                     continue;
                                 }

@@ -51,17 +51,13 @@ export default {
             null
             | { pubkey: string; }
             | { pubkey: string, privkey: string; }
-            | { pubkey: string, nip07: true; }
-        >("preferences.pubkey", null),
+        // | { pubkey: string, nip07: true; }
+        >("preferences.account", null),
         relays: atomWithStorage<{
             url: string;
             read: boolean;
             write: boolean;
-            public: boolean;
-            // following: boolean;
-            // dm: boolean;
-            // publicchat: boolean;
-            // global: boolean;
+            scope: "public" | "local";
         }[]>("preferences.relays", []),
         colors: {
             normal: atomWithStorage("preferences.colors.normal", "#ccc"),
@@ -85,10 +81,8 @@ export default {
         // should be "list" not special "mute"
         // TODO: levels: just user, repost, mention
         mute: {
-            userpublic: atomWithStorage<string[]>("preferences.mute.userpublic", []),
-            userprivate: atomWithStorage<string[]>("preferences.mute.userprivate", []),
-            userlocal: atomWithStorage<string[]>("preferences.mute.userlocal", []),
-            regexlocal: atomWithStorage<string[]>("preferences.mute.regexlocal", []),
+            pubkeys: atomWithStorage<{ pk: string, scope: "public" | "private" | "local"; }[]>("preferences.mute.pubkeys", []),
+            regexs: atomWithStorage<{ pattern: string, scope: "local"; }[]>("preferences.mute.regexs", []),
         },
     },
     tabs: atomWithStorage<Tabdef[]>("tabs", initTabdef),

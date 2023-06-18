@@ -342,7 +342,7 @@ export function relayInit(
             unsub: () => {
                 const subLn = subListeners[subid];
                 if (!subLn) {
-                    console.error(new Error("unsub could not find subListeneres?"));
+                    console.error(new Error("unsub could not find subListeners?"));
                     return;
                 }
                 killed = true;

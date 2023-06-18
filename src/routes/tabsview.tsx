@@ -641,10 +641,8 @@ const Tabsview: FC = () => {
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
-    const [muteuserpublic] = useAtom(state.preferences.mute.userpublic);
-    const [muteuserprivate] = useAtom(state.preferences.mute.userprivate);
-    const [muteuserlocal] = useAtom(state.preferences.mute.userlocal);
-    const [muteregexlocal] = useAtom(state.preferences.mute.regexlocal);
+    const [mutepubkeys] = useAtom(state.preferences.mute.pubkeys);
+    const [muteregexs] = useAtom(state.preferences.mute.regexs);
     const noswk = useNostrWorker();
     const streams = useMemo(() => new PostStreamWrapper(noswk), [noswk]);  // memo??
     const [identiconStore] = useAtom(state.identiconStore);
@@ -923,7 +921,7 @@ const Tabsview: FC = () => {
                 if (!ev.reason) return "";
                 if (typeof ev.reason === "object" && "code" in ev.reason && "reason" in ev.reason) {
                     // seems CloseEvent; special format
-                    return `(${ev.reason.code}${!ev.reason ? "" : ` ${ev.reason}`})`;
+                    return `(${ev.reason.code}${!ev.reason.reason ? "" : ` ${ev.reason.reason}`}): `;
                 } else {
                     // dunno; just rely on String()
                     return String(ev.reason);
@@ -949,8 +947,8 @@ const Tabsview: FC = () => {
         return () => noswk.onAuth.off("", lnr);
     });
     useEffect(() => {
-        streams.setMutes({ users: [...muteuserpublic, ...muteuserprivate, ...muteuserlocal], regexs: muteregexlocal });
-    }, [streams, muteuserpublic, muteuserprivate, muteuserlocal, muteregexlocal]);
+        streams.setMutes({ users: mutepubkeys.map(m => m.pk), regexs: muteregexs.map(m => m.pattern) });
+    }, [streams, mutepubkeys, muteregexs]);
     const tas = !tab ? undefined : tabstates.get(tab.id);
     const getselpost = (): Post | null => {
         if (!tas?.selected?.id) return null;
