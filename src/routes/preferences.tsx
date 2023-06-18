@@ -7,7 +7,7 @@ import invariant from "tiny-invariant";
 import TextInput from "../components/textinput";
 import { NostrWorker, useNostrWorker } from "../nostrworker";
 import state from "../state";
-import { expectn, rescue, sha256str } from "../util";
+import { expectn, metadatajsoncontent, rescue, sha256str, shortstyle } from "../util";
 import { MuxPub } from "../pool";
 
 const MultiInput: FC<Omit<Parameters<typeof TextInput>[0], "value" | "onChange"> & {
@@ -19,6 +19,19 @@ const MultiInput: FC<Omit<Parameters<typeof TextInput>[0], "value" | "onChange">
         value={Array.isArray(value) ? value.join("\n") : value}
         onChange={text => onChange(text.split("\n"))}
     />;
+
+const PubkeyText: FC<{ pk: string; }> = ({ pk }) => {
+    const noswk = useNostrWorker();
+    const [prof, setProf] = useState(() => noswk.getProfile(pk, Kind.Metadata, ev => setProf(ev)));
+
+    const meta = prof && metadatajsoncontent(prof);
+    const name = meta?.name || meta?.display_name;
+
+    return <div style={{ display: "flex" }}>
+        <div style={{ ...shortstyle, flex: 1 }}>{nip19.npubEncode(pk)}</div>
+        {name && <div style={{ ...shortstyle, maxWidth: "15em" }}>{name}</div>}
+    </div>;
+};
 
 function usePref<T, U = T>(pr: { atom: PrimitiveAtom<T>, load?: (v: T) => U, save?: (v: U) => T; }) {
     const load = pr.load || ((v: T): U => v as unknown as U);
@@ -189,15 +202,7 @@ export default () => {
         { pk: string; scope: "public" | "private" | "local" | "remove"; }[]
     >({
         atom: state.preferences.mute.pubkeys,
-        load: s => s.map(m => ({ pk: nip19.npubEncode(m.pk), scope: m.scope })),
-        save: v => v.filter((m): m is { pk: string; scope: "public" | "private" | "local"; } => m.scope !== "remove").map(v => {
-            const d = nip19.decode(v.pk);
-            if (d.type !== "npub") throw new Error(`program error: not a npub: ${d.type}`);
-            return {
-                pk: d.data,
-                scope: v.scope
-            };
-        }),
+        save: v => v.filter((m): m is { pk: string; scope: "public" | "private" | "local"; } => m.scope !== "remove"),
     });
     const muteregexs = usePref<
         { pattern: string; scope: "local"; }[],
@@ -422,11 +427,13 @@ export default () => {
         </p>
         <h2>Block/Mute:</h2>
         <p>users:</p>
-        <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "max-content max-content", columnGap: "0.5em" }}>
+        <div style={{ marginLeft: "2em", display: "grid", gridTemplateColumns: "minmax(0,1fr) max-content", columnGap: "0.5em" }}>
             {(() => {
                 const prefval = mutepks.prefvalue();
                 return mutepks.value().map((m, i) => <Fragment key={m.pk}>
-                    <div style={{ ...(m.scope === "remove" ? { textDecoration: "line-through" } : m.scope !== prefval[i]?.scope ? { fontStyle: "italic" } : {}) }}>{m.pk}</div>
+                    <div style={{ ...(m.scope === "remove" ? { textDecoration: "line-through" } : m.scope !== prefval[i]?.scope ? { fontStyle: "italic" } : {}) }}>
+                        <PubkeyText pk={m.pk} />
+                    </div>
                     <div style={{ marginLeft: "1em", display: "flex" }}>
                         <button style={{ flex: 1 }} onClick={e => mutepks.setValue(produce(draft => {
                             const r = draft.find(r => r.pk === m.pk);

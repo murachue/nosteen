@@ -13,16 +13,7 @@ import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { RecentPost, Tabdef, newtabstate } from "../state";
 import { DeletableEvent, MetadataContent, Post } from "../types";
-import { NeverMatch, bsearchi, expectn, getmk, postindex, rescue, seleltext, sha256str, shortstyle } from "../util";
-
-const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
-const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
-    const json = jsoncontent(ev);
-    if (typeof json === "object" && json !== null) {
-        return json as MetadataContent;
-    }
-    return null;
-};
+import { NeverMatch, bsearchi, expectn, getmk, metadatajsoncontent, postindex, rescue, seleltext, sha256str, shortstyle } from "../util";
 
 const lookupreposttarget = (noswk: NostrWorker, post: Post, update: (post: DeletableEvent) => void) => {
     // if already resolved, return it.

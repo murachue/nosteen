@@ -2,7 +2,7 @@ import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 import { Event, nip19 } from "nostr-tools";
 import { CSSProperties } from "react";
-import { Post } from "./types";
+import { DeletableEvent, MetadataContent, Post } from "./types";
 
 export const bsearchi = <T>(arr: T[], comp: (x: T) => boolean): number => {
     let left = 0;
@@ -110,6 +110,16 @@ export const seleltext = (el: HTMLElement) => {
     setTimeout(() => {
         selection.addRange(range);
     }, 0);
+};
+
+export const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
+
+export const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {
+    const json = jsoncontent(ev);
+    if (typeof json === "object" && json !== null) {
+        return json as MetadataContent;
+    }
+    return null;
 };
 
 export const NeverMatch = /(?!)/;
