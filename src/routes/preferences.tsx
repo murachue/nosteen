@@ -449,7 +449,7 @@ export default () => {
             </div>
             <div style={{ marginLeft: "1em" }}>
                 <button style={{ width: "100%" }} disabled={mutepk.some(p => !expectn(p, "npub"))} onClick={e => mutepks.setValue(produce(draft => {
-                    const pks = mutepk.filter(p => !draft.find(r => r.pk === p));
+                    const pks = mutepk.map(p => expectn(p, "npub")?.data).filter((p): p is string => !!p && !draft.find(r => r.pk === p));
                     if (pks.length === 0) {
                         return;
                     }
