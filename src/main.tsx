@@ -44,10 +44,14 @@ const App = () => {
         noswk.onMyContacts.on("", onMyContacts);
         return () => {
             noswk.onMyContacts.off("", onMyContacts);
+        };
+    }, [tabs, prefaccount]);
+    useEffect(() => {
+        return () => {
             noswk.setSubscribes(new Map());
             noswk.setIdentity(null);
         };
-    }, [tabs, prefaccount]);
+    }, []);
 
     return <HashRouter>
         <Routes>
