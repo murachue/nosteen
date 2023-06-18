@@ -42,7 +42,11 @@ const App = () => {
             setsub();
         };
         noswk.onMyContacts.on("", onMyContacts);
-        return () => { noswk.onMyContacts.off("", onMyContacts); };
+        return () => {
+            noswk.onMyContacts.off("", onMyContacts);
+            noswk.setSubscribes(new Map());
+            noswk.setIdentity(null);
+        };
     }, [tabs, prefaccount]);
 
     return <HashRouter>
