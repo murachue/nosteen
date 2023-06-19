@@ -312,13 +312,16 @@ export default () => {
                 const rs = relays.save();
                 if (!account.prefvalue()?.pubkey) {
                     alert("account not ready");
+                    return;
                 }
                 if (noswk.getRelays().filter(r => r.write && r.healthy).length === 0) {
                     alert("no writable relays available");
+                    return;
                 }
                 // XXX: NIP-65 states "not for configuring one's client" but we temporarily use it for configuring...
                 //      saving relays to kind3.content is not acceptable for me.
                 // FIXME: use emitevent() for check publish status but it requires refactoring.
+                // FIXME: it should be sent to also removing/non-write relays?
                 emitevent(noswk, account.prefvalue(), {
                     kind: Kind.RelayList,
                     content: "",

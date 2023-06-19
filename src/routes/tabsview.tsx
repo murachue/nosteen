@@ -150,7 +150,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                 </div>
                 {(() => {
                     const cw = derefev?.event?.event?.tags?.find(t => t[0] === "content-warning");
-                    return !cw ? null : <div style={{
+                    return (cw || post.event?.deleteevent || derefev?.deleteevent) && <div style={{
                         position: "absolute",
                         top: "0",
                         left: "0",
@@ -161,7 +161,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                         display: "flex",
                         alignItems: "center",
                     }}>
-                        <div style={shortstyle}>{cw[1]}</div>
+                        <div style={shortstyle}>{cw ? cw[1] : "deleted"}</div>
                     </div>;
                 })()}
             </TD>
