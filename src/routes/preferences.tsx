@@ -1,14 +1,14 @@
 import { produce } from "immer";
 import { PrimitiveAtom, useAtom } from "jotai";
-import { Event, EventTemplate, Kind, finishEvent, generatePrivateKey, getPublicKey, nip19, utils } from "nostr-tools";
-import { FC, Fragment, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Kind, generatePrivateKey, getPublicKey, nip19, utils } from "nostr-tools";
+import { FC, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import invariant from "tiny-invariant";
 import TextInput from "../components/textinput";
-import { NostrWorker, useNostrWorker } from "../nostrworker";
+import { useNostrWorker } from "../nostrworker";
 import state from "../state";
-import { broadcast, contactsjsoncontent, expectn, metadatajsoncontent, rescue, sha256str, shortstyle, signevent } from "../util";
-import { MuxPub } from "../pool";
+import { broadcast, contactsjsoncontent, expectn, metadatajsoncontent, signevent } from "../util/nostr";
+import { rescue, sha256str } from "../util/pure";
+import { shortstyle, useEventSnapshot } from "../util/react";
 
 const MultiInput: FC<Omit<Parameters<typeof TextInput>[0], "value" | "onChange"> & {
     value: string | string[];
@@ -71,14 +71,6 @@ function usePref<T, U = T>(pr: { atom: PrimitiveAtom<T>, load?: (v: T) => U, sav
 function rot<T>(value: T, list: T[]) {
     const i = list.indexOf(value);
     return list[0 <= i && i < list.length - 1 ? i + 1 : 0];
-}
-
-function useEventSnapshot<T>(subscribe: (onStoreChange: () => void) => () => void, getSnapshot: () => T): T {
-    const [value, setValue] = useState(() => getSnapshot());
-    useEffect(() => {
-        return subscribe(() => setValue(getSnapshot()));
-    }, [subscribe, getSnapshot]);
-    return value;
 }
 
 export default () => {
