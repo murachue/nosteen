@@ -1101,7 +1101,7 @@ const Tabsview: FC = () => {
             desc,
             event,
             postAt,
-            postByRelay: new Map(post.relays.map(r => [utils.normalizeURL(r.relay.relay.url), null])),
+            postByRelay: new Map(post.relays.map(r => [utils.normalizeURL(r.relay.url), null])),
             pub: post.pub,
         };
         recentpubs.slice(4).forEach(rp => rp.pub.forget());

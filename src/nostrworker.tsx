@@ -593,12 +593,18 @@ export class NostrWorker {
     getPostStream(name: string) {
         return this.postStreams.get(name);
     }
-    postEvent(ev: Event) {
+    postEvent(ev: Event, forcerelays?: string[]) {
         if (!verifySignature(ev)) throw new Error(`event not valid: ${JSON.stringify(ev)}`);
-        const relays = this.getLivingRelays().filter(r => r.write);
+        const relays = forcerelays
+            ? forcerelays.map(url => {
+                const r = this.mux.getrelay(url);
+                r.wantweak();
+                return r;
+            })
+            : this.getLivingRelays().filter(r => r.write).map(r => r.relay);
         return {
             relays,
-            pub: this.mux.publish(relays.map(r => r.url), ev),
+            pub: this.mux.publish(relays.map(r => r.relay.url), ev),
         };
     }
     addListener(name: string, fn: (msg: NostrWorkerListenerMessage) => void) {

@@ -79,14 +79,14 @@ type RelayPosts = {
     postByRelay: Map<string, null | { relay: string; recvAt: number; ok: boolean; reason: string; }>;
     pub: MuxPub;
 };
-const broadcast = (noswk: NostrWorker, event: Event, onRealize: (repo: RelayPosts) => void): RelayPosts => {
+const broadcast = (noswk: NostrWorker, event: Event, onRealize: (repo: RelayPosts) => void, relays?: string[]): RelayPosts => {
     const postAt = Date.now();
-    const post = noswk.postEvent(event);
+    const post = noswk.postEvent(event, relays);
 
     const repo: RelayPosts = {
         event,
         postAt,
-        postByRelay: new Map(post.relays.map(r => [utils.normalizeURL(r.relay.relay.url), null])),
+        postByRelay: new Map(post.relays.map(r => [utils.normalizeURL(r.relay.url), null])),
         pub: post.pub,
     };
     post.pub.on("ok", recv => {
@@ -106,20 +106,21 @@ const broadcast = (noswk: NostrWorker, event: Event, onRealize: (repo: RelayPost
     // repo.pub.forget() is callers responsibility.
     return repo;
 };
-const emitevent = async (noswk: NostrWorker, account: null | { pubkey: string; } | { privkey: string; }, tev: EventTemplate, onRealize: (repo: ReturnType<typeof broadcast>) => void) => {
-    const event = await (async () => {
-        if (account && "privkey" in account) {
-            return finishEvent(tev, account.privkey);
-        } else if (window.nostr?.signEvent) {
-            const sev = await window.nostr.signEvent(tev);
-            if (sev.pubkey !== account?.pubkey) {
-                throw new Error(`NIP-07 set unexpected pubkey: pk=${sev.pubkey}, expected=${account?.pubkey}`);
-            }
-            return sev;
-        } else {
-            throw new Error("could not sign: no private key nor NIP-07 signEvent");
+const signevent = async (account: null | { pubkey: string; } | { privkey: string; }, tev: EventTemplate) => {
+    if (account && "privkey" in account) {
+        return finishEvent(tev, account.privkey);
+    } else if (window.nostr?.signEvent) {
+        const sev = await window.nostr.signEvent(tev);
+        if (sev.pubkey !== account?.pubkey) {
+            throw new Error(`NIP-07 set unexpected pubkey: pk=${sev.pubkey}, expected=${account?.pubkey}`);
         }
-    })();
+        return sev;
+    } else {
+        throw new Error("could not sign: no private key nor NIP-07 signEvent");
+    }
+};
+const emitevent = async (noswk: NostrWorker, account: null | { pubkey: string; } | { privkey: string; }, tev: EventTemplate, onRealize: (repo: ReturnType<typeof broadcast>) => void) => {
+    const event = await signevent(account, tev);
     return broadcast(noswk, event, onRealize);
 };
 
@@ -309,6 +310,7 @@ export default () => {
         <p style={{ display: "flex", gap: "0.5em" }}>
             <button onClick={() => { relays.save(); }}>Save</button>
             <button onClick={() => {
+                const oldrs = relays.prefvalue();
                 const rs = relays.save();
                 if (!account.prefvalue()?.pubkey) {
                     alert("account not ready");
@@ -318,17 +320,22 @@ export default () => {
                     alert("no writable relays available");
                     return;
                 }
+                // we send both old and new write relays.
+                // note: if you want to send only to new write relays, just save then save&publish.
+                // XXX: how about read-only relays? but they may be paid-relays and user may not paid.
+                const writerelays = [...new Set([...oldrs, ...rs].filter(r => r.write).map(r => r.url)).values()];
                 // XXX: NIP-65 states "not for configuring one's client" but we temporarily use it for configuring...
                 //      saving relays to kind3.content is not acceptable for me.
-                // FIXME: use emitevent() for check publish status but it requires refactoring.
-                // FIXME: it should be sent to also removing/non-write relays?
-                emitevent(noswk, account.prefvalue(), {
+                signevent(account.prefvalue(), {
                     kind: Kind.RelayList,
                     content: "",
                     tags: rs.filter(r => r.scope === "public" && (r.read || r.write)).map(r => ["r", r.url, ...(r.read && r.write ? [] : r.read ? ["read"] : ["write"])]),
                     created_at: Math.floor(Date.now() / 1000),
-                }, repo => {
-                    // TODO: some experience
+                }).then(ev => {
+                    // FIXME: refactor
+                    broadcast(noswk, ev, repo => {
+                        // TODO: some experience
+                    }, writerelays);
                 });
             }}>Save & Publish</button>
             <button disabled={!window.nostr} style={{ marginLeft: "1em" }} onClick={() => {
