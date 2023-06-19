@@ -46,6 +46,8 @@ export const expectn = <T extends ReturnType<typeof nip19.decode>["type"]>(s: st
     }
 };
 
+export const reventof = (ev: DeletableEvent) => ev.deleteevent ? null : ev.event;
+
 export const jsoncontent = (ev: DeletableEvent) => rescue(() => JSON.parse(ev.event!.event.content), undefined);
 
 export const metadatajsoncontent = (ev: DeletableEvent): MetadataContent | null => {

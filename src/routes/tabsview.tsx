@@ -13,7 +13,9 @@ import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { RecentPost, Tabdef, newtabstate } from "../state";
 import { DeletableEvent, MetadataContent, Post } from "../types";
-import { NeverMatch, bsearchi, expectn, getmk, metadatajsoncontent, postindex, rescue, seleltext, sha256str, shortstyle } from "../util";
+import { expectn, metadatajsoncontent, postindex } from "../util/nostr";
+import { NeverMatch, bsearchi, getmk, reltime, rescue, sha256str, timefmt } from "../util/pure";
+import { seleltext, shortstyle } from "../util/react";
 
 const lookupreposttarget = (noswk: NostrWorker, post: Post, update: (post: DeletableEvent) => void) => {
     // if already resolved, return it.
@@ -321,70 +323,6 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
         </ListView>
     </div>;
 });
-
-const timefmt0 = (v: number, t: string) => v.toString().padStart(t.length, "0");
-const timefmt = (date: Date, fmt: string) => {
-    let str = "";
-    const re = /Y+|M+|D+|h+|m+|s+|S+|[^YMDhmsS]+/g;
-    while (true) {
-        const grp = re.exec(fmt);
-        if (!grp) return str;
-        const token = grp[0];
-        switch (token[0]) {
-            case "Y": {
-                str += timefmt0(date.getFullYear(), token);
-                break;
-            }
-            case "M": {
-                str += timefmt0(date.getMonth() + 1, token);
-                break;
-            }
-            case "D": {
-                str += timefmt0(date.getDate(), token);
-                break;
-            }
-            case "h": {
-                str += timefmt0(date.getHours(), token);
-                break;
-            }
-            case "m": {
-                str += timefmt0(date.getMinutes(), token);
-                break;
-            }
-            case "s": {
-                str += timefmt0(date.getSeconds(), token);
-                break;
-            }
-            case "S": {
-                str += Math.floor(date.getMilliseconds() / 1000 * (10 ** token.length));
-                break;
-            }
-            default: {
-                str += token;
-                break;
-            }
-        }
-    }
-};
-
-const reltime = (bidelta: number) => {
-    const delta = Math.abs(bidelta);
-    return (bidelta < 0 ? "-" : "+") + (() => {
-        if (delta < 1000) {
-            return `${delta}ms`;
-        } else if (delta < 10 * 1000) {
-            return `${(delta / 1000).toFixed(2)}s`;
-        } else if (delta < 60 * 1000) {
-            return `${(delta / 1000).toFixed(1)}s`;
-        } else if (delta < 60 * 60 * 1000) {
-            return `${(delta / 60 / 1000).toFixed(1)}m`;
-        } else if (delta < 24 * 60 * 60 * 1000) {
-            return `${(delta / 60 / 60 / 1000).toFixed(1)}h`;
-        } else {
-            return `${(delta / 24 / 60 / 60 / 1000).toFixed(1)}d`;
-        }
-    })();
-};
 
 // NostrWorker wrapper with immutable subs store that is friendly for React.
 class PostStreamWrapper {
