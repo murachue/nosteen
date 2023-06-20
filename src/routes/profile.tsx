@@ -1,6 +1,7 @@
+import { produce } from "immer";
 import { useAtom } from "jotai";
 import { Kind, Relay, nip19 } from "nostr-tools";
-import { Dispatch, FC, SetStateAction, useEffect, useState } from "react";
+import { Dispatch, FC, Fragment, SetStateAction, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import TabText from "../components/tabtext";
 import TextInput from "../components/textinput";
@@ -10,15 +11,15 @@ import { DeletableEvent } from "../types";
 import { emitevent, metadatajsoncontent, rescue } from "../util";
 import { timefmt } from "../util/pure";
 import { shortstyle } from "../util/react";
-import { produce } from "immer";
 
 const ProfLine: FC<{
     curprof: Record<string, string> | null;
     editprof: Record<string, string | undefined> | null;
     field: string | string[];
+    disabled?: boolean;
     setvalue?: Dispatch<SetStateAction<Record<string, string | undefined>>>;
     onChange?: (value: string | undefined | null) => void;
-}> = ({ curprof, editprof, field, setvalue, onChange }) => {
+}> = ({ curprof, editprof, field, disabled, setvalue, onChange }) => {
     const [colornormal] = useAtom(state.preferences.colors.normal);
     const [colorbase] = useAtom(state.preferences.colors.base);
 
@@ -52,9 +53,10 @@ const ProfLine: FC<{
             placeholder={editvalue === undefined ? "undefined" : ""}
             onChange={e => set(e.target.value)}
             style={{ flex: 1, background: colorbase, color: colornormal }}
+            disabled={disabled}
         />
-        <button disabled={editvalue === undefined} style={{ marginLeft: "0.5em" }} onClick={e => set(undefined)} title="undefine">×</button>
-        <button disabled={editvalue === curvalue} style={{ marginLeft: "0.5em" }} onClick={e => set(null)} title="revert">⎌</button>
+        <button disabled={disabled || editvalue === undefined} style={{ marginLeft: "0.5em" }} onClick={e => set(undefined)} title="undefine">×</button>
+        <button disabled={disabled || editvalue === curvalue} style={{ marginLeft: "0.5em" }} onClick={e => set(null)} title="revert">⎌</button>
     </>;
 };
 
@@ -96,9 +98,11 @@ const Profile: FC<{}> = () => {
     }, [noswk, account?.pubkey]);
     const curprof = profev && rescue(() => metadatajsoncontent(profev), null);
 
-    const [editprof, setEditprof] = useState</* MetadataContent */Record<string, string | undefined>>({});
+    const [editprof, setEditprof] = useState<Record<string, string | undefined>>({});
+    const [extrakey, setExtrakey] = useState("");
+    const [extravalue, setExtravalue] = useState("");
 
-    return <div>
+    return <div style={{ display: "flex", flexDirection: "column" }}>
         <h1>
             <div style={{ display: "inline-block" }}>
                 <Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>
@@ -205,6 +209,64 @@ const Profile: FC<{}> = () => {
                     {/* TODO: extra fields add/edit/remove */}
                     {/* <div style={{ textAlign: "right" }}>json:</div>
                 <TabText style={{ ...shortstyle, maxWidth: "20em" }} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{!profprof.metadata ? "?" : JSON.stringify(profprof.metadata.event?.event)}</TabText> */}
+                    {(() => {
+                        const newLocal = {
+                            // base guard
+                            name: "",
+                            display_name: "",
+                            picture: "",
+                            banner: "",
+                            website: "",
+                            nip05: "",
+                            lud06: "",
+                            lud16: "",
+                            about: "",
+                            // then values
+                            ...(curprof || {}),
+                            ...editprof
+                        };
+                        const kv = Object.entries(newLocal)
+                            .filter(([k, v]) => !["name", "display_name", "picture", "banner", "website", "nip05", "lud06", "lud16", "about"].includes(k));
+                        kv.push(["", ""]);
+                        const badnew = extrakey === "" || Object.hasOwn(newLocal, extrakey);
+                        // XXX: we relying Object.entries order is stable...
+                        return kv.map(([k, v], i) => <Fragment key={i}>
+                            <div style={{ textAlign: "right" }}>
+                                {k === ""
+                                    ? <div style={{ border: `1px solid ${badnew ? "red" : "transparent"}` }}>
+                                        <input
+                                            value={extrakey}
+                                            onChange={e => setExtrakey(e.target.value)}
+                                            style={{
+                                                background: colorbase,
+                                                color: colornormal,
+                                            }}
+                                        />
+                                    </div>
+                                    : `${k}:`}
+                            </div>
+                            <div style={{ display: "flex" }}>
+                                {/* we add this in the loop that we want to stable ProfLine for new and just added */}
+                                <ProfLine curprof={curprof} editprof={editprof} field={k} disabled={k === "" && badnew} onChange={value => {
+                                    const kk = k || extrakey;
+                                    if (!kk) return;
+                                    // reverting new values to "undefined" to not shift UI
+                                    const v = value === null && (curprof as Record<string, string> | null)?.[kk] === undefined ? undefined : value;
+                                    setEditprof(produce(draft => {
+                                        if (v === null && (curprof as Record<string, string> | null)?.[kk] !== undefined) {
+                                            delete draft[kk];
+                                        } else {
+                                            draft[kk] = v === null ? undefined : v;
+                                        }
+                                    }));
+                                    if (k === "") {
+                                        setExtrakey("");
+                                        setExtravalue("");
+                                    }
+                                }} />
+                            </div>
+                        </Fragment>);
+                    })()}
                     <div style={{ textAlign: "right" }}>rewritten at:</div>
                     <div style={shortstyle}>{!profev ? "?" : timefmt(new Date(profev.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
                 </div>
@@ -217,7 +279,7 @@ const Profile: FC<{}> = () => {
                             created_at: Math.floor(Date.now() / 1000),
                         }, repo => {
                             // TODO: some experience
-                        });
+                        }).then(posts => setEditprof({}));
                     }}>Publish</button>
                     <button style={{ marginLeft: "1em" }} onClick={e => setEditprof({})}>Reload</button>
                 </div>
