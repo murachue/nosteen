@@ -1,0 +1,192 @@
+import { useAtom } from "jotai";
+import { Kind, Relay, nip19 } from "nostr-tools";
+import { Dispatch, FC, SetStateAction, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import TabText from "../components/tabtext";
+import TextInput from "../components/textinput";
+import { useNostrWorker } from "../nostrworker";
+import state from "../state";
+import { DeletableEvent } from "../types";
+import { emitevent, metadatajsoncontent, rescue } from "../util";
+import { timefmt } from "../util/pure";
+import { shortstyle } from "../util/react";
+import { produce } from "immer";
+
+const ProfLine: FC<{
+    curprof: Record<string, string> | null;
+    editprof: Record<string, string | undefined> | null;
+    field: string | string[];
+    setvalue?: Dispatch<SetStateAction<Record<string, string | undefined>>>;
+    onChange?: (value: string | undefined | null) => void;
+}> = ({ curprof, editprof, field, setvalue, onChange }) => {
+    const [colornormal] = useAtom(state.preferences.colors.normal);
+    const [colorbase] = useAtom(state.preferences.colors.base);
+
+    const fields = Array.isArray(field) ? field : [field];
+    const owneditfield = editprof && fields.find(f => Object.hasOwn(editprof, f));
+    const curvalue = (() => {
+        if (!curprof) return undefined;
+        for (const f of fields) {
+            if (Object.hasOwn(curprof, f)) {
+                return curprof[f];
+            }
+        }
+        return undefined;
+    })();
+    const editvalue = (() => {
+        if (owneditfield) return editprof[owneditfield];
+        return curvalue;
+    })();
+
+    const set = (value: string | undefined | null) => {
+        setvalue && setvalue(produce(draft => {
+            if (value !== null) draft[fields[0]] = value;
+            else delete draft[fields[0]];
+        }));
+        onChange && onChange(value);
+    };
+
+    return <>
+        <input
+            value={editvalue || ""}
+            placeholder={editvalue === undefined ? "undefined" : ""}
+            onChange={e => set(e.target.value)}
+            style={{ background: colorbase, color: colornormal }}
+        />
+        <button disabled={editvalue === undefined} style={{ marginLeft: "0.5em" }} onClick={e => set(undefined)} title="undefine">×</button>
+        <button disabled={editvalue === curvalue} style={{ marginLeft: "0.5em" }} onClick={e => set(null)} title="revert">⎌</button>
+    </>;
+};
+
+const Profile: FC<{}> = () => {
+    const noswk = useNostrWorker();
+    const [identiconStore] = useAtom(state.identiconStore);
+    const [account] = useAtom(state.preferences.account);
+    const [colornormal] = useAtom(state.preferences.colors.normal);
+    const [colorbase] = useAtom(state.preferences.colors.base);
+    const [fonttext] = useAtom(state.preferences.fonts.text);
+    const navigate = useNavigate();
+
+    // const profev = useEventSnapshot(
+    //     useCallback(onStoreChange => {
+    //         const pk = account?.pubkey;
+    //         if (!pk) return () => { };
+    //         noswk.getProfile(pk, Kind.Metadata, onStoreChange, undefined, 60 * 1000);
+    //         return () => { };
+    //     }, [noswk, account]),
+    //     useCallback(() => {
+    //         const pk = account?.pubkey;
+    //         if (!pk) return null;
+
+    //         return noswk.tryGetProfile(pk, Kind.Metadata)?.event;
+    //     }, [noswk, account]),
+    // );
+    // XXX: smells.
+    const [profev, setProfev] = useState<DeletableEvent | null>(() => {
+        const pk = account?.pubkey;
+        if (!pk) return null;
+        else return noswk.getProfile(pk, Kind.Metadata, ev => setProfev(ev), undefined, 60 * 1000);
+    });
+    useEffect(() => {
+        const handler = (ev: DeletableEvent) => {
+            setProfev(ev);
+        };
+        noswk.onMyMetadata.on("", handler);
+        return () => noswk.onMyMetadata.off("", handler);
+    }, [noswk, account?.pubkey]);
+    const curprof = profev && rescue(() => metadatajsoncontent(profev), null);
+
+    const [editprof, setEditprof] = useState</* MetadataContent */Record<string, string | undefined>>({});
+
+    return <div>
+        <h1>
+            <div style={{ display: "inline-block" }}>
+                <Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>
+                    &lt;&lt;
+                </Link>
+                &nbsp;
+            </div>
+            Profile
+        </h1>
+        {!account?.pubkey
+            ? <p style={{ marginLeft: "2em" }}>You are in anonymous, thus no profile. <Link to="/preferences" style={{ color: colornormal }}>Claim your identity?</Link></p>
+            : <div style={{ marginLeft: "1em" }}>
+                <div style={{
+                    display: "grid",
+                    padding: "5px",
+                    // minWidth: "10em",
+                    // maxWidth: "40em",
+                    // color: colornormal,
+                    // font: fonttext,
+                    gridTemplateColumns: "max-content 30em",
+                    columnGap: "0.5em",
+                }}>
+                    <div style={{ textAlign: "right" }}>
+                        <img src={identiconStore.png(account.pubkey)} style={{ height: "3lh", border: "1px solid", borderColor: colornormal }} />
+                    </div>
+                    <div>
+                        <TabText style={shortstyle}>{nip19.npubEncode(account.pubkey)}</TabText>
+                        <TabText style={shortstyle}>{(() => {
+                            const metaev = profev?.event;
+                            const relay: Relay | undefined = metaev && metaev.receivedfrom.keys().next().value;
+                            // should we use kind0's receivedfrom or kind10002? but using kind1's receivedfrom that is _real_/_in use_
+                            return nip19.nprofileEncode({ pubkey: account.pubkey, relays: relay && [relay.url] });
+                        })()}</TabText>
+                        <TabText style={shortstyle}>{account.pubkey}</TabText>
+                    </div>
+                    <div style={{ textAlign: "right" }}>name:</div>
+                    {/* TODO: NIP-30 */}
+                    <div><ProfLine curprof={curprof} editprof={editprof} field="name" setvalue={setEditprof} /></div>
+                    <div style={{ textAlign: "right" }}>display_name:</div>
+                    <div><ProfLine curprof={curprof} editprof={editprof} field="display_name" setvalue={setEditprof} /></div>
+                    <div style={{ textAlign: "right" }}>picture:</div>
+                    {/* TODO: img */}
+                    <div><ProfLine curprof={curprof} editprof={editprof} field="picture" setvalue={setEditprof} /></div>
+                    <div style={{ textAlign: "right" }}>banner:</div>
+                    {/* TODO: img */}
+                    <div><ProfLine curprof={curprof} editprof={editprof} field="banner" setvalue={setEditprof} /></div>
+                    <div style={{ textAlign: "right" }}>website:</div>
+                    <div><ProfLine curprof={curprof} editprof={editprof} field="website" setvalue={setEditprof} /></div>
+                    <div style={{ textAlign: "right" }}>nip05:</div>
+                    {/* TODO: NIP-05 verification */}
+                    <div><ProfLine curprof={curprof} editprof={editprof} field="nip05" setvalue={setEditprof} /></div>
+                    <div style={{ textAlign: "right" }}>lud{"16/06"}:</div>
+                    {/* TODO: correctly impl */}
+                    <div><ProfLine curprof={curprof} editprof={editprof} field={["lud16", "lud06"]} onChange={e => { }} /></div>
+                    <div style={{ textAlign: "right" }}>about:</div>
+                    {/* TODO: NIP-30 */}
+                    <div>
+                        <TextInput
+                            value={(Object.hasOwn(editprof, "about") ? editprof.about : curprof?.about) || ""}
+                            placeholder={(Object.hasOwn(editprof, "about") ? editprof.about : curprof?.about) === undefined ? "undefined" : ""}
+                            onChange={str => setEditprof(produce(draft => { draft.about = str; }))}
+                            size={50}
+                            style={{ background: colorbase, color: colornormal }}
+                        />
+                        <button disabled={(Object.hasOwn(editprof, "about") ? editprof.about : curprof?.about) === undefined} style={{ marginLeft: "0.5em" }} onClick={e => setEditprof(produce(draft => { draft.about = undefined; }))} title="undefine">×</button>
+                        <button disabled={!Object.hasOwn(editprof, "about") || editprof.about === curprof?.about} style={{ marginLeft: "0.5em" }} onClick={e => setEditprof(produce(draft => { delete draft.about; }))} title="revert">⎌</button>
+                    </div>
+                    {/* TODO: extra fields add/edit/remove */}
+                    {/* <div style={{ textAlign: "right" }}>json:</div>
+                <TabText style={{ ...shortstyle, maxWidth: "20em" }} onCopy={e => { setProfpopping(""), listref.current?.focus(); }}>{!profprof.metadata ? "?" : JSON.stringify(profprof.metadata.event?.event)}</TabText> */}
+                    <div style={{ textAlign: "right" }}>rewritten at:</div>
+                    <div style={shortstyle}>{!profev ? "?" : timefmt(new Date(profev.event!.event.created_at * 1000), "YYYY-MM-DD hh:mm:ss")}</div>
+                </div>
+                <div>
+                    <button onClick={e => {
+                        emitevent(noswk, account, {
+                            kind: Kind.Metadata,
+                            content: JSON.stringify({ ...(curprof || {}), ...editprof }),
+                            tags: profev?.event?.event?.tags || [],
+                            created_at: Math.floor(Date.now() / 1000),
+                        }, repo => {
+                            // TODO: some experience
+                        });
+                    }}>Publish</button>
+                    <button style={{ marginLeft: "1em" }} onClick={e => setEditprof({})}>Reload</button>
+                </div>
+            </div>}
+    </div>;
+};
+
+export default Profile;

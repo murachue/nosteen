@@ -9,6 +9,7 @@ import About from './routes/about';
 import ErrorPage from './routes/errorpage';
 import Global from './routes/global';
 import Preferences from './routes/preferences';
+import Profile from './routes/profile';
 import Root from './routes/root';
 import TabsView from './routes/tabsview';
 import state from './state';
@@ -59,6 +60,7 @@ const App = () => {
                 <Route path="/" element={<Root />} />
                 <Route path="/tab/*" element={<TabsView />} />
                 <Route path="/preferences" element={<Preferences />} />
+                <Route path="/profile" element={<Profile />} />
                 <Route path="/about" element={<About />} />
             </Route>
         </Routes>

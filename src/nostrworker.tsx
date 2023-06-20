@@ -286,6 +286,7 @@ export class NostrWorker {
     onHealthy = new SimpleEmitter<MuxRelayEvent>();
     onMyContacts = new SimpleEmitter<DeletableEvent>();
     onMyRelayList = new SimpleEmitter<DeletableEvent>();
+    onMyMetadata = new SimpleEmitter<DeletableEvent>();
     onAuth = new SimpleEmitter<{ relay: Relay; challenge: string; }>();
     onNotice = new SimpleEmitter<{ relay: Relay; msg: string; }>();
     onFetch = new SimpleEmitter<{ length: number; }>();
@@ -366,7 +367,7 @@ export class NostrWorker {
                 : [["_myprofile", {
                     filters: [{
                         authors: [pubkey],
-                        kinds: [Kind.Contacts, Kind.RelayList],
+                        kinds: [Kind.Contacts, Kind.RelayList, Kind.Metadata],
                         // limit: 1,  // for each relay. some relays (ex. nostr-filter) notice "limit must be <=500"
                     }],
                     handlers: {
@@ -375,7 +376,7 @@ export class NostrWorker {
                             for (const dev of r.ok.values()) {
                                 const ev = dev.event?.event;
                                 if (!ev) continue;
-                                if (ev.pubkey !== pubkey || ![Kind.Contacts, Kind.RelayList].includes(ev.kind)) {
+                                if (ev.pubkey !== pubkey || ![Kind.Contacts, Kind.RelayList, Kind.Metadata].includes(ev.kind)) {
                                     // !?
                                     continue;
                                 }
@@ -387,6 +388,9 @@ export class NostrWorker {
                                 }
                                 if (ev.kind === Kind.RelayList) {
                                     this.onMyRelayList.emit("", dev);
+                                }
+                                if (ev.kind === Kind.Metadata) {
+                                    this.onMyMetadata.emit("", dev);
                                 }
                             }
                         }),
