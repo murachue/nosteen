@@ -51,7 +51,7 @@ const ProfLine: FC<{
             value={editvalue || ""}
             placeholder={editvalue === undefined ? "undefined" : ""}
             onChange={e => set(e.target.value)}
-            style={{ background: colorbase, color: colornormal }}
+            style={{ flex: 1, background: colorbase, color: colornormal }}
         />
         <button disabled={editvalue === undefined} style={{ marginLeft: "0.5em" }} onClick={e => set(undefined)} title="undefine">×</button>
         <button disabled={editvalue === curvalue} style={{ marginLeft: "0.5em" }} onClick={e => set(null)} title="revert">⎌</button>
@@ -118,7 +118,7 @@ const Profile: FC<{}> = () => {
                     // maxWidth: "40em",
                     // color: colornormal,
                     // font: fonttext,
-                    gridTemplateColumns: "max-content 30em",
+                    gridTemplateColumns: "max-content minmax(0, 1fr)",
                     columnGap: "0.5em",
                 }}>
                     <div style={{ textAlign: "right" }}>
@@ -136,32 +136,68 @@ const Profile: FC<{}> = () => {
                     </div>
                     <div style={{ textAlign: "right" }}>name:</div>
                     {/* TODO: NIP-30 */}
-                    <div><ProfLine curprof={curprof} editprof={editprof} field="name" setvalue={setEditprof} /></div>
+                    <div style={{ display: "flex" }}><ProfLine curprof={curprof} editprof={editprof} field="name" setvalue={setEditprof} /></div>
                     <div style={{ textAlign: "right" }}>display_name:</div>
-                    <div><ProfLine curprof={curprof} editprof={editprof} field="display_name" setvalue={setEditprof} /></div>
+                    <div style={{ display: "flex" }}><ProfLine curprof={curprof} editprof={editprof} field="display_name" setvalue={setEditprof} /></div>
                     <div style={{ textAlign: "right" }}>picture:</div>
                     {/* TODO: img */}
-                    <div><ProfLine curprof={curprof} editprof={editprof} field="picture" setvalue={setEditprof} /></div>
+                    <div style={{ display: "flex" }}><ProfLine curprof={curprof} editprof={editprof} field="picture" setvalue={setEditprof} /></div>
                     <div style={{ textAlign: "right" }}>banner:</div>
                     {/* TODO: img */}
-                    <div><ProfLine curprof={curprof} editprof={editprof} field="banner" setvalue={setEditprof} /></div>
+                    <div style={{ display: "flex" }}><ProfLine curprof={curprof} editprof={editprof} field="banner" setvalue={setEditprof} /></div>
                     <div style={{ textAlign: "right" }}>website:</div>
-                    <div><ProfLine curprof={curprof} editprof={editprof} field="website" setvalue={setEditprof} /></div>
+                    <div style={{ display: "flex" }}><ProfLine curprof={curprof} editprof={editprof} field="website" setvalue={setEditprof} /></div>
                     <div style={{ textAlign: "right" }}>nip05:</div>
                     {/* TODO: NIP-05 verification */}
-                    <div><ProfLine curprof={curprof} editprof={editprof} field="nip05" setvalue={setEditprof} /></div>
-                    <div style={{ textAlign: "right" }}>lud{"16/06"}:</div>
-                    {/* TODO: correctly impl */}
-                    <div><ProfLine curprof={curprof} editprof={editprof} field={["lud16", "lud06"]} onChange={e => { }} /></div>
+                    <div style={{ display: "flex" }}><ProfLine curprof={curprof} editprof={editprof} field="nip05" setvalue={setEditprof} /></div>
+                    <div style={{ textAlign: "right" }}>lud{(() => {
+                        const v = editprof.lud16 || editprof.lud06 || curprof?.lud16 || curprof?.lud06 || "";
+                        if (v.startsWith("LNURL1")) return "06";
+                        if (v.includes("@")) return "16";
+                        return "16/06";
+                    })()}:</div>
+                    <div style={{ display: "flex" }}>
+                        <ProfLine
+                            curprof={curprof}
+                            editprof={editprof}
+                            field={["lud16", "lud06"]}
+                            onChange={value => {
+                                if (value === null) {
+                                    setEditprof(produce(draft => {
+                                        delete draft.lud16;
+                                        delete draft.lud06;
+                                    }));
+                                    return;
+                                }
+                                if (value === undefined) {
+                                    setEditprof(produce(draft => {
+                                        draft.lud16 = undefined;
+                                        draft.lud06 = undefined;
+                                    }));
+                                    return;
+                                }
+                                if (value?.startsWith("LNURL1")) {
+                                    setEditprof(produce(draft => {
+                                        delete draft.lud16;
+                                        draft.lud06 = value;
+                                    }));
+                                } else {
+                                    setEditprof(produce(draft => {
+                                        draft.lud16 = value;
+                                        delete draft.lud06;
+                                    }));
+                                }
+                            }}
+                        />
+                    </div>
                     <div style={{ textAlign: "right" }}>about:</div>
                     {/* TODO: NIP-30 */}
-                    <div>
+                    <div style={{ display: "flex" }}>
                         <TextInput
                             value={(Object.hasOwn(editprof, "about") ? editprof.about : curprof?.about) || ""}
                             placeholder={(Object.hasOwn(editprof, "about") ? editprof.about : curprof?.about) === undefined ? "undefined" : ""}
                             onChange={str => setEditprof(produce(draft => { draft.about = str; }))}
-                            size={50}
-                            style={{ background: colorbase, color: colornormal }}
+                            style={{ flex: 1, background: colorbase, color: colornormal }}
                         />
                         <button disabled={(Object.hasOwn(editprof, "about") ? editprof.about : curprof?.about) === undefined} style={{ marginLeft: "0.5em" }} onClick={e => setEditprof(produce(draft => { draft.about = undefined; }))} title="undefine">×</button>
                         <button disabled={!Object.hasOwn(editprof, "about") || editprof.about === curprof?.about} style={{ marginLeft: "0.5em" }} onClick={e => setEditprof(produce(draft => { delete draft.about; }))} title="revert">⎌</button>
