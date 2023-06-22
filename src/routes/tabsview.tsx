@@ -755,10 +755,48 @@ const Tabsview: FC = () => {
             }
         }
         {
-            const ma = tabid.match(/^a\/(naddr1[a-z0-9]+|\d{1,5}:[0-9A-Fa-f]{64}:.+)$/);
+            const mt = tabid.match(/^thread\/(naddr1[a-z0-9]+|\d{1,5}:[0-9A-Fa-f]{64}:.*)$/);
+            if (mt) {
+                const naddr = ((): nip19.AddressPointer | null => {
+                    const mar = mt[1].match(/^(\d{1,5}):([0-9A-Fa-f]{64}):(.*)$/);
+                    if (mar) {
+                        return {
+                            kind: Number(mar[1]),
+                            pubkey: mar[2],
+                            identifier: mar[3],
+                        };
+                    }
+                    const d = (() => { try { return nip19.decode(mt[1]); } catch { return undefined; } })();
+                    if (!d) return null;
+                    if (d.type === "naddr") return d.data;
+                    return null;
+                })();
+                if (naddr) {
+                    // TODO: relay from naddr
+                    const nid = `${naddr.kind}:${naddr.pubkey}:${naddr.identifier}`;
+                    const newt: Tabdef = {
+                        id: `thread/${nid}`,
+                        name: `thread/${naddr.identifier.slice(0, 8)}`,
+                        filter: [
+                            { kinds: [naddr.kind], authors: [naddr.pubkey], "#d": [naddr.identifier] },
+                            { "#a": [`${naddr.kind}:${naddr.pubkey}:${naddr.identifier}`] },
+                        ],
+                    };
+                    setTabs([...tabs, newt]);
+                    setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
+                    if (tabid !== `thread/${nid}`) {
+                        navigate(`/tab/thread/${nid}`, { replace: true });
+                        setNavigating({ current: tabid, to: `thread/${nid}` });
+                    }
+                    return newt;
+                }
+            }
+        }
+        {
+            const ma = tabid.match(/^a\/(naddr1[a-z0-9]+|\d{1,5}:[0-9A-Fa-f]{64}:.*)$/);
             if (ma) {
                 const naddr = ((): nip19.AddressPointer | null => {
-                    const mar = ma[1].match(/^(\d{1,5}):([0-9A-Fa-f]{64}):(.+)$/);
+                    const mar = ma[1].match(/^(\d{1,5}):([0-9A-Fa-f]{64}):(.*)$/);
                     if (mar) {
                         return {
                             kind: Number(mar[1]),
@@ -1764,11 +1802,18 @@ const Tabsview: FC = () => {
                     // if (ci === null) break;
                     // const post = tap.posts[ci];
                     const post = selpost;
-                    const dereftags = (post.reposttarget?.event || post.event?.event)?.event?.tags || [];
+                    const derefev = (post.reposttarget || post.event)?.event?.event;
+                    const dereftags = derefev?.tags || [];
                     const rootid = dereftags.reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
                     const id = rootid || (post?.reposttarget?.id || post.id);
-                    navigate(`/tab/thread/${id}`);
-                    setNavigating({ current: tabid, to: `thread/${id}` });
+                    if (derefev?.kind && 30000 <= derefev.kind && derefev.kind < 40000) {
+                        const d = dereftags.find(t => t[0] === "d")?.[1] || "";
+                        navigate(`/tab/thread/${derefev.kind}:${derefev.pubkey}:${d}`);
+                        setNavigating({ current: tabid, to: `thread/${derefev.kind}:${derefev.pubkey}:${d}` });
+                    } else {
+                        navigate(`/tab/thread/${id}`);
+                        setNavigating({ current: tabid, to: `thread/${id}` });
+                    }
                     break;
                 }
                 case "W": {
@@ -1910,9 +1955,8 @@ const Tabsview: FC = () => {
                                 // thinking about reposting includes #e, this behavior is reasonable.
                                 ...(() => {
                                     if (!(30000 <= targetev.kind && targetev.kind < 40000)) return [];
-                                    const dtag = targetev.tags.find(t => t[0] === "d");
-                                    if (typeof dtag?.[1] !== "string") return [];
-                                    return [["a", `${targetev.kind}:${targetev.pubkey}:${dtag[1]}`]];
+                                    const d = targetev.tags.find(t => t[0] === "d")?.[1] || "";
+                                    return [["a", `${targetev.kind}:${targetev.pubkey}:${d}`]];
                                 })(),
                             ]),
                         ],
