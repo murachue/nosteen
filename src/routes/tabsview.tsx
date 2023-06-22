@@ -1885,6 +1885,7 @@ const Tabsview: FC = () => {
                 case "R": {
                     if (!tab || !selpost) break;
                     if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
+                    // TODO: kind16 dereference
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
                     const derev = derefev.event;
@@ -1896,13 +1897,24 @@ const Tabsview: FC = () => {
 
                     const tev = {
                         created_at: Math.floor(Date.now() / 1000),
-                        kind: Kind.Repost,
+                        kind: targetev.kind === Kind.Text ? Kind.Repost : (16 as Kind/* not yet as of nostr-tools@1.12.0 */),
                         // I don't prefer include the original event to respect poster's right/possibility of deletion (NIP-09 kind5),
                         // NIP-18 states it is "not recommended" though.
                         content: "",
                         tags: [
                             ["e", derefev.id, recvfrom.url],
                             ["p", targetev.pubkey],  // TODO: relay and petname?
+                            ...(targetev.kind === Kind.Text ? [] : [
+                                ["k", `${targetev.kind}`],
+                                // NIP-18/33 does not state about reposting includes #a, but some client does.
+                                // thinking about reposting includes #e, this behavior is reasonable.
+                                ...(() => {
+                                    if (!(30000 <= targetev.kind && targetev.kind < 40000)) return [];
+                                    const dtag = targetev.tags.find(t => t[0] === "d");
+                                    if (typeof dtag?.[1] !== "string") return [];
+                                    return [["a", `${targetev.kind}:${targetev.pubkey}:${dtag[1]}`]];
+                                })(),
+                            ]),
                         ],
                     };
                     emitevent(tev, "👁‍🗨", targetev.content);
