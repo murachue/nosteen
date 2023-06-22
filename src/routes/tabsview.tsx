@@ -1994,6 +1994,10 @@ const Tabsview: FC = () => {
                     });
                     break;
                 }
+                case "~": {
+                    navigate("/profile");
+                    break;
+                }
                 case "<": {
                     navigate("/preferences");
                     break;
@@ -2297,6 +2301,14 @@ const Tabsview: FC = () => {
                         )}
                     </div>
                     <div>
+                        <Link to="/profile" style={{
+                            background: coloruibg,
+                            color: coloruitext,
+                            font: fontui,
+                            margin: "0 0.3em",
+                        }} tabIndex={-1}>
+                            Profile...
+                        </Link>
                         <Link to="/preferences" style={{
                             background: coloruibg,
                             color: coloruitext,
