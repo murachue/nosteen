@@ -2325,7 +2325,7 @@ const Tabsview: FC = () => {
                     </div>
                 </div>
                 <div style={{ flex: "1", minWidth: "0", /* display: "flex", flexDirection: "column" */ }}>
-                    <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex" }}>
+                    <div style={{ color: coloruitext, font: fontui, /* fontWeight: "bold", */ margin: "0 2px", display: "flex", alignItems: "center" }}>
                         <div style={{ flex: "1", minWidth: "0", position: "relative", height: "1em", display: "flex", alignItems: "center" }}>
                             <div style={{ cursor: "pointer", color: selpost?.reposttarget ? colorrepost : undefined, display: "flex", alignItems: "baseline" }} onClick={e => setProfpopping((selev && (selrpev || selev).event?.event?.pubkey) || "")}>
                                 {!selev ? "name..." : (() => {
@@ -2722,7 +2722,7 @@ const Tabsview: FC = () => {
                     }}
                 >Post</button>
             </div>
-            <div style={{ background: coloruibg, color: coloruitext, font: fontui, display: "flex" }}>
+            <div style={{ background: coloruibg, color: coloruitext, font: fontui, display: "flex", alignItems: "center" }}>
                 {
                     edittags && !posting
                         ? <div style={{ flex: "1", border: "2px inset", background: colorbase, maxHeight: "5em", overflow: "auto" }}>
