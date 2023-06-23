@@ -2813,6 +2813,8 @@ const Tabsview: FC = () => {
                                 <option value="p" />
                                 <option value="t" />
                                 <option value="r" />
+                                <option value="l" />
+                                <option value="L" />
                             </datalist>
                             {(() => <>
                                 {edittags.map((e, ti) =>
