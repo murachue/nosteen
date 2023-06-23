@@ -2875,8 +2875,8 @@ const Tabsview: FC = () => {
                                         key={ti}
                                         style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "flex", alignItems: "stretch" }}
                                     >
-                                        <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-                                            <div style={{ display: "flex" }}>
+                                        <div style={{ display: "flex", alignItems: "stretch", position: "relative" }}>
+                                            <div style={{ display: "flex", alignItems: "stretch" }}>
                                                 {tag.map((e, ei) =>
                                                     te.add === "manual" && ti === editingtagdelay?.[0]  // FIXME !!!
                                                         ? <input
@@ -2901,7 +2901,7 @@ const Tabsview: FC = () => {
                                                         />
                                                         : <div
                                                             key={ei}
-                                                            style={{ padding: "0 2px", borderLeft: "1px solid", borderLeftColor: colornormal, color: colornormal }}
+                                                            style={{ padding: "0 2px", borderLeft: "1px solid", borderLeftColor: colornormal, color: colornormal, display: "flex", alignItems: "center" }}
                                                             tabIndex={te.add === "manual" ? 0 : undefined}
                                                             onFocus={ev => te.add === "manual" && setEditingtag([ti, ei])}
                                                         >{e}</div>
