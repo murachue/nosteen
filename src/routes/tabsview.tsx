@@ -433,11 +433,11 @@ class PostStreamWrapper {
     }
 }
 
-const spans = (tev: Event): (
+const spans = (tev: Pick<Event, "content" | "tags">): (
     { rawtext: string; type: "url"; href: string; auto: boolean; }
-    | { rawtext: string; type: "ref"; tagindex: number; tag: string[] | undefined; text?: string; hex: string | null; }
+    | { rawtext: string; type: "ref"; tagindex: number; tag: string[] | undefined; text?: string; entity: "e" | "p" | null; hex: string | null; }
     | { rawtext: string; type: "hashtag"; text: string; tagtext: string | undefined; auto: boolean; }
-    | { rawtext: string; type: "nip19"; text: string; hex: string | undefined; auto: boolean; }
+    | { rawtext: string; type: "nip19"; text: string; entity: "e" | "p" | undefined; hex: string | undefined; auto: boolean; }
     | { rawtext: string; type: "text"; text: string; }
 )[] => {
     const text = tev.content;
@@ -502,8 +502,8 @@ const spans = (tev: Event): (
         if (mref) {
             const ti = Number(mref[1]);
             const tag = tev.tags[ti] satisfies string[] as string[] | undefined;
-            if (tag && tag[0] === "p") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.npubEncode(tag[1]), hex: tag[1] } as const;
-            if (tag && tag[0] === "e") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]), hex: tag[1] } as const;
+            if (tag && tag[0] === "p") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.npubEncode(tag[1]), entity: "p", hex: tag[1] } as const;
+            if (tag && tag[0] === "e") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]), entity: "e", hex: tag[1] } as const;
             // we temporarily treat unknown reference as a text... note1g5vxkt9ge2xl7mecv2jw9us56n683zh8ksjn4pt4s952xuytv5aqsy5xnu
             // return { rawtext: t, type: "ref", tagindex: ti, tag, hex: null } as const;
             return { rawtext: t, type: "text", text: t } as const;
@@ -516,16 +516,16 @@ const spans = (tev: Event): (
         }
         const mnostr = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
         if (mnostr) {
-            const tt = ((): ({ hex: string; match: ((t: string[]) => boolean); } | undefined) => {
+            const tt = ((): ({ entity: "e" | "p"; hex: string; match: ((t: string[]) => boolean); } | undefined) => {
                 const d = (() => { try { return nip19.decode(mnostr[1]); } catch { return undefined; } })();
                 if (!d) return undefined;  // bad checksum?
                 switch (d.type) {
                     case "nprofile": {
-                        return { match: t => t[0] === "p" && t[1] === d.data.pubkey, hex: d.data.pubkey };
+                        return { match: t => t[0] === "p" && t[1] === d.data.pubkey, entity: "p", hex: d.data.pubkey };
                     }
                     case "nevent": {
                         // we don't support Damus' #q
-                        return { match: t => t[0] === "e" && t[1] === d.data.id, hex: d.data.id };
+                        return { match: t => t[0] === "e" && t[1] === d.data.id, entity: "e", hex: d.data.id };
                     }
                     case "naddr": {
                         return undefined; // TODO
@@ -534,17 +534,17 @@ const spans = (tev: Event): (
                         return undefined; // TODO
                     }
                     case "npub": {
-                        return { match: t => t[0] === "p" && t[1] === d.data, hex: d.data };
+                        return { match: t => t[0] === "p" && t[1] === d.data, entity: "p", hex: d.data };
                     }
                     case "note": {
                         // we don't support Damus' #q
-                        return { match: t => t[0] === "e" && t[1] === d.data, hex: d.data };
+                        return { match: t => t[0] === "e" && t[1] === d.data, entity: "e", hex: d.data };
                     }
                 }
                 return undefined;
             })();
             const tag = tt && tev.tags.find(tt.match);
-            return { rawtext: t, type: "nip19", text: mnostr[1], hex: tt?.hex, auto: !tag } as const;
+            return { rawtext: t, type: "nip19", text: mnostr[1], entity: tt?.entity, hex: tt?.hex, auto: !tag } as const;
         }
         // should not reached here but last resort.
         return { rawtext: t, type: "text", text: t } as const;
@@ -606,12 +606,12 @@ const Tabsview: FC = () => {
     const relaypopref = useRef<HTMLDivElement>(null);
     const [forcedellatch, setForcedellatch] = useState({ count: 0, at: 0 });
     const [status, setStatus] = useState("status...");
-    const [edittags, setEdittags] = useState<string[][] | null>(null);
+    const [edittags, setEdittags] = useState<{ tag: string[]; add: "manual" | "auto" | "disabled"; }[] | null>(null);
     const [kind, setKind] = useState<number | null>(null);
     const [editingtag, setEditingtag] = useState<[number, number] | null>(null);
     const [editingtagdelay, setEditingtagdelay] = useState<[number, number] | null>(null);
     const editingtagref = useRef<HTMLInputElement>(null);
-    const editingtagaddref = useRef<HTMLDivElement>(null);
+    const editingtagaddref = useRef<HTMLButtonElement>(null);
     const [posting, setPosting] = useState(false);
     const [postpopping, setPostpopping] = useState(false);
     const postpopref = useRef<HTMLDivElement>(null);
@@ -1555,18 +1555,18 @@ const Tabsview: FC = () => {
                         }
 
                         // copy #p tags, first reply-to, merged. (even if originate contains duplicated #p)
-                        const ppks = new Map();
+                        const ppks = new Map<string, NonNullable<typeof edittags>[number]>();
                         if (derefev.event?.event?.pubkey) {
                             // TODO: relay/petname in tag from receivefrom/{contacts|profile}? really?
-                            ppks.set(derefev.event.event.pubkey, ["p", derefev.event.event.pubkey]);
+                            ppks.set(derefev.event.event.pubkey, { tag: ["p", derefev.event.event.pubkey], add: "manual" });
                         }
                         for (const tag of edittags || []) {  // from currently editing
-                            if (tag[0] !== "p") continue;
-                            ppks.set(tag[1], tag);
+                            if (tag.tag[0] !== "p") continue;
+                            ppks.set(tag.tag[1], tag);
                         }
                         for (const tag of derefev.event?.event?.tags || []) {  // from reply target
                             if (tag[0] !== "p") continue;
-                            ppks.set(tag[1], tag);
+                            ppks.set(tag[1], { tag, add: "manual" });
                         }
                         const ptags = [...ppks.values()];
                         // then combine. when for root, only root, without reply. (NIP-10 #e)
@@ -1577,8 +1577,8 @@ const Tabsview: FC = () => {
                         // TODO: relay in tag from receivefrom? really?
                         // TODO: kind40/41/42 to kind42
                         setEdittags([
-                            (root ? [root[0], root[1], root[2] || "", "root"] : ["e", (selrpev || selev).id, "", "root"]),
-                            ...(root ? [["e", derefev.id, "", "reply"]] : []),
+                            (root ? { tag: [root[0], root[1], root[2] || "", "root"], add: "manual" } : { tag: ["e", (selrpev || selev).id, "", "root"], add: "manual" }),
+                            ...(root ? [{ tag: ["e", derefev.id, "", "reply"], add: "manual" as const }] : []),
                             ...ptags,
                         ]);
                         setKind(([Kind.ChannelCreation, Kind.ChannelMetadata, Kind.ChannelMessage] as number[]).includes(derefev.event?.event?.kind || 0) ? Kind.ChannelMessage : Kind.Text);
@@ -1979,7 +1979,7 @@ const Tabsview: FC = () => {
                     // but keep edittags.
                     // TODO: relay in tag from receivefrom? really?
                     setEdittags(t => [
-                        ["e", (selrpev || selev).id, "", "mention"],
+                        { tag: ["e", (selrpev || selev).id, "", "mention"], add: "auto" },
                         ...(t || []),
                     ]);
                     setKind(k => k ?? Kind.Text);
@@ -2045,7 +2045,7 @@ const Tabsview: FC = () => {
                         // overwrite with deleted
                         setPostdraft(targetev.content);
                         setKind(targetev.kind);
-                        setEdittags(targetev.tags);
+                        setEdittags(targetev.tags.map(tag => ({ tag, add: "manual" })));
                         posteditor.current?.focus();
                     });
                     break;
@@ -2098,11 +2098,15 @@ const Tabsview: FC = () => {
             setFlash({ msg: "kind is not set!?", bang: true });
             return;
         }
+        if (edittags === null) {
+            setFlash({ msg: "edittags is not set!?", bang: true });
+            return;
+        }
         const ev = {
             created_at: Math.floor(Date.now() / 1000),
             kind,
             content: postdraft,
-            tags: edittags!,
+            tags: edittags.filter(t => t.add !== "disabled").map(t => t.tag),
         };
         setPosting(true);
         emitevent(ev, "💬", postdraft)
@@ -2742,12 +2746,58 @@ const Tabsview: FC = () => {
                     disabled={readonlyuser}
                     rows={(postdraft.match(/\n/g)?.length || 0) + 1}
                     onChange={e => {
-                        if (e.target.value === " ") {
+                        const value = e.target.value;
+                        if (value === " ") {
                             listref.current?.focus();
                             nextunread();
                             return;
                         }
-                        setPostdraft(e.target.value);
+                        setPostdraft(value);
+                        // XXX: url has very priority that prevents incremental editing. filter out and let spans guess (not tag-based).
+                        const ss = spans({ content: value, tags: edittags?.map(t => t.tag).filter(t => t[0] !== "r") || [] });
+                        setEdittags(produce(draft => {
+                            if (!draft) return;
+                            for (let i = 0; i < draft.length; i++) {
+                                if (draft[i].add === "manual") continue;
+                                if (
+                                    (draft[i].tag[0] === "p" && !ss.some(s => (s.type === "nip19" || s.type === "ref") && s.entity === "p" && s.hex === draft[i].tag[1]))
+                                    || (draft[i].tag[0] === "e" && !ss.some(s => (s.type === "nip19" || s.type === "ref") && s.entity === "e" && s.hex === draft[i].tag[1]))
+                                    || (draft[i].tag[0] === "t" && !ss.some(s => s.type === "hashtag" && s.tagtext === draft[i].tag[1]))
+                                    || (draft[i].tag[0] === "r" && !ss.some(s => s.type === "url" && s.href === draft[i].tag[1]))
+                                ) {
+                                    draft.splice(i, 1);
+                                    i--;
+                                    continue;
+                                }
+                            }
+                            for (const span of ss) {
+                                switch (span.type) {
+                                    case "text": break;
+                                    case "nip19": // fallthrough
+                                    case "ref": {
+                                        if (span.entity && span.hex && !draft.some(t => t.tag[0] === span.entity && t.tag[1] === span.hex)) {
+                                            draft.push({ tag: [span.entity, span.hex], add: "auto" });
+                                        }
+                                        break;
+                                    }
+                                    case "url": {
+                                        if (!draft.some(t => t.tag[0] === "r" && t.tag[1] === span.href)) {
+                                            draft.push({ tag: ["r", span.href], add: "auto" });
+                                        }
+                                        break;
+                                    }
+                                    case "hashtag": {
+                                        if (span.tagtext) {
+                                            const ht = span.tagtext.toLowerCase(); // how about normalize??
+                                            if (!draft.some(t => t.tag[0] === "t" && t.tag[1] === ht)) {
+                                                draft.push({ tag: ["t", ht], add: "auto" });
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }));
                     }}
                     onKeyDown={e => {
                         if (e.shiftKey || e.altKey) return;
@@ -2775,7 +2825,7 @@ const Tabsview: FC = () => {
                         })();
                         // TODO: DM?
                         setKind(s => s !== null ? s : inpubchat ? 42 : 1);
-                        setEdittags(s => s !== null ? s : pcid ? [["e", pcid, ""/* TODO: relay? */, "root"]] : []);
+                        setEdittags(s => s !== null ? s : pcid ? [{ tag: ["e", pcid, ""/* TODO: relay? */, "root"], add: "manual" }] : []);
                     }}
                     onBlur={e => setEditingtag(s => Array.isArray(edittags) && edittags.length === 0 ? null : s)}
                 />
@@ -2793,7 +2843,7 @@ const Tabsview: FC = () => {
             <div style={{ background: coloruibg, color: coloruitext, font: fontui, display: "flex", alignItems: "center" }}>
                 {
                     edittags && !posting
-                        ? <div style={{ flex: "1", border: "2px inset", background: colorbase, maxHeight: "5em", overflow: "auto" }}>
+                        ? <div style={{ flex: "1", border: "2px inset", background: colorbase, maxHeight: "5em", overflow: "auto", display: "flex", flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
                             <datalist id="tagkeys">
                                 <option value="content-warning" />
                                 <option value="g" />
@@ -2817,137 +2867,129 @@ const Tabsview: FC = () => {
                                 <option value="L" />
                             </datalist>
                             {(() => <>
-                                {edittags.map((e, ti) =>
-                                    <div
+                                {edittags.map((te, ti) => {
+                                    const tag = te.tag;
+                                    return <div
                                         key={ti}
-                                        style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "inline-flex" }}
+                                        style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "flex", alignItems: "center" }}
                                     >
-                                        {e.map((e, ei) =>
-                                            ti === editingtagdelay?.[0]  // FIXME !!!
-                                                ? <input
-                                                    key={ei}
-                                                    ref={editingtag?.[0] === ti && editingtag?.[1] === ei ? editingtagref : undefined}
-                                                    type="text"
-                                                    value={e}
-                                                    list={ei === 0 ? "tagkeys" : undefined}
-                                                    onChange={e => setEdittags(produce(draft => { if (draft) draft[ti][ei] = e.target.value; }))}
-                                                    onFocus={e => setEditingtag(s => [ti, ei])}
-                                                    onBlur={e => setEditingtag(s => s?.[0] === ti && s?.[1] === ei ? null : s)}
-                                                    size={Math.max(1, e.length)}
-                                                    style={{
-                                                        margin: "2px",
-                                                        padding: "0px 2px",
-                                                        borderLeft: "1px solid",
-                                                        borderLeftColor: colornormal,
-                                                        background: colorbase,
-                                                        color: colornormal,
-                                                        font: fonttext,
-                                                    }}
-                                                />
-                                                : <div
-                                                    key={ei}
-                                                    style={{ padding: "0 2px", borderLeft: "1px solid", borderLeftColor: colornormal, color: colornormal }}
-                                                    tabIndex={0}
-                                                    onFocus={e => setEditingtag([ti, ei])}
-                                                >{e}</div>
-                                        )}
-                                        {ti === editingtagdelay?.[0] && <>  {/* // FIXME !!! */}
-                                            <div
+                                        <div style={{ display: "flex", position: "relative" }}>
+                                            <div style={{ display: "flex" }}>
+                                                {tag.map((e, ei) =>
+                                                    te.add === "manual" && ti === editingtagdelay?.[0]  // FIXME !!!
+                                                        ? <input
+                                                            key={ei}
+                                                            ref={editingtag?.[0] === ti && editingtag?.[1] === ei ? editingtagref : undefined}
+                                                            type="text"
+                                                            value={e}
+                                                            list={ei === 0 ? "tagkeys" : undefined}
+                                                            onChange={e => setEdittags(produce(draft => { if (draft) draft[ti].tag[ei] = e.target.value; }))}
+                                                            onFocus={e => setEditingtag(s => [ti, ei])}
+                                                            onBlur={e => setEditingtag(s => s?.[0] === ti && s?.[1] === ei ? null : s)}
+                                                            size={Math.max(1, e.length)}
+                                                            style={{
+                                                                margin: "2px",
+                                                                padding: "0px 2px",
+                                                                borderLeft: "1px solid",
+                                                                borderLeftColor: colornormal,
+                                                                background: colorbase,
+                                                                color: colornormal,
+                                                                font: fonttext,
+                                                            }}
+                                                        />
+                                                        : <div
+                                                            key={ei}
+                                                            style={{ padding: "0 2px", borderLeft: "1px solid", borderLeftColor: colornormal, color: colornormal }}
+                                                            tabIndex={te.add === "manual" ? 0 : undefined}
+                                                            onFocus={ev => te.add === "manual" && setEditingtag([ti, ei])}
+                                                        >{e}</div>
+                                                )}
+                                            </div>
+                                            {te.add === "disabled" && <div style={{
+                                                position: "absolute",
+                                                top: 0,
+                                                left: 0,
+                                                bottom: 0,
+                                                right: 0,
+                                                background: "#0008",
+                                            }}>
+                                            </div>}
+                                        </div>
+                                        {(te.add !== "manual" || ti === editingtagdelay?.[0]) && <>  {/* // FIXME editingtagdelay!!! */}
+                                            {/* reusing add/remove div for manualize/disable to keep focus on manualize */}
+                                            <button
                                                 tabIndex={0}
-                                                style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "stretch" }}
+                                                style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "center", padding: "0 0.4em" }}
                                                 onFocus={e => setEditingtag(s => [ti, -1])}
                                                 onBlur={e => setEditingtag(s => s?.[0] === ti ? null : s)}
-                                                onKeyDown={ev => {
-                                                    if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
-                                                    if (ev.key === " " || ev.key === "Enter") {
-                                                        ev.preventDefault();
-                                                        ev.stopPropagation();
-                                                        setEdittags(produce(draft => { if (!draft) return; draft[ti].push(""); }));
-                                                        setEditingtag([ti, e.length]);
+                                                onClick={ev => {
+                                                    if (te.add === "manual") {
+                                                        setEdittags(produce(draft => { if (!draft) return; draft[ti].tag.push(""); }));
+                                                        setEditingtag([ti, tag.length]);
+                                                    } else if (te.add === "auto") {
+                                                        setEdittags(produce(draft => {
+                                                            if (!draft) return;
+                                                            draft[ti].add = "manual";
+                                                        }));
+                                                        setEditingtag([ti, tag.length - 1]);
+                                                    } else {
+                                                        // te.add === "disabled"
+                                                        setEdittags(produce(draft => {
+                                                            if (!draft) return;
+                                                            draft[ti].add = "auto";
+                                                        }));
                                                     }
                                                 }}
-                                                onPointerDown={ev => {
-                                                    if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
-                                                    if (ev.button !== 0) return;
-                                                    ev.preventDefault();
-                                                    ev.stopPropagation();
-                                                    setEdittags(produce(draft => { if (!draft) return; draft[ti].push(""); }));
-                                                    setEditingtag([ti, e.length]);
-                                                }}
                                             >
-                                                <div style={{ padding: "0 0.5em", display: "flex", flexDirection: "row", alignItems: "center", background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                                                <div style={{ background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                                                     +
                                                 </div>
-                                            </div>
-                                            <div
+                                            </button>
+                                            <button
                                                 tabIndex={0}
-                                                style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "stretch" }}
+                                                style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "center", padding: "0 0.4em" }}
                                                 onFocus={e => setEditingtag(s => [ti, -1])}
                                                 onBlur={e => setEditingtag(s => s?.[0] === ti ? null : s)}
-                                                onKeyDown={ev => {
-                                                    if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
-                                                    if (ev.key === " " || ev.key === "Enter") {
-                                                        ev.preventDefault();
-                                                        ev.stopPropagation();
-                                                        if (e.length <= 2) {
+                                                onClick={ev => {
+                                                    if (te.add === "manual") {
+                                                        if (tag.length <= 2) {
                                                             setEdittags(produce(draft => { if (!draft) return; draft.splice(ti, 1); }));
                                                             setEditingtag([ti === edittags.length - 1 ? -1 : ti, -1]);
                                                         } else {
-                                                            setEdittags(produce(draft => { if (!draft) return; draft[ti].pop(); }));
+                                                            setEdittags(produce(draft => { if (!draft) return; draft[ti].tag.pop(); }));
                                                             // setEditingtag([ti, e.length - 2]);
                                                         }
-                                                    }
-                                                }}
-                                                onPointerDown={ev => {
-                                                    if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
-                                                    if (ev.button !== 0) return;
-                                                    ev.preventDefault();
-                                                    ev.stopPropagation();
-                                                    if (e.length <= 2) {
-                                                        setEdittags(produce(draft => { if (!draft) return; draft.splice(ti, 1); }));
-                                                        setEditingtag([ti === edittags.length - 1 ? -1 : ti, -1]);
                                                     } else {
-                                                        setEdittags(produce(draft => { if (!draft) return; draft[ti].pop(); }));
-                                                        // setEditingtag([ti, e.length - 2]);
+                                                        setEdittags(produce(draft => {
+                                                            if (!draft) return;
+                                                            draft[ti].add = "disabled";
+                                                        }));
                                                     }
                                                 }}
                                             >
-                                                <div style={{ padding: "0 0.5em", display: "flex", flexDirection: "row", alignItems: "center", background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                                                <div style={{ background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                                                     -
                                                 </div>
-                                            </div>
+                                            </button>
                                         </>}
-                                    </div>)
-                                }
-                                <div style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "inline-flex" }}>
-                                    <div
+                                    </div>;
+                                })}
+                                <div style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "flex" }}>
+                                    <button
                                         ref={editingtagaddref}
-                                        tabIndex={0}
-                                        style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "stretch" }}
+                                        // tabIndex={0}
+                                        style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "stretch", padding: "0 0.4em" }}
                                         onFocus={e => setEditingtag(s => [-1, 0])}
                                         onBlur={e => setEditingtag(s => s?.[0] === -1 ? null : s)}
-                                        onKeyDown={ev => {
-                                            if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
-                                            if (ev.key === " " || ev.key === "Enter") {
-                                                ev.preventDefault();
-                                                ev.stopPropagation();
-                                                setEdittags([...edittags, ["", ""]]);
-                                                setEditingtag([edittags.length, 0]);
-                                            }
-                                        }}
-                                        onPointerDown={ev => {
-                                            if (ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
-                                            if (ev.button !== 0) return;
-                                            ev.preventDefault();
-                                            ev.stopPropagation();
-                                            setEdittags([...edittags, ["", ""]]);
+                                        onClick={ev => {
+                                            setEdittags([...edittags, { tag: ["", ""], add: "manual" }]);
                                             setEditingtag([edittags.length, 0]);
                                         }}
                                     >
-                                        <div style={{ padding: "0 0.5em", background: colorbase, display: "flex", flexDirection: "row", alignItems: "center", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                                        <div style={{ background: colorbase, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                                             +
                                         </div>
-                                    </div>
+                                    </button>
                                 </div>
                                 <div style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "inline-flex" }}>
                                     <div style={{ background: colornormal }} >
