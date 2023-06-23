@@ -437,7 +437,7 @@ const spans = (tev: Pick<Event, "content" | "tags">): (
     { rawtext: string; type: "url"; href: string; auto: boolean; }
     | { rawtext: string; type: "ref"; tagindex: number; tag: string[] | undefined; text?: string; entity: "e" | "p" | null; hex: string | null; }
     | { rawtext: string; type: "hashtag"; text: string; tagtext: string | undefined; auto: boolean; }
-    | { rawtext: string; type: "nip19"; text: string; entity: "e" | "p" | undefined; hex: string | undefined; auto: boolean; }
+    | { rawtext: string; type: "nip19"; text: string; prefixed: boolean; entity: "e" | "p" | undefined; hex: string | undefined; auto: boolean; }
     | { rawtext: string; type: "text"; text: string; }
 )[] => {
     const text = tev.content;
@@ -514,10 +514,10 @@ const spans = (tev: Pick<Event, "content" | "tags">): (
             const tag = tev.tags.find(t => t[0] === "t" && t[1].localeCompare(mhash[1], undefined, { sensitivity: "base" }) === 0);
             return { rawtext: t, type: "hashtag", text: mhash[1], tagtext: tag?.[1] || mhash[1], auto: !tag } as const;
         }
-        const mnostr = t.match(/^(?:nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
+        const mnostr = t.match(/^(nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
         if (mnostr) {
             const tt = ((): ({ entity: "e" | "p"; hex: string; match: ((t: string[]) => boolean); } | undefined) => {
-                const d = (() => { try { return nip19.decode(mnostr[1]); } catch { return undefined; } })();
+                const d = (() => { try { return nip19.decode(mnostr[2]); } catch { return undefined; } })();
                 if (!d) return undefined;  // bad checksum?
                 switch (d.type) {
                     case "nprofile": {
@@ -544,7 +544,7 @@ const spans = (tev: Pick<Event, "content" | "tags">): (
                 return undefined;
             })();
             const tag = tt && tev.tags.find(tt.match);
-            return { rawtext: t, type: "nip19", text: mnostr[1], entity: tt?.entity, hex: tt?.hex, auto: !tag } as const;
+            return { rawtext: t, type: "nip19", text: mnostr[2], prefixed: !!mnostr[1], entity: tt?.entity, hex: tt?.hex, auto: !tag } as const;
         }
         // should not reached here but last resort.
         return { rawtext: t, type: "text", text: t } as const;
@@ -2760,8 +2760,8 @@ const Tabsview: FC = () => {
                             for (let i = 0; i < draft.length; i++) {
                                 if (draft[i].add === "manual") continue;
                                 if (
-                                    (draft[i].tag[0] === "p" && !ss.some(s => (s.type === "nip19" || s.type === "ref") && s.entity === "p" && s.hex === draft[i].tag[1]))
-                                    || (draft[i].tag[0] === "e" && !ss.some(s => (s.type === "nip19" || s.type === "ref") && s.entity === "e" && s.hex === draft[i].tag[1]))
+                                    (draft[i].tag[0] === "p" && !ss.some(s => ((s.type === "nip19" && s.prefixed) || s.type === "ref") && s.entity === "p" && s.hex === draft[i].tag[1]))
+                                    || (draft[i].tag[0] === "e" && !ss.some(s => ((s.type === "nip19" && s.prefixed) || s.type === "ref") && s.entity === "e" && s.hex === draft[i].tag[1]))
                                     || (draft[i].tag[0] === "t" && !ss.some(s => s.type === "hashtag" && s.tagtext === draft[i].tag[1]))
                                     || (draft[i].tag[0] === "r" && !ss.some(s => s.type === "url" && s.href === draft[i].tag[1]))
                                 ) {
@@ -2773,7 +2773,9 @@ const Tabsview: FC = () => {
                             for (const span of ss) {
                                 switch (span.type) {
                                     case "text": break;
-                                    case "nip19": // fallthrough
+                                    case "nip19":
+                                        if (!span.prefixed) break;
+                                    // fallthrough
                                     case "ref": {
                                         if (span.entity && span.hex && !draft.some(t => t.tag[0] === span.entity && t.tag[1] === span.hex)) {
                                             draft.push({ tag: [span.entity, span.hex], add: "auto" });
@@ -2871,9 +2873,9 @@ const Tabsview: FC = () => {
                                     const tag = te.tag;
                                     return <div
                                         key={ti}
-                                        style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "flex", alignItems: "center" }}
+                                        style={{ margin: "1px", border: "1px solid", borderColor: colornormal, borderRadius: "2px", display: "flex", alignItems: "stretch" }}
                                     >
-                                        <div style={{ display: "flex", position: "relative" }}>
+                                        <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
                                             <div style={{ display: "flex" }}>
                                                 {tag.map((e, ei) =>
                                                     te.add === "manual" && ti === editingtagdelay?.[0]  // FIXME !!!
@@ -2948,6 +2950,7 @@ const Tabsview: FC = () => {
                                             <button
                                                 tabIndex={0}
                                                 style={{ background: colornormal, display: "flex", flexDirection: "row", alignItems: "center", padding: "0 0.4em" }}
+                                                disabled={te.add === "disabled"}
                                                 onFocus={e => setEditingtag(s => [ti, -1])}
                                                 onBlur={e => setEditingtag(s => s?.[0] === ti ? null : s)}
                                                 onClick={ev => {
