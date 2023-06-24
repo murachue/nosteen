@@ -49,6 +49,7 @@ const keys = [
     { key: "Q", desc: "Quote the event" },
     { key: "Shift+E", desc: "Broadcast the event" },
     { key: "Shift+D", desc: "Delete the event" },
+    { key: "~", desc: "Edit profile" },
     { key: "Shift+,", desc: "Preferences" },
     { key: "/", desc: "ENOTIMPL" },
     { key: "?", desc: "About me" },
@@ -109,37 +110,29 @@ export default () => {
         </div>
         <div style={{ display: "flex", flexDirection: "column" }}>
             <h2 style={{ margin: 0, textAlign: "center" }}>Keybinds</h2>
-            {/* FIXME: column-count with flexbox without explicit height? */}
-            <div style={{ margin: "2em", display: "flex", flexDirection: "row", gap: "0.3em" }}>
-                {<> {new Array(3).fill(0).map((_, ci) =>
-                    <div key={ci} style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                        {<> {keys.slice(klpc * ci, klpc * (ci + 1)).map((_, ri) => {
-                            const kmap = keys[ci * klpc + ri];
-                            return <div key={ri} style={{
-                                display: "flex",
-                                borderBottom: "1px solid",
-                                borderBottomColor: colornormal,
-                                padding: "0.3em",
-                            }}>
-                                <div style={{ flex: 1 }}>{kmap.desc}</div>
-                                <div style={{ display: "flex", flexDirection: "row", gap: "0.2em" }}>
-                                    {kmap.key.split(/\+/).map((k, i) =>
-                                        <div key={i} style={{
-                                            border: `1px solid ${colornormal}`,
-                                            borderRadius: "0.1em",
-                                            background: "#0004",
-                                            minWidth: "1em",
-                                            height: "1.3em",
-                                            textAlign: "center",
-                                            padding: "0 0.2em",
-                                        }}>{k}</div>
-                                    )}
-                                </div>
-                            </div>;
-                        }
-                        )} </>}
+            <div style={{ margin: "2em", columnCount: 3, columnGap: "0.3em", /* display: "flex", flexDirection: "column", flexWrap: "wrap" */ }}>
+                {keys.map(k => <div key={k.key} style={{
+                    display: "flex",
+                    borderBottom: "1px solid",
+                    borderBottomColor: colornormal,
+                    padding: "0.3em",
+                    minWidth: 0,
+                }}>
+                    <div style={{ flex: 1 }}>{k.desc}</div>
+                    <div style={{ display: "flex", flexDirection: "row", gap: "0.2em" }}>
+                        {k.key.split(/\+/).map((k, i) =>
+                            <div key={i} style={{
+                                border: `1px solid ${colornormal}`,
+                                borderRadius: "0.1em",
+                                background: "#0004",
+                                minWidth: "1em",
+                                height: "1.3em",
+                                textAlign: "center",
+                                padding: "0 0.2em",
+                            }}>{k}</div>
+                        )}
                     </div>
-                )} </>}
+                </div>)}
             </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column" }}>
