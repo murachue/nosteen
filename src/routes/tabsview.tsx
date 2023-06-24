@@ -477,7 +477,7 @@ const spans = (tev: Pick<Event, "content" | "tags">): (
 
     // url has priority than emoji. consider: "http://[2001:db8::beef:1]/foo has a :beef:" with emoji:beef:xxx
     // TODO: handle domain names? note1asvxwepy2v83mrvfet9yyq0klc4hwsucdn3dlzuvaa9szltw6gqqf5w8p0
-    const urlrex = /\bhttps?:\/\/\S+/g;
+    const urlrex = /\b(http|ws)s?:\/\/\S+/g;
     const span2 = subspan(span1, urlrex, "url");  // this can be []
 
     // then rest
