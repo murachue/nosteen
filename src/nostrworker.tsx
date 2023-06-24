@@ -175,6 +175,7 @@ export type NostrWorkerListenerMessage = {
 } | {
     name: string;
     type: "hasread";
+    hasRead: boolean;
     posts: Post[];
 };
 
@@ -290,6 +291,7 @@ export class NostrWorker {
     onAuth = new SimpleEmitter<{ relay: Relay; challenge: string; }>();
     onNotice = new SimpleEmitter<{ relay: Relay; msg: string; }>();
     onFetch = new SimpleEmitter<{ length: number; }>();
+    onSetSubscribes = new SimpleEmitter<{}>();
     recentNotices = new Map<Relay, { msg: string, receivedAt: number; }[]>();
     receiveEmitter = new Map<string, SimpleEmitter<NostrWorkerListenerMessage>>();
     verifyq: { receivedAt: number; messages: EventMessageFromRelay[] | null; onVerified: VerifiedHandler; }[] = [];
@@ -496,6 +498,7 @@ export class NostrWorker {
     setSubscribes(subs: Map<string, FilledFilters | null>) {
         this.exsubs = subs;
         this.updateSubscribes();
+        this.onSetSubscribes.emit("", {});
     }
     private setInSubscribes(subs: Map<string, { filters: FilledFilters | null; handlers: SubHandlers; }>) {
         this.insubs = subs;
@@ -671,7 +674,7 @@ export class NostrWorker {
                     continue;
                 }
                 tab.nunreads += dhr;
-                this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", posts: [post] });
+                this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", hasRead, posts: [post] });
             }
             return;
         }
@@ -694,7 +697,7 @@ export class NostrWorker {
                 changed.push(posts[i]);
             }
             if (0 < changed.length) {
-                this.receiveEmitter.get(spec.stream)?.emit("", { name: spec.stream, type: "hasread", posts: changed });
+                this.receiveEmitter.get(spec.stream)?.emit("", { name: spec.stream, type: "hasread", hasRead, posts: changed });
             }
             for (const [name, s] of this.postStreams.entries()) {
                 if (name === spec.stream) continue;
@@ -702,7 +705,7 @@ export class NostrWorker {
                 if (s.nunreads !== nunrs) {
                     s.nunreads = nunrs;
                     // FIXME: posts is empty...
-                    this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", posts: [] });
+                    this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", hasRead, posts: [] });
                 }
             }
         }

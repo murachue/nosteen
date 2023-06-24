@@ -337,39 +337,28 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
 
 // NostrWorker wrapper with immutable subs store that is friendly for React.
 class PostStreamWrapper {
-    private readonly listeners = new Map<string, Map<(msg: NostrWorkerListenerMessage) => void, (msg: NostrWorkerListenerMessage) => void>>();
+    private readonly listeners = new Map<string, Set<(msg: NostrWorkerListenerMessage) => void>>();
     private readonly streams = new Map<string, ReturnType<typeof NostrWorker.prototype.getPostStream>>();
     private readonly emptystream = { posts: [], eose: false, nunreads: 0 }; // fixed reference is important
     private muteusers: RegExp = NeverMatch;
     private mutepatterns: RegExp = NeverMatch;
     constructor(private readonly noswk: NostrWorker) { }
     addListener(name: string, onChange: (msg: NostrWorkerListenerMessage) => void) {
-        const listener = (msg: NostrWorkerListenerMessage): void => {
-            const { name, type } = msg;
-            if (type !== "eose") {
-                this.refreshPosts(name);
-            }
-            onChange(msg);
-        };
-        getmk(this.listeners, name, () => new Map()).set(onChange, listener);
-        this.noswk.addListener(name, listener);
+        getmk(this.listeners, name, () => new Set()).add(onChange);
+        this.noswk.addListener(name, onChange);
     }
     removeListener(name: string, onChange: (msg: NostrWorkerListenerMessage) => void) {
         const listenersforname = this.listeners.get(name);
         if (!listenersforname) {
             return;
         }
-        const listener = listenersforname.get(onChange);
-        if (!listener) {
-            return;
-        }
-        this.noswk.removeListener(name, listener);
+        this.noswk.removeListener(name, onChange);
         listenersforname.delete(onChange);
         if (listenersforname.size === 0) {
             this.streams.delete(name);
         }
     }
-    getPostStream(name: string): ReturnType<typeof NostrWorker.prototype.getPostStream> {
+    getPostStream(name: string): NonNullable<ReturnType<typeof NostrWorker.prototype.getPostStream>> {
         // return cached
         const istream = this.streams.get(name);
         if (istream) {
@@ -862,7 +851,12 @@ const Tabsview: FC = () => {
     const tap = useSyncExternalStore(
         useCallback((onStoreChange) => {
             if (!tab) return () => { };
-            const onChange = (msg: NostrWorkerListenerMessage) => { msg.type !== "eose" && msg.name === tab.id && onStoreChange(); };
+            const onChange = (msg: NostrWorkerListenerMessage) => {
+                if (msg.type === "eose") return;
+                if (msg.name !== tab.id) return;
+                streams.refreshPosts(tab.id);
+                onStoreChange();
+            };
             streams.addListener(tab.id, onChange);
             return () => streams.removeListener(tab.id, onChange);
         }, [streams, tab?.id]),
@@ -2295,7 +2289,7 @@ const Tabsview: FC = () => {
                             <Tab key={t.id} style={{ overflow: "visible", padding: t.id === tab?.id ? `2px 2px 3px` : `1px 0 0` }} active={t.id === tab?.id} onClick={() => navigate(`/tab/${t.id}`)}>
                                 <div style={{ position: "relative", padding: "0 0.5em" }}>
                                     {/* TODO: nunreads refresh only on active tab... */}
-                                    <div style={{ position: "relative", color: 0 < streams.getPostStream(t.id)!.nunreads ? "red" : undefined }}>
+                                    <div style={{ position: "relative", color: 0 < streams.getPostStream(t.id).nunreads ? "red" : undefined }}>
                                         {t.name}
                                     </div>
                                     {!tabpopping || t.id !== tab?.id ? null : (() => {
