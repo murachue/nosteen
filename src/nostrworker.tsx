@@ -698,14 +698,15 @@ export class NostrWorker {
             }
             if (0 < changed.length) {
                 this.receiveEmitter.get(spec.stream)?.emit("", { name: spec.stream, type: "hasread", hasRead, posts: changed });
-            }
-            for (const [name, s] of this.postStreams.entries()) {
-                if (name === spec.stream) continue;
-                const nunrs = s.posts.reduce((p, c) => p + (c.hasread ? 0 : 1), 0);
-                if (s.nunreads !== nunrs) {
-                    s.nunreads = nunrs;
-                    // FIXME: posts is empty...
-                    this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", hasRead, posts: [] });
+
+                for (const [name, s] of this.postStreams.entries()) {
+                    if (name === spec.stream) continue;
+                    const nunrs = s.posts.reduce((p, c) => p + (c.hasread ? 0 : 1), 0);
+                    if (s.nunreads !== nunrs) {
+                        s.nunreads = nunrs;
+                        // FIXME: posts is empty...
+                        this.receiveEmitter.get(name)?.emit("", { name, type: "hasread", hasRead, posts: [] });
+                    }
                 }
             }
         }

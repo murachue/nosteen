@@ -335,19 +335,24 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
     </div>;
 });
 
+type PostStreamWrapperListener = NostrWorkerListenerMessage | {
+    name: string;
+    type: "update";
+};
+
 // NostrWorker wrapper with immutable subs store that is friendly for React.
 class PostStreamWrapper {
-    private readonly listeners = new Map<string, Set<(msg: NostrWorkerListenerMessage) => void>>();
+    private readonly listeners = new Map<string, Set<(msg: PostStreamWrapperListener) => void>>();
     private readonly streams = new Map<string, ReturnType<typeof NostrWorker.prototype.getPostStream>>();
     private readonly emptystream = { posts: [], eose: false, nunreads: 0 }; // fixed reference is important
     private muteusers: RegExp = NeverMatch;
     private mutepatterns: RegExp = NeverMatch;
     constructor(private readonly noswk: NostrWorker) { }
-    addListener(name: string, onChange: (msg: NostrWorkerListenerMessage) => void) {
+    addListener(name: string, onChange: (msg: PostStreamWrapperListener) => void) {
         getmk(this.listeners, name, () => new Set()).add(onChange);
         this.noswk.addListener(name, onChange);
     }
-    removeListener(name: string, onChange: (msg: NostrWorkerListenerMessage) => void) {
+    removeListener(name: string, onChange: (msg: PostStreamWrapperListener) => void) {
         const listenersforname = this.listeners.get(name);
         if (!listenersforname) {
             return;
@@ -375,12 +380,36 @@ class PostStreamWrapper {
         return this.noswk.nunreads;
     }
 
-    // TODO: impl setHasread considering mutes
+    // deltified with mute
+    setHasread(name: string, posts: Post[], hasRead: boolean): boolean {
+        const strm = this.streams.get(name);
+        if (!strm) return false;
+
+        if (0 < posts.length) {
+            const ntargets = posts.reduce((p, c) => p + (this.mutefilter(c) ? 1 : 0), 0);
+            // muted post does not effect. can check only if changes are provided.
+            if (!ntargets) return false;
+
+            this.streams.set(name, { ...strm, nunreads: strm.nunreads + (hasRead ? -ntargets : ntargets) });
+            this.listeners.get(name)?.forEach(f => f({ name, type: "update" }));
+            return true;
+        } else {
+            // we cannot check as delta; refresh and always report as "changed"
+            this.refreshPosts(name);
+            this.listeners.get(name)?.forEach(f => f({ name, type: "update" }));
+            return true;
+        }
+    }
 
     setMutes({ users, regexs }: { users: string[], regexs: string[]; }) {
         // https://stackoverflow.com/a/9213411
         this.muteusers = users.length === 0 ? NeverMatch : new RegExp(users.map(e => `(${e})`).join("|"));
         this.mutepatterns = regexs.length === 0 ? NeverMatch : new RegExp(regexs.map(e => `(${e})`).join("|"));
+
+        [...this.listeners.entries()].forEach(([name, lns]) => {
+            this.refreshPosts(name);
+            lns.forEach(f => f({ name, type: "update" }));
+        });
     }
 
     refreshPosts(name: string) {
@@ -390,24 +419,7 @@ class PostStreamWrapper {
         }
         const sf = this.noswk.getSubscribeFilters(name);
         const dontmute = !sf || sf?.some(f => f.mute === false);
-        const filteredPosts = dontmute ? stream.posts : stream.posts.filter(p => {
-            const ev = p.event?.event?.event;
-            if (!ev) return true;  // XXX ?
-            if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) return false;
-            // TODO: this should be able to toggled off
-            if (ev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) return false;
-            // TODO: this should be able to toggled off
-            if (this.testMutePatternsToNameOf(ev)) return false;
-
-            const rpev = p.reposttarget?.event?.event;
-            if (!rpev) return true;
-            if ((this.muteusers.test(rpev.pubkey) || this.mutepatterns.test(rpev.content))) return false;
-            // TODO: this should be able to toggled off
-            if (rpev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) return false;
-            // TODO: this should be able to toggled off
-            if (this.testMutePatternsToNameOf(rpev)) return false;
-            return true;
-        });
+        const filteredPosts = dontmute ? stream.posts : stream.posts.filter(p => this.mutefilter(p));
         // shallow copy "posts" to notify immutable change
         // FIXME: each element mutates, and that post may not re-rendered
         const news = {
@@ -419,6 +431,27 @@ class PostStreamWrapper {
         return news;
     }
 
+    private mutefilter(p: Post) {
+        const ev = p.event?.event?.event;
+        if (!ev) return true;  // XXX ?
+
+        if (this.muteusers.test(ev.pubkey) || this.mutepatterns.test(ev.content)) return false;
+        // TODO: this should be able to toggled off
+        if (ev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) return false;
+        // TODO: this should be able to toggled off
+        if (this.testMutePatternsToNameOf(ev)) return false;
+
+        const rpev = p.reposttarget?.event?.event;
+        if (!rpev) return true;
+
+        if ((this.muteusers.test(rpev.pubkey) || this.mutepatterns.test(rpev.content))) return false;
+        // TODO: this should be able to toggled off
+        if (rpev.tags.filter(t => t[0] === "p").some(t => this.muteusers.test(t[1]))) return false;
+        // TODO: this should be able to toggled off
+        if (this.testMutePatternsToNameOf(rpev)) return false;
+
+        return true;
+    }
     private nameof(pk: string) {
         const metaev = this.noswk.tryGetProfile(pk, Kind.Metadata);
         if (!metaev?.event) return null;
@@ -644,6 +677,24 @@ const Tabsview: FC = () => {
         useCallback(() => noswk.fetchqlen(), [])
     );
 
+    useEffect(() => {
+        const lnr: (msg: PostStreamWrapperListener) => void = msg => {
+            if (msg.type === "event") {
+                streams.setHasread(msg.name, msg.posts, false);
+                return;
+            }
+            if (msg.type === "hasread") {
+                streams.setHasread(msg.name, msg.posts, msg.hasRead);
+                return;
+            }
+        };
+        const names = tabs.map(t => t.id);
+        names.forEach(n => streams.addListener(n, lnr));
+        return () => {
+            names.forEach(n => streams.removeListener(n, lnr));
+        };
+    }, [tabs]);
+
     const tab = useCallback(() => {
         const tab = tabs.find(t => t.id === tabid);
         if (tab) {
@@ -849,9 +900,9 @@ const Tabsview: FC = () => {
     }, [tabs, tabid, tabzorder, closedtabs, navigating])();
 
     const tap = useSyncExternalStore(
-        useCallback((onStoreChange) => {
+        useCallback(onStoreChange => {
             if (!tab) return () => { };
-            const onChange = (msg: NostrWorkerListenerMessage) => {
+            const onChange = (msg: PostStreamWrapperListener) => {
                 if (msg.type === "eose") return;
                 if (msg.name !== tab.id) return;
                 streams.refreshPosts(tab.id);
@@ -864,6 +915,31 @@ const Tabsview: FC = () => {
             if (!tab) return undefined;
             return streams.getPostStream(tab.id);
         }, [streams, tab?.id]),
+    );
+    // XXX: currently just for triggering rerender...
+    const taus = useSyncExternalStore(
+        useCallback(onStoreChange => {
+            const names = tabs.map(t => t.id);
+            const onChange = (msg: PostStreamWrapperListener) => {
+                if (msg.type === "eose") return;
+                onStoreChange();
+            };
+            names.forEach(n => streams.addListener(n, onChange));
+            return () => names.forEach(n => streams.removeListener(n, onChange));
+        }, [tabs]),
+        useCallback((() => {
+            let curs: number[] | null = null;
+            let csurs: string = "null";
+            return () => {
+                const urs = tabs.map(t => streams.getPostStream(t.id)?.nunreads || 0);
+                const surs = JSON.stringify(urs);
+                if (csurs !== surs) {
+                    curs = urs;
+                    csurs = surs;
+                }
+                return curs;
+            };
+        })(), [tabs]),
     );
 
     // TODO: we could use created_at?received_at for disappeared (muted later?) case
@@ -914,7 +990,7 @@ const Tabsview: FC = () => {
     const tas = !tab ? undefined : tabstates.get(tab.id);
     useEffect(() => {
         if (!tab) return;
-        const onChange = (msg: NostrWorkerListenerMessage) => {
+        const onChange = (msg: PostStreamWrapperListener) => {
             if (msg.type !== "event") return;
             if (msg.name !== tab.id) return;
             if (!tas?.scroll.last) return;
