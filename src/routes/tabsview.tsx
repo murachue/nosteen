@@ -570,7 +570,7 @@ const Tabsview: FC = () => {
     const [coloruibg] = useAtom(state.preferences.colors.uibg);
     const [fonttext] = useAtom(state.preferences.fonts.text);
     const [fontui] = useAtom(state.preferences.fonts.ui);
-    const [mutepubkeys] = useAtom(state.preferences.mute.pubkeys);
+    const [mutepubkeys, setMutepubkeys] = useAtom(state.preferences.mute.pubkeys);
     const [muteregexs] = useAtom(state.preferences.mute.regexs);
     const noswk = useNostrWorker();
     const streams = useMemo(() => new PostStreamWrapper(noswk), [noswk]);  // memo??
@@ -1351,6 +1351,17 @@ const Tabsview: FC = () => {
                             tags: tags.filter(t => !(t[0] === "p" && t[1] === profpopping)),
                             created_at: Math.floor(Date.now() / 1000),
                         }, "🍃", `${tags.filter(t => t[0] === "p").length}-1 ${disp}`);
+                        return;
+                    }
+                    case "M": {
+                        if (!tab || !tas || !tap || !selpost) break;
+                        const pk = (selpost.reposttarget || selpost.event!).event!.event.pubkey;
+                        if (mutepubkeys.find(m => m.pk === pk)) {
+                            setFlash({ msg: "already muted", bang: true });
+                            return;
+                        }
+                        setMutepubkeys(mpks => [...mpks, { pk, scope: "local" }]);
+                        setProfpopping("");
                         return;
                     }
                 }
