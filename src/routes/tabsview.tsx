@@ -186,9 +186,9 @@ type TheListProps = {
     mypubkey: string | undefined;
     selection: string | null;
     onSelect?: (sel: { id: string; index: number; }) => void;
-    onScroll?: React.HTMLAttributes<HTMLDivElement>["onScroll"];
+    onScroll?: (view: { scrollTop: number; clientHeight: number; rowHeight: number; }) => void;  // lier, even called if height is changed
     onFocus?: React.HTMLAttributes<HTMLDivElement>["onFocus"];
-    scrollTo?: { pixel: number; } | { index: number; toTop?: boolean; } | { lastIfVisible: boolean; };
+    scrollTo?: { pixel: number; } | { index: number; toTop?: boolean; } | { last: true; };
 };
 const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, selection, onSelect, onScroll, onFocus, scrollTo }, ref) => {
     const noswk = useNostrWorker();
@@ -228,13 +228,20 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
         const listel = listref.current;  // copy current to avoid mutation on cleanup
         if (!listel) return;
         setClientHeight(listel.clientHeight);
-        const ro = new ResizeObserver(es => setClientHeight(es[0].target.clientHeight));
+        const ro = new ResizeObserver(es => {
+            const target = es[0].target;
+            setClientHeight(target.clientHeight);
+            onScroll && onScroll({ scrollTop: target.scrollTop, clientHeight: itemsref.current?.clientHeight || 0, rowHeight: rowh });
+        });
         ro.observe(listel);
         return () => { ro.unobserve(listel); };
-    }, []);
+    }, [rowh]);
     useEffect(() => {
         if (!scrollTo) return;
-        if ("pixel" in scrollTo) listref.current?.scrollTo(0, scrollTo.pixel);
+        if ("pixel" in scrollTo) {
+            listref.current?.scrollTo(0, scrollTo.pixel);
+            return;
+        }
         if ("index" in scrollTo) {
             const lel = listref.current;
             if (!lel) return;
@@ -260,19 +267,17 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                     return;
                 }
             }
+            return;
         }
-        if ("lastIfVisible" in scrollTo) {
+        if ("last" in scrollTo) {
             const lel = listref.current;
             if (!lel) {
                 return;
             }
-            const listScrollBottom = lel.scrollTop + lel.clientHeight;
-            const SecondLastOffsetTop = (posts.length - 1) * rowh;
-            if (SecondLastOffsetTop < listScrollBottom) {
-                lel.scrollTo(0, lel.scrollHeight);
-                return;
-            }
+            lel.scrollTo(0, lel.scrollHeight);
+            return;
         }
+        throw new Error(`program error: unhandled scrollTo ${scrollTo}`);
     }, [scrollTo]);
 
     return <div style={{ flex: "1 0 0px", height: "0" }}>
@@ -281,10 +286,16 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
                 ref={el => { listref.current = el; setref(ref, el); }}
                 tabIndex={0}
                 style={{ width: "100%", height: "100%", overflowX: "auto", overflowY: "scroll", position: "relative" }}
-                onScroll={e => {
-                    setScrollTop((e.nativeEvent.target as HTMLDivElement).scrollTop);
-                    onScroll && onScroll(e);
-                }}
+                onScroll={useCallback<NonNullable<React.DOMAttributes<HTMLDivElement>["onScroll"]>>(e => {
+                    const lel = listref.current;
+                    if (!lel) return;
+                    const iel = itemsref.current;
+                    if (!iel) return;
+
+                    const st = /* (event.nativeEvent.target as HTMLDivElement) */lel.scrollTop;
+                    setScrollTop(st);
+                    onScroll && onScroll({ scrollTop: lel.scrollTop, clientHeight: lel.clientHeight - iel.offsetTop, rowHeight: rowh });
+                }, [onScroll, rowh])}
                 onFocus={onFocus}
             >
                 <div style={{ display: "flex", position: "sticky", width: "100%", top: 0, background: coloruibg, zIndex: 1 /* ugh */ }}>
@@ -873,16 +884,6 @@ const Tabsview: FC = () => {
     }, [noswk]);
 
     useEffect(() => {
-        if (!tab) return;
-        const onChange = (msg: NostrWorkerListenerMessage) => {
-            if (msg.type !== "event") return;
-            if (msg.name !== tab.id) return;
-            setListscrollto({ lastIfVisible: true });
-        };
-        streams.addListener(tab.id, onChange);
-        return () => streams.removeListener(tab.id, onChange);
-    }, [streams, tab?.id]);
-    useEffect(() => {
         const handler = (ev: MuxRelayEvent): void => {
             const rsn = (() => {
                 if (!ev.reason) return "";
@@ -917,6 +918,17 @@ const Tabsview: FC = () => {
         streams.setMutes({ users: mutepubkeys.map(m => m.pk), regexs: muteregexs.map(m => m.pattern) });
     }, [streams, mutepubkeys, muteregexs]);
     const tas = !tab ? undefined : tabstates.get(tab.id);
+    useEffect(() => {
+        if (!tab) return;
+        const onChange = (msg: NostrWorkerListenerMessage) => {
+            if (msg.type !== "event") return;
+            if (msg.name !== tab.id) return;
+            if (!tas?.scroll.last) return;
+            setListscrollto({ last: true });  // always new object instance is important.
+        };
+        streams.addListener(tab.id, onChange);
+        return () => streams.removeListener(tab.id, onChange);
+    }, [streams, tab?.id, tas?.scroll?.last/* ugh */]);
     const getselpost = (): Post | null => {
         if (!tas?.selected?.id) return null;
         const p = noswk.getPost(tas.selected.id);
@@ -974,7 +986,7 @@ const Tabsview: FC = () => {
     useEffect(() => {
         if (!tas) return;
         // TODO: when fonttext changes?
-        setListscrollto({ pixel: tas.scroll });
+        setListscrollto(tas.scroll.last ? { last: true } : { pixel: tas.scroll.top });
     }, [tab?.id]); // !!
     useEffect(() => {
         const el = linkselref.current;
@@ -2250,10 +2262,14 @@ const Tabsview: FC = () => {
                     selection={tas?.selected?.id ?? null}
                     ref={listref}
                     onSelect={onselect}
-                    onScroll={() => {
+                    onScroll={view => {
                         if (!tab) return;
                         setTabstates(produce(draft => {
-                            getmk(draft, tab.id, newtabstate).scroll = listref.current?.scrollTop || 0; // use event arg?
+                            const scroll = {
+                                top: view.scrollTop,
+                                last: (tap?.posts?.length || 0) - 1 < (view.scrollTop + view.clientHeight) / view.rowHeight,
+                            };
+                            getmk(draft, tab.id, newtabstate).scroll = scroll;
                         }));
                     }}
                     onFocus={e => {
