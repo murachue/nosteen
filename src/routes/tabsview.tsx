@@ -225,16 +225,22 @@ const TheList = forwardRef<HTMLDivElement, TheListProps>(({ posts, mypubkey, sel
     const [clientHeight, setClientHeight] = useState(0);
 
     useEffect(() => {
-        const listel = listref.current;  // copy current to avoid mutation on cleanup
-        if (!listel) return;
-        setClientHeight(listel.clientHeight);
+        const lel = listref.current;  // copy current to avoid mutation on cleanup
+        if (!lel) return;
+        const iel = itemsref.current;
+        if (!iel) return;
+
+        // XXX: hack for just view...
+        onScroll && onScroll({ scrollTop: lel.scrollTop, clientHeight: lel.clientHeight - iel.offsetTop, rowHeight: rowh });
+
+        setClientHeight(lel.clientHeight);
         const ro = new ResizeObserver(es => {
             const target = es[0].target;
             setClientHeight(target.clientHeight);
-            onScroll && onScroll({ scrollTop: target.scrollTop, clientHeight: itemsref.current?.clientHeight || 0, rowHeight: rowh });
+            onScroll && onScroll({ scrollTop: target.scrollTop, clientHeight: lel.clientHeight - iel.offsetTop, rowHeight: rowh });
         });
-        ro.observe(listel);
-        return () => { ro.unobserve(listel); };
+        ro.observe(lel);
+        return () => { ro.unobserve(lel); };
     }, [rowh]);
     useEffect(() => {
         if (!scrollTo) return;
@@ -1732,6 +1738,18 @@ const Tabsview: FC = () => {
                     textref.current?.scrollBy(0, -10);
                     break;
                 }
+                case "v": {
+                    const v = tas?.view;
+                    if (!v) break;
+                    listref.current?.scrollBy(0, v.clientHeight - v.rowHeight * 2);
+                    break;
+                }
+                case "V": {
+                    const v = tas?.view;
+                    if (!v) break;
+                    listref.current?.scrollBy(0, -(v.clientHeight - v.rowHeight * 2));
+                    break;
+                }
                 case "p": {
                     break;
                 }
@@ -1760,12 +1778,32 @@ const Tabsview: FC = () => {
                     break;
                 }
                 case "H": {
+                    if (!tap) break;
+                    const v = tas?.view;
+                    if (!v) break;
+                    const i = Math.floor(v.scrollTop / v.rowHeight);
+                    if (tap.posts.length <= i) break;  // should not happen except posts is empty.
+                    onselect({ id: tap.posts[i].id, index: i });
                     break;
                 }
                 case "M": {
+                    if (!tap) break;
+                    const v = tas?.view;
+                    if (!v) break;
+                    const ti = Math.floor(v.scrollTop / v.rowHeight);
+                    const bi = Math.min(Math.ceil((v.scrollTop + v.clientHeight) / v.rowHeight), tap.posts.length - 1);
+                    const i = Math.floor((ti + bi) / 2);
+                    if (tap.posts.length <= i) break;
+                    onselect({ id: tap.posts[i].id, index: i });
                     break;
                 }
                 case "L": {
+                    if (!tap) break;
+                    const v = tas?.view;
+                    if (!v) break;
+                    const i = Math.min(Math./* ceil */floor((v.scrollTop + v.clientHeight) / v.rowHeight) - 1, tap.posts.length - 1);
+                    if (tap.posts.length <= i) break;
+                    onselect({ id: tap.posts[i].id, index: i });
                     break;
                 }
                 case "e": {
@@ -2390,11 +2428,12 @@ const Tabsview: FC = () => {
                     onScroll={view => {
                         if (!tab) return;
                         setTabstates(produce(draft => {
-                            const scroll = {
+                            const ts = getmk(draft, tab.id, newtabstate);
+                            ts.view = view;
+                            ts.scroll = {
                                 top: view.scrollTop,
                                 last: (tap?.posts?.length || 0) - 1 < (view.scrollTop + view.clientHeight) / view.rowHeight,
                             };
-                            getmk(draft, tab.id, newtabstate).scroll = scroll;
                         }));
                     }}
                     onFocus={e => {

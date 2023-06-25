@@ -27,10 +27,11 @@ const initTabdef: Tabdef[] = [
 
 type Tabstate = {
     selected: { id: string | null, index: number | null; };
+    view: { scrollTop: number; clientHeight: number; rowHeight: number; } | null;
     scroll: { top: number; last: boolean; index?: number; };  // index is temporal, overwritten by actual scroll. XXX: merged just for easier coding...
     replypath: string[];
 };
-export const newtabstate: () => Tabstate = () => ({ selected: { id: null, index: null }, scroll: { top: 0, last: true }, replypath: [] });
+export const newtabstate: () => Tabstate = () => ({ selected: { id: null, index: null }, view: null, scroll: { top: 0, last: true }, replypath: [] });
 
 export type RecentPost = {
     desc: string;
