@@ -1056,7 +1056,11 @@ const Tabsview: FC = () => {
     useEffect(() => {
         if (!tab || !tas) return;
         // TODO: when fonttext changes?
-        setListscrollto(tas.scroll.last ? { last: true } : { pixel: tas.scroll.top });
+        setListscrollto(tas.scroll.index !== undefined
+            ? { index: tas.scroll.index, toTop: true }
+            : tas.scroll.last
+                ? { last: true }
+                : { pixel: tas.scroll.top });
 
         // XXX: needs update on tab activation (because inactive is not updated)
         //      but do in here?
@@ -1115,14 +1119,13 @@ const Tabsview: FC = () => {
             } else {
                 navigate(`/tab/${tabs[ti].id}`);
                 setNavigating({ current: tabs[curti].id, to: tabs[ti].id });
-
-                // TODO how about listscrollto?
-                setListscrollto({ index: i, toTop: true });
             }
             setTabstates(produce(draft => {
                 const ts = getmk(draft, tabs[ti].id, newtabstate);
                 ts.selected = { id: posts[i].id, index: i };
-                // ts.scroll = {}
+                if (ti !== curti) {
+                    ts.scroll = { index: i, /* just for type */ top: 0, last: false };
+                }
             }));
             textref.current?.scrollTo(0, 0);
         };

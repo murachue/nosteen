@@ -27,7 +27,7 @@ const initTabdef: Tabdef[] = [
 
 type Tabstate = {
     selected: { id: string | null, index: number | null; };
-    scroll: { top: number; last: boolean; };
+    scroll: { top: number; last: boolean; index?: number; };  // index is temporal, overwritten by actual scroll. XXX: merged just for easier coding...
     replypath: string[];
 };
 export const newtabstate: () => Tabstate = () => ({ selected: { id: null, index: null }, scroll: { top: 0, last: true }, replypath: [] });
