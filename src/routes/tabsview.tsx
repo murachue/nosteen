@@ -626,7 +626,7 @@ const Tabsview: FC = () => {
     const [followtime, setFollowtime] = useState(0);
     const [author, setAuthor] = useState<MetadataContent | null>(null);
     const [rpauthor, setRpauthor] = useState<MetadataContent | null>(null);
-    const [prof, setProf] = useState<{ metadata?: DeletableEvent | null; contacts?: DeletableEvent | null; }>({});
+    const [prof, setProf] = useState<{ metadata?: DeletableEvent | null; contacts?: DeletableEvent | null; }>({}); // TODO: unused?
     const [tabpopping, setTabpopping] = useState(false);
     const [tabnameedit, setTabnameedit] = useState<string | null>(null);
     const [tabedit, setTabedit] = useState<string>("");
@@ -1054,9 +1054,13 @@ const Tabsview: FC = () => {
         textref.current?.scrollTo(0, 0);
     }, [tab?.id, tap, noswk]);
     useEffect(() => {
-        if (!tas) return;
+        if (!tab || !tas) return;
         // TODO: when fonttext changes?
         setListscrollto(tas.scroll.last ? { last: true } : { pixel: tas.scroll.top });
+
+        // XXX: needs update on tab activation (because inactive is not updated)
+        //      but do in here?
+        streams.refreshPosts(tab.id);
     }, [tab?.id]); // !!
     useEffect(() => {
         const el = linkselref.current;
@@ -1100,19 +1104,56 @@ const Tabsview: FC = () => {
     }, [editingtagdelay]);  // !!!!
     const nextunread = useCallback(() => {
         // TODO: search other tabs, jump to last note of first tab if all tabs has read.
-        if (!tap) return false;
-        const tapl = tap.posts.length;
-        let i: number;
-        for (i = 0; i < tapl; i++) {
-            if (!tap.posts[i].hasread) {
-                break;
+        if (!tab) return false;
+        const curti = tabs.findIndex(t => t.id === tab.id);
+        if (curti === -1) return false;  // ??
+        const sel = (ti: number, posts: Post[], i: number) => {
+            // onselect({ id: posts[i].id, index: i }, true);
+            noswk.setHasread({ id: posts[i].id }, true);
+            if (ti === curti) {
+                setListscrollto({ index: i, toTop: true });
+            } else {
+                navigate(`/tab/${tabs[ti].id}`);
+                setNavigating({ current: tabs[curti].id, to: tabs[ti].id });
+
+                // TODO how about listscrollto?
+                setListscrollto({ index: i, toTop: true });
+            }
+            setTabstates(produce(draft => {
+                const ts = getmk(draft, tabs[ti].id, newtabstate);
+                ts.selected = { id: posts[i].id, index: i };
+                // ts.scroll = {}
+            }));
+            textref.current?.scrollTo(0, 0);
+        };
+        let ti = curti;
+        while (true) {
+            const posts = streams.getPostStream(tabs[ti].id)?.posts;
+            if (posts) {
+                const tapl = posts.length;
+                let i: number;
+                for (i = 0; i < tapl; i++) {
+                    if (!posts[i].hasread) {
+                        sel(ti, posts, i);
+                        return true;
+                    }
+                }
+            }
+            // TODO: inactive tabs does not update their wrappers stream,
+            //       that cause false-no-unreads
+            ti = (ti + 1) % tabs.length;
+            if (ti === curti) {
+                // return false;
+                const posts = streams.getPostStream(tabs[0].id)?.posts;
+                if (!posts) return false;  // ??
+                sel(0, posts, posts.length - 1);
+                return true;
+            } else {
+                // stream needs update because inactive tab does not refreshed
+                streams.refreshPosts(tabs[ti].id);
             }
         }
-        if (i < tapl) {
-            onselect({ id: tap.posts[i].id, index: i }, true);
-        }
-        return true;
-    }, [tap]);
+    }, [tabs, tab?.id]);
     const restoretab = useCallback(() => {
         const t = closedtabs[tabpopsel - 1];
         if (!t) {
