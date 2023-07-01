@@ -48,26 +48,26 @@ const GA: FC<PropsWithChildren<{
         gtag("config", measurementId);
     }, [measurementId]);
     useEffect(() => {
-        const page_location = (() => {
+        const pvopt = (() => {
             const href = window.location.href;
 
             // hacky privacy
             {
                 const m = href.match(/(.+#\/tab)\/(e|p|a|thread|t)\/[^/]+$/);
                 if (m) {
-                    return `${m[1]}/*addr*`;
+                    return { page_location: `${m[1]}/*addr*`, page_title: "*addr* - nosteen" };
                 }
             }
             {
                 const m = href.match(/(.+#\/tab)\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
                 if (m) {
-                    return `${m[1]}/*custom*`;
+                    return { page_location: `${m[1]}/*custom*`, page_title: "*custom* - nosteen" };
                 }
             }
 
-            return href;
+            return { page_location: href };
         })();
-        gtag?.("event", "page_view", { page_location });
+        gtag?.("event", "page_view", pvopt);
     }, [location]);
 
     return children;
