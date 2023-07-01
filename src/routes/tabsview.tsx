@@ -392,7 +392,9 @@ class PostStreamWrapper {
         if (!strm) return false;
 
         if (0 < posts.length) {
-            const ntargets = posts.reduce((p, c) => p + (this.mutefilter(c) ? 1 : 0), 0);
+            const sf = this.noswk.getSubscribeFilters(name);
+            const dontmute = !sf || sf?.some(f => f.mute === false);
+            const ntargets = posts.reduce((p, c) => p + ((dontmute || this.mutefilter(c)) && c.hasread !== hasRead ? 1 : 0), 0);
             // muted post does not effect. can check only if changes are provided.
             if (!ntargets) return false;
 
