@@ -1,8 +1,10 @@
+import { Analytics } from '@vercel/analytics/react';
 import { enableMapSet } from 'immer';
 import { useAtom } from 'jotai/react';
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
+import GA from './components/ga';
 import './index.css';
 import { NostrWorkerProvider, useNostrWorker } from './nostrworker';
 import About from './routes/about';
@@ -56,7 +58,7 @@ const App = () => {
 
     return <HashRouter>
         <Routes>
-            <Route element={<Global />} errorElement={<ErrorPage />}>
+            <Route element={<GA measurementId={import.meta.env.VITE_APP_GA_MEASUREMENT_ID}><Global /></GA>} errorElement={<ErrorPage />}>
                 <Route path="/" element={<Root />} />
                 <Route path="/tab/*" element={<TabsView />} />
                 <Route path="/preferences" element={<Preferences />} />
@@ -71,6 +73,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <React.StrictMode>
         <NostrWorkerProvider>
             <App />
+            <Analytics />
         </NostrWorkerProvider>
     </React.StrictMode>,
 );
