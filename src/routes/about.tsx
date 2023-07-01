@@ -475,6 +475,24 @@ export default () => {
                                 throw new Error(`program error: unsupported decoded type: ${(decoded as any).type}`);
                             }
                         }
+                        {
+                            // upcase for LNURL
+                            const m = aktext.match(/^(.+)1([ac-hj-np-z02-9]+|[AC-HJ-NP-Z02-9]+)$/);
+                            if (m) {
+                                const b32 = aktext.match(/1[AC-HJ-NP-Z02-9]+$/) ? aktext.toLowerCase() : aktext;
+                                const bytes = rescue(() => bech32.fromWords(bech32.decode(b32, 1e5).words), e => e);
+                                if (bytes instanceof Uint8Array) {
+                                    const text = new TextDecoder("latin1").decode(bytes);
+                                    const hex = bytesToHex(bytes);
+                                    return <>
+                                        <TabText>{text}</TabText>
+                                        <TabText style={{ fontFamily: "monospace", overflowWrap: "anywhere" }}>{hex}</TabText>
+                                    </>;
+                                } else {
+                                    return <div>{`${bytes}`}</div>;
+                                }
+                            }
+                        }
                         return null;
                     } catch (e) {
                         return `${e}`;
