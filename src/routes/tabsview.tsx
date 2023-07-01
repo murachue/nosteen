@@ -799,7 +799,7 @@ const Tabsview: FC = () => {
                         id: `thread/${nid}`,
                         name: `t/${nid.slice(0, 8)}`,
                         // don't limit to post to fetch also repost/reaction/zap/etc.
-                        filter: [{ ids: [nid]/* , kinds: [Kind.Text] *//* , limit: 1 */ }, { "#e": [nid]/* , kinds: [Kind.Text] */ }],
+                        filter: [{ ids: [nid]/* , kinds: [Kind.Text] *//* , limit: 1 */ }, { "#e": [nid]/* , kinds: [Kind.Text] */, limit: 50 }],
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
@@ -836,7 +836,7 @@ const Tabsview: FC = () => {
                         name: `thread/${naddr.identifier.slice(0, 8)}`,
                         filter: [
                             { kinds: [naddr.kind], authors: [naddr.pubkey], "#d": [naddr.identifier] },
-                            { "#a": [`${naddr.kind}:${naddr.pubkey}:${naddr.identifier}`] },
+                            { "#a": [`${naddr.kind}:${naddr.pubkey}:${naddr.identifier}`], limit: 50 },
                         ],
                     };
                     setTabs([...tabs, newt]);
