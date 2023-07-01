@@ -519,13 +519,13 @@ export default () => {
                 muteregexs.save();
                 // TODO: notify UI?
             }}>Save</button>
-            <button onClick={() => {
+            <button disabled onClick={() => {
                 mutepks.save();
                 muteregexs.save();
                 // TODO: publish
                 // TODO: notify UI?
             }}>Save & Publish</button>
-            <button style={{ marginLeft: "1em" }} onClick={() => {
+            <button disabled style={{ marginLeft: "1em" }} onClick={() => {
                 // TODO: load
                 // TODO: notify UI?
             }}>Load from relays</button>

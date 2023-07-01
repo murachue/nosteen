@@ -21,8 +21,8 @@ const keys = [
     { key: "Enter", desc: "Reply" },
     { key: "Shift+J", desc: "Scroll text up" },
     { key: "Shift+K", desc: "Scroll text down" },
-    { key: "P", desc: "ENOTIMPL" },
-    { key: "N", desc: "ENOTIMPL" },
+    // { key: "P", desc: "ENOTIMPL" },
+    // { key: "N", desc: "ENOTIMPL" },
     { key: "V", desc: "Roll up" },
     { key: "Shift+V", desc: "Roll down" },
     { key: "I", desc: "Focus the editor" },
@@ -44,7 +44,7 @@ const keys = [
     { key: "Shift+W", desc: "Close the tab" },
     { key: "&", desc: "Open unread events" },
     { key: "T", desc: "Tab menu" },
-    { key: "Shift+T", desc: "ENOTIMPL" },
+    // { key: "Shift+T", desc: "ENOTIMPL" },
     { key: "Y", desc: "Relays info" },
     { key: "Shift+F", desc: "Reaction" },
     { key: "Shift+R", desc: "Repost" },
@@ -53,7 +53,7 @@ const keys = [
     { key: "Shift+D", desc: "Delete the event" },
     { key: "~", desc: "Edit profile" },
     { key: "Shift+,", desc: "Preferences" },
-    { key: "/", desc: "ENOTIMPL" },
+    // { key: "/", desc: "ENOTIMPL" },
     { key: "?", desc: "About me" },
 ];
 
