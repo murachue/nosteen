@@ -182,13 +182,13 @@ const Profile: FC<{}> = () => {
                                 }
                                 if (value?.startsWith("LNURL1")) {
                                     setEditprof(produce(draft => {
-                                        delete draft.lud16;
+                                        draft.lud16 = undefined;
                                         draft.lud06 = value;
                                     }));
                                 } else {
                                     setEditprof(produce(draft => {
                                         draft.lud16 = value;
-                                        delete draft.lud06;
+                                        draft.lud06 = undefined;
                                     }));
                                 }
                             }}
