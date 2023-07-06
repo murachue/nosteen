@@ -2456,7 +2456,7 @@ const Tabsview: FC = () => {
                     border: "2px inset",
                     padding: "0 0 0 2px",
                 }}>
-                    <div style={{ flex: "1", display: "flex", alignItems: "flex-start", overflow: "visible" }}>
+                    <div style={{ flex: "1", display: "flex", flexWrap: "wrap", alignItems: "flex-start", overflow: "visible" }}>
                         {tabs.map(t =>
                             <Tab key={t.id} style={{ overflow: "visible", padding: t.id === tab?.id ? `2px 2px 3px` : `1px 0 0` }} active={t.id === tab?.id} onClick={() => navigate(`/tab/${t.id}`)}>
                                 <div style={{ position: "relative", padding: "0 0.5em" }}>
