@@ -1310,7 +1310,8 @@ const Tabsview: FC = () => {
             }
             if (0 < linkpop.length) {
                 switch (e.key) {
-                    case "Escape": {
+                    case "Escape":
+                    case "e": {
                         setLinkpop([]);
                         setLinksel(null);
                         listref.current?.focus();
