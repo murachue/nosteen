@@ -350,7 +350,7 @@ export class NostrWorker {
 
         // update subs
         // TODO: relays per sid... what to do?
-        this.subs.forEach(({ sid }) => sid?.sub(
+        this.subs.forEach(({ sid, filters }) => filters?.every(f => !f.relays) && sid?.sub(
             this.getLivingRelays().filter(r => r.read).map(r => r.url),
             null,
         ));
