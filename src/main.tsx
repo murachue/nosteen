@@ -3,7 +3,7 @@ import { enableMapSet } from 'immer';
 import { useAtom } from 'jotai/react';
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { HashRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, Link, Route, Routes } from 'react-router-dom';
 import GA from './components/ga';
 import './index.css';
 import { NostrWorkerProvider, useNostrWorker } from './nostrworker';
@@ -64,6 +64,7 @@ const App = () => {
                 <Route path="/preferences" element={<Preferences />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/about" element={<About />} />
+                <Route path="*" element={<div>404. <Link to="/">go top</Link></div>} />
             </Route>
         </Routes>
     </HashRouter>;
