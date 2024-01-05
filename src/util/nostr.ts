@@ -66,6 +66,12 @@ export const contactsjsoncontent = (ev: DeletableEvent): ContactsContent | null 
     return null;
 };
 
+export const isParameterizedReplacableKind = (kind: number): boolean =>
+    30000 <= kind && kind < 40000;
+
+export const isReplacableKind = (kind: number): boolean =>
+    isParameterizedReplacableKind(kind) || (10000 <= kind && kind < 20000) || kind == 0 || kind == 3;
+
 export type RelayPosts = {
     event: Event;
     postAt: number;

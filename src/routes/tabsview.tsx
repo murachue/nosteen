@@ -13,7 +13,7 @@ import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { RecentPost, Tabdef, newtabstate } from "../state";
 import { DeletableEvent, MetadataContent, Post } from "../types";
-import { expectn, metadatajsoncontent, postindex } from "../util/nostr";
+import { expectn, isParameterizedReplacableKind, isReplacableKind, metadatajsoncontent, postindex } from "../util/nostr";
 import { NeverMatch, bsearchi, getmk, reltime, rescue, sha256str, timefmt } from "../util/pure";
 import { seleltext, shortstyle } from "../util/react";
 
@@ -2771,6 +2771,12 @@ const Tabsview: FC = () => {
                                     <div style={{ display: "flex", flexDirection: "column" }}>
                                         <TabText style={shortstyle} onCopy={e => { setEvinfopopping(false); listref.current?.focus(); }}>{nip19.noteEncode(ev.id)}</TabText>
                                         <TabText style={shortstyle} onCopy={e => { setEvinfopopping(false); listref.current?.focus(); }}>{nip19.neventEncode({ id: ev.id, author: ev.pubkey, relays: [froms[0]] })}</TabText>
+                                        {(() => {
+                                            // for naddr, we must consider repost target.
+                                            // because repost itself is always not replacable.
+                                            const text = (ev: Event | undefined) => ev && isReplacableKind(ev.kind) && <TabText style={shortstyle} onCopy={e => { setEvinfopopping(false); listref.current?.focus(); }}>{nip19.naddrEncode({ kind: ev.kind, pubkey: ev.pubkey, identifier: isParameterizedReplacableKind(ev.kind) ? ev.tags.find(t => t[0] === "d")?.[1] || "" : "" })}</TabText>;
+                                            return text(selrpev?.event?.event) || text(selev?.event?.event);
+                                        })()}
                                         <TabText style={shortstyle} onCopy={e => { setEvinfopopping(false); listref.current?.focus(); }}>{ev.id}</TabText>
                                     </div>
                                     <div style={{ textAlign: "right" }}>json:</div>
