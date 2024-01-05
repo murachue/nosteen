@@ -25,7 +25,7 @@ const lookupreposttarget = (noswk: NostrWorker, post: Post, update: (post: Delet
     if (post.event?.event?.event?.kind !== Kind.Repost) return null;
 
     // repost target must be found...
-    const targetid = post.event.event.event.tags.find(t => t[0] === "e")?.[1];
+    const targetid = post.event.event.event.tags.findLast(t => t[0] === "e")?.[1];
     if (!targetid) return null;
     // TODO: should take a relay from #e... many client does not include it though.
 
@@ -41,6 +41,30 @@ const lookupreposttarget = (noswk: NostrWorker, post: Post, update: (post: Delet
         },
     }]);
     // we don't have it yet, return null.
+    return null;
+};
+
+const getExpiration = (ev: Event | undefined | null): number | null => {
+    if (!ev) return null;
+    const exptag = ev.tags.find(t => t[0] === "expiration");
+    if (!exptag) return null;
+    const num = Number(exptag[1]);
+    if (isNaN(num)) return null;
+    return num;
+};
+
+const getDisappearReason = (post: Post, time = Date.now()): null | "deleted" | "expired" => {
+    const ev = post.event;
+    const rpev = post.reposttarget;
+    if (ev?.deleteevent || rpev?.deleteevent) {
+        return "deleted";
+    }
+
+    const rpevexp = getExpiration(rpev?.event?.event);
+    if (rpevexp !== null && rpevexp < time / 1000) return "expired";
+    const evexp = getExpiration(ev?.event?.event);
+    if (evexp !== null && evexp < time / 1000) return "expired";
+
     return null;
 };
 
@@ -112,6 +136,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
 
         return [bg, text];
     })();
+    const disreason = getDisappearReason(post);
 
     return <div ref={ref} style={{ display: "flex", overflow: "hidden", alignItems: "center", background: bg, color: text, font: fonttext }}>
         <TR>
@@ -122,7 +147,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                         : derefev && derefev.event?.event?.tags?.find(t => t[0] === "p")
                             ? "→"
                             : ""}
-                    {(post.event!.deleteevent || repostev?.deleteevent) ? "×" : ""}
+                    {(disreason === "deleted") ? "×" : ""}
                 </div>
             </TD>
             <TD>
@@ -152,7 +177,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                 </div>
                 {(() => {
                     const cw = derefev?.event?.event?.tags?.find(t => t[0] === "content-warning");
-                    return (cw || post.event?.deleteevent || derefev?.deleteevent) && <div style={{
+                    return (cw || disreason) && <div style={{
                         position: "absolute",
                         top: "0",
                         left: "0",
@@ -163,7 +188,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                         display: "flex",
                         alignItems: "center",
                     }}>
-                        <div style={shortstyle}>{cw ? cw[1] : "deleted"}</div>
+                        <div style={shortstyle}>{disreason || cw?.[1]}</div>
                     </div>;
                 })()}
             </TD>
@@ -1027,6 +1052,7 @@ const Tabsview: FC = () => {
     }, [tas, noswk]);
     const selev = selpost?.event;
     const selrpev = selpost?.reposttarget;
+    const disreason = selpost && getDisappearReason(selpost);
     const speeds = useCallback((() => {
         let sp = { mypostph: 0, reactph: 0, allnoteph: 0, name: "" as string | undefined, at: 0 };
         return (name: string | undefined, posts: Post[] | undefined) => {
@@ -2911,9 +2937,9 @@ const Tabsview: FC = () => {
                                 </div>}
                             </div>
                         </div>
-                        {(selev?.deleteevent || selrpev?.deleteevent) && kf !== 0xd0 && <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, right: 0, backdropFilter: "blur(4px)", background: "#0004" }}>
+                        {disreason && kf !== 0xd0 && <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, right: 0, backdropFilter: "blur(4px)", background: "#0004" }}>
                             <div style={{ padding: "0.5em", font: fonttext }}>
-                                deleted
+                                {disreason}
                             </div>
                         </div>}
                     </div>
