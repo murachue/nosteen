@@ -320,6 +320,7 @@ export default () => {
                                     <li><TabText>{nip19.nprofileEncode({ pubkey: aktext })}</TabText></li>
                                     <li><TabText>{nip19.nsecEncode(aktext)}</TabText></li>
                                     <li style={{ marginLeft: "1em" }}><TabText>{nip19.npubEncode(getPublicKey(aktext))}</TabText></li>
+                                    <li style={{ marginLeft: "1em" }}><TabText>{getPublicKey(aktext)}</TabText></li>
                                 </ul>;
                             }
                         }
@@ -360,6 +361,7 @@ export default () => {
                                 }
                                 if (decoded.type === "nevent" || decoded.type === "nprofile" || decoded.type === "naddr") {
                                     return <>
+                                        {decoded.type === "naddr" && <TabText>{`${decoded.data.kind}:${decoded.data.pubkey}:${decoded.data.identifier}`}</TabText>}
                                         <ul>
                                             {(() => {
                                                 switch (decoded.type) {
@@ -491,6 +493,14 @@ export default () => {
                                 } else {
                                     return <div>{`${bytes}`}</div>;
                                 }
+                            }
+                        }
+                        {
+                            const m = aktext.match(/^(\d+):([0-9A-Fa-f]{64}):(.*)$/);
+                            if (m) {
+                                return <ul>
+                                    <li><TabText>{nip19.naddrEncode({ kind: Number(m[1]), pubkey: m[2], identifier: m[3] })}</TabText></li>
+                                </ul>;
                             }
                         }
                         return null;
