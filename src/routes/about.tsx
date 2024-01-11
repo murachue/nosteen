@@ -21,6 +21,7 @@ const keys = [
     { key: "Enter", desc: "Reply" },
     { key: "Shift+J", desc: "Scroll text up" },
     { key: "Shift+K", desc: "Scroll text down" },
+    { key: "Z", desc: "Zoom text" },
     // { key: "P", desc: "ENOTIMPL" },
     // { key: "N", desc: "ENOTIMPL" },
     { key: "V", desc: "Roll up" },

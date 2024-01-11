@@ -681,6 +681,7 @@ const Tabsview: FC = () => {
     const [posting, setPosting] = useState(false);
     const [postpopping, setPostpopping] = useState(false);
     const postpopref = useRef<HTMLDivElement>(null);
+    const [zooming, setZooming] = useState(false);
 
     const relayinfo = useSyncExternalStore(
         useCallback(storeChange => {
@@ -1767,6 +1768,10 @@ const Tabsview: FC = () => {
                     textref.current?.scrollBy(0, -10);
                     break;
                 }
+                case "z": {
+                    setZooming(v => !v);
+                    break;
+                }
                 case "v": {
                     const v = tas?.view;
                     if (!v) break;
@@ -2841,7 +2846,7 @@ const Tabsview: FC = () => {
                                         {l.text}
                                     </div>)}
                             </div>
-                            <div ref={textref} style={{ height: "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext, position: "relative" }}>
+                            <div ref={textref} style={{ height: zooming ? "80vh" : "5.5em", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "2px", background: colorbase, font: fonttext, position: "relative" }}>
                                 <div>
                                     {/* TODO: twemoji? */}
                                     {!selev ? "text..." : (() => {
