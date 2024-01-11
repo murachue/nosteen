@@ -2327,6 +2327,7 @@ const Tabsview: FC = () => {
                 setEdittags(null);
                 setEditingtag(null);
                 setKind(null);
+                listref.current?.focus();
             });
     }, [kind, postdraft, edittags, emitevent]);
     useEffect(() => {
