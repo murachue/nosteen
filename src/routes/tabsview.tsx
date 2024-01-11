@@ -574,7 +574,7 @@ const spans = (tev: Pick<Event, "content" | "tags">): (
             // return { rawtext: t, type: "ref", tagindex: ti, tag, hex: null } as const;
             return { rawtext: t, type: "text", text: t } as const;
         }
-        const mhash = t.match(/^#(\S+)/);
+        const mhash = t.match(/^#([^#]\S+)/); // begin with hash but not markdown section
         if (mhash) {
             // hashtag t-tag may be normalized to smallcase
             const tag = tev.tags.find(t => t[0] === "t" && t[1].localeCompare(mhash[1], undefined, { sensitivity: "base" }) === 0);
