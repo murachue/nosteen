@@ -12,7 +12,7 @@ import { FetchId, MuxRelayEvent, NostrWorker, NostrWorkerListenerMessage, useNos
 import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { RecentPost, Tabdef, newtabstate } from "../state";
-import { DeletableEvent, MetadataContent, Post } from "../types";
+import { DeletableEvent, FilledFilters, MetadataContent, Post } from "../types";
 import { expectn, isParameterizedReplacableKind, isReplacableKind, metadatajsoncontent, postindex } from "../util/nostr";
 import { NeverMatch, bsearchi, getmk, reltime, rescue, sha256str, timefmt } from "../util/pure";
 import { seleltext, shortstyle } from "../util/react";
@@ -617,6 +617,87 @@ const spans = (tev: Pick<Event, "content" | "tags">): (
     });
 };
 
+const validateFilter = (filterstr: string): { ok: true; filter: FilledFilters; warning: string | null; } | { ok: false; reason: string; } => {
+    const filter = rescue(() => JSON.parse(filterstr), (e: any): unknown => e?.message);
+    if (!Array.isArray(filter)) {
+        return { ok: false, reason: `filter is not an array: ${String(filter)}` };
+    }
+    if (filter.length < 1) {
+        return { ok: false, reason: "totally empty filter not allowed" };
+    }
+    let warning = "";
+    for (const [i, f] of filter.entries()) {
+        if (typeof f !== "object" || Array.isArray(f)) {
+            return { ok: false, reason: `[${i}] is not an object` };
+        }
+        for (const [k, v] of Object.entries(f)) {
+            if (k === "ids" || k === "authors" || k === "#e" || k === "#p") {
+                if (!Array.isArray(v)) {
+                    return { ok: false, reason: `[${i}].${k} is not an array` };
+                }
+                for (const [ii, vv] of Object.entries(v)) {
+                    if (typeof vv !== "string") {
+                        return { ok: false, reason: `[${i}].${k}[${ii}] is not a string` };
+                    }
+                    if (/^[0-9a-f]{64}$/.exec(vv)) {
+                        warning += (warning ? ", " : "") + `non-64lohex [${i}].${k}[${ii}]`;
+                    }
+                }
+            } else if (k === "kinds") {
+                if (!Array.isArray(v)) {
+                    return { ok: false, reason: `[${i}].${k} is not an array` };
+                }
+                for (const [ii, vv] of Object.entries(v)) {
+                    if (typeof vv !== "number") {
+                        return { ok: false, reason: `[${i}].${k}[${ii}] is not a number` };
+                    }
+                    if (!Number.isInteger(vv)) {
+                        return { ok: false, reason: `[${i}].${k}[${ii}] is not an integer` };
+                    }
+                    if (vv < 0 || 65535 < vv) {
+                        warning += (warning ? ", " : "") + `oob-kind [${i}].${k}[${ii}]`;
+                    }
+                }
+            } else if (k === "since" || k === "until" || k === "limit") {
+                if (typeof v !== "number") {
+                    return { ok: false, reason: `[${i}].${k} is not a number` };
+                }
+                if (v < 0) {
+                    warning += (warning ? ", " : "") + `negative [${i}].${k}`;
+                }
+            } else if (k === "mute") { // Nosteen specific
+                if (typeof v !== "boolean") {
+                    return { ok: false, reason: `[${i}].${k} is not a boolean` };
+                }
+            } else if (k === "relays") { // Nosteen specific
+                if (!Array.isArray(v)) {
+                    return { ok: false, reason: `[${i}].${k} is not an array` };
+                }
+                for (const [ii, vv] of Object.entries(v)) {
+                    if (typeof vv !== "string") {
+                        return { ok: false, reason: `[${i}].${k}[${ii}] is not a string` };
+                    }
+                    if (/^wss?:\/\//.exec(vv)) {
+                        warning += (warning ? ", " : "") + `non-websocket URL [${i}].${k}[${ii}]`;
+                    }
+                }
+            } else if (/^#[a-zA-Z]$/.exec(k)) {
+                if (!Array.isArray(v)) {
+                    return { ok: false, reason: `[${i}].${k} is not an array` };
+                }
+                for (const [ii, vv] of Object.entries(v)) {
+                    if (typeof vv !== "string") {
+                        return { ok: false, reason: `[${i}].${k}[${ii}] is not a string` };
+                    }
+                }
+            } else {
+                warning += (warning ? ", " : "") + `unknown [${i}].${k}`;
+            }
+        }
+    }
+    return { ok: true, filter: filter as FilledFilters, warning: warning || null };
+};
+
 const Tabsview: FC = () => {
     const navigate = useNavigate();
     const data = useParams();
@@ -1212,16 +1293,26 @@ const Tabsview: FC = () => {
             setFlash({ msg: "cannot overwrite this tab", bang: true });
             return;
         }
+        const filter = validateFilter(tabedit);
+        if (!filter.ok) {
+            setFlash({ msg: "invalid filter", bang: true });
+            return;
+        }
         setTabpopping(false);
         setTabpopsel(-999);
-        setTabs(produce<Tabdef[]>(draft => { draft.find(t => t.id === tab.id)!.filter = JSON.parse(tabedit); }));
+        setTabs(produce<Tabdef[]>(draft => { draft.find(t => t.id === tab.id)!.filter = filter.filter; }));
         listref.current?.focus();
     }, [tabedit]);
     const newtab = useCallback(() => {
+        const filter = validateFilter(tabedit);
+        if (!filter.ok) {
+            setFlash({ msg: "invalid filter", bang: true });
+            return;
+        }
         setTabpopping(false);
         setTabpopsel(-999);
         const id = crypto.randomUUID();
-        const t = { id, name: id.slice(0, 8), filter: JSON.parse(tabedit) };
+        const t = { id, name: id.slice(0, 8), filter: filter.filter };
         setTabs([...tabs, t]);
         navigate(`/tab/${t.id}`);
         setNavigating({ current: tabid, to: t.id });
@@ -2567,6 +2658,10 @@ const Tabsview: FC = () => {
                                                 }}
                                                 onChange={text => { setTabedit(text); }}
                                             />
+                                            {(() => {
+                                                const f = validateFilter(tabedit);
+                                                return <div style={{ fontStyle: f.ok && f.warning ? "italic" : "inherit" }}>{f.ok ? f.warning : f.reason}</div>;
+                                            })()}
                                             <Tabln caption="open new" i={-1} onClick={newtab} />
                                             <Tabln caption="overwrite" i={-2} style={{ textDecoration: typeof t.filter === "string" ? "line-through" : undefined }} onClick={overwritetab} />
                                         </div>;
