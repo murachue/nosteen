@@ -2025,13 +2025,13 @@ const Tabsview: FC = () => {
                         }
                     });
                     tev.tags.forEach(t => {
-                        // we don't support Damus' #q
                         switch (t[0]) {
                             case "p": {
                                 const text = nip19.npubEncode(t[1]);
                                 ls.set(text, { text, auto: false });
                                 break;
                             }
+                            case "q": //FALLTHROUGH
                             case "e": {
                                 const text = nip19.noteEncode(t[1]);
                                 ls.set(text, { text, auto: false });
