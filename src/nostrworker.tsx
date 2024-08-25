@@ -280,7 +280,7 @@ export class NostrWorker {
     events = new Map<string, DeletableEvent>();
     posts = new Map<string, Post>();
     nunreads = 0;
-    postStreams = new Map<string, { posts: Post[], eose: boolean, nunreads: number; }>(); // order by created_at TODO: also received_at for LRU considering fetching older post that is mentioned?
+    postStreams = new Map<string, { posts: Post[], eose: boolean, nunreads: number; }>(); // order by created_at ASC,id DESC TODO: also received_at for LRU considering fetching older post that is mentioned?
     pubkey: string | null = null;
     profiles = new Map<string, ProfileEvents>();
     profsid: ReturnType<MuxPool["sub"]> | null = null;

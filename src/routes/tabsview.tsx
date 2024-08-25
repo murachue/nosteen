@@ -126,7 +126,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                 bg = colormypost;
             }
             // XXX: O(NM) is heavy
-            if (selev && selev.tags.findIndex(t => t[0] === "e" && t[1] === evid) !== -1) {
+            if (selev && selev.tags.findIndex(t => (t[0] === "e" || t[0] === "q") && t[1] === evid) !== -1) {
                 bg = colorthemreplyto;
             }
             if (ev.tags.findIndex(t => t[0] === "p" && t[1] === mypubkey) !== -1) {
@@ -698,6 +698,48 @@ const validateFilter = (filterstr: string): { ok: true; filter: FilledFilters; w
     return { ok: true, filter: filter as FilledFilters, warning: warning || null };
 };
 
+// get reply target #e. (if no "reply" marker) NIP-10 states that. also treats #q as weak reply.
+// last #e is reply. (except marker)
+const findReply = (tags: string[][]): string[] | null =>
+    tags.reduce<string[] | null>((p, c) => {
+        // first already-found reply marker have most priority.
+        if (p && p[0] === "e" && p[3] === "reply") return p;
+        // reply marker have next priority.
+        if (c[0] === "e" && c[3] === "reply") return c;
+        // first already-found root marker have most priority.
+        if (p && p[0] === "e" && p[3] === "root") return p;
+        // root marker have next priority.
+        if (c[0] === "e" && c[3] === "root") return c;
+        // latest found non-reply/root-mark(mention,unmarked) #e have next priority.
+        if (c[0] === "e") return c;
+        // already found non-reply-mark #e have next priority.
+        if (p && p[0] === "e") return p;
+        // first already-found #q have next priority.
+        if (p && p[0] === "q") return p;
+        // #q can be a candidate.
+        if (c[0] === "q") return c;
+        // other tags cannot be a candidate
+        return p;
+    }, null);
+
+const findRoot = (tags: string[][]): string[] | null =>
+    tags.reduce<string[] | null>((p, c) => {
+        // first already-found root marker have most priority.
+        if (p && p[0] === "e" && p[3] === "root") return p;
+        // root marker have next priority.
+        if (c[0] === "e" && c[3] === "root") return c;
+        // first unmarked #e have next priority
+        if (p && p[0] === "e" && !p[3]) return p;
+        // unmarked #e can be a candidate
+        if (c[0] === "e" && !c[3]) return c;
+        // first already-found #q have next priority.
+        if (p && p[0] === "q") return p;
+        // #q can be a candidate
+        if (c[0] === "q") return c;
+        // other tags cannot be a candidate
+        return p;
+    }, null);
+
 const Tabsview: FC = () => {
     const navigate = useNavigate();
     const data = useParams();
@@ -908,7 +950,12 @@ const Tabsview: FC = () => {
                         id: `thread/${nid}`,
                         name: `t/${nid.slice(0, 8)}`,
                         // don't limit to post to fetch also repost/reaction/zap/etc.
-                        filter: [{ ids: [nid]/* , kinds: [Kind.Text] *//* , limit: 1 */ }, { "#e": [nid]/* , kinds: [Kind.Text] */, limit: 50 }],
+                        // XXX treat also quote(#q) as a threading (but not its thread, they dont have root #e for it.)
+                        filter: [
+                            { ids: [nid]/* , kinds: [Kind.Text] *//* , limit: 1 */ },
+                            { "#e": [nid]/* , kinds: [Kind.Text] */, limit: 50 },
+                            { "#q": [nid]/* , kinds: [Kind.Text] */, limit: 50 },
+                        ],
                     };
                     setTabs([...tabs, newt]);
                     setTabstates(produce(draft => { draft.set(newt.id, newtabstate()); }));
@@ -1722,9 +1769,18 @@ const Tabsview: FC = () => {
                     // const selpost = tap.posts[ci];
                     // if (!selpost) break;  //!?
                     const ev = selpost.reposttarget || selpost.event!;
-                    // get reply target #e. (if no "reply" marker) NIP-10 states that.
-                    const etag = ev.event!.event.tags.reduce<string[] | undefined>((p, c) => c[0] !== "e" ? p : p?.[3] === "reply" ? p : c, undefined);
-                    const replye = etag?.[1];
+                    const replye = (() => {
+                        const replye = findReply(ev.event!.event.tags)?.[1];
+                        if (replye) return replye;
+                        // if no reply tags, find note1/nevent1 and follow that.
+                        const ss = spans(ev.event!.event);
+                        for (const s of ss) {
+                            if ((s.type === "nip19" || s.type === "ref") && s.entity === "e") {
+                                return s.hex;
+                            }
+                        }
+                        return undefined;
+                    })();
                     if (!replye) break;
                     const lp = noswk.getPost(replye);
                     if (!lp) break;
@@ -1791,7 +1847,8 @@ const Tabsview: FC = () => {
                         const id = selpost.id;
                         for (let i = si; i < l; i++) {
                             const p = tap.posts[i];
-                            if (p.event!.event!.event.tags.find(t => t[0] === "e" && t[1] === id)) {
+                            // find note that is replying to selected
+                            if (findReply(p.event!.event!.event.tags)?.[1] === id) {
                                 nrp.push(p.id);
                                 setTabstates(produce(draft => { getmk(draft, tab.id, newtabstate).replypath = nrp; }));  // sideeffect!!
                                 return { id: p.id, index: i };
@@ -2104,7 +2161,7 @@ const Tabsview: FC = () => {
                     const post = selpost;
                     const derefev = (post.reposttarget || post.event)?.event?.event;
                     const dereftags = derefev?.tags || [];
-                    const rootid = dereftags.reduce<string[] | null>((p, c) => c[0] === "e" && (!p || c[3] === "root") ? c : p, null)?.[1];
+                    const rootid = findRoot(dereftags)?.[1];
                     const id = rootid || (post?.reposttarget?.id || post.id);
                     if (derefev?.kind && 30000 <= derefev.kind && derefev.kind < 40000) {
                         const d = dereftags.find(t => t[0] === "d")?.[1] || "";

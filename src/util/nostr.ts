@@ -9,6 +9,7 @@ export const postindex = <T extends Post, U extends Event>(posts: T[], event: U)
     const cat = event.created_at;
     const l = posts.length;
     for (
+        // TODO id DESC
         let i = bsearchi(posts, p => cat <= p.event!.event!.event.created_at);
         i < l && posts[i].event!.event!.event.created_at === cat;
         i++
@@ -23,6 +24,7 @@ export const postindex = <T extends Post, U extends Event>(posts: T[], event: U)
 export const postupsertindex = <T extends Post, U extends Event>(posts: T[], event: U): { type: "insert" | "update"; index: number; } => {
     const evid = event.id;
     const cat = event.created_at;
+    // TODO id DESC
     let i = bsearchi(posts, p => cat <= p.event!.event!.event.created_at);
     const l = posts.length;
     while (i < l && posts[i].event!.event!.event.created_at === cat) {
