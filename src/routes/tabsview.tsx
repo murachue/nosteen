@@ -2026,6 +2026,7 @@ const Tabsview: FC = () => {
                     });
                     tev.tags.forEach(t => {
                         switch (t[0]) {
+                            case "P": // zap originator(9735)
                             case "p": {
                                 const text = nip19.npubEncode(t[1]);
                                 ls.set(text, { text, auto: false });
