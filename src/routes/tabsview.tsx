@@ -2732,7 +2732,10 @@ const Tabsview: FC = () => {
                                             />
                                             {(() => {
                                                 const f = validateFilter(tabedit);
-                                                return <div style={{ fontStyle: f.ok && f.warning ? "italic" : "inherit" }}>{f.ok ? f.warning : f.reason}</div>;
+                                                return <div style={{
+                                                    ...shortstyle,
+                                                    fontStyle: f.ok && f.warning ? "italic" : "inherit"
+                                                }}>{f.ok ? f.warning : f.reason}</div>;
                                             })()}
                                             <Tabln caption="open new" i={-1} onClick={newtab} />
                                             <Tabln caption="overwrite" i={-2} style={{ textDecoration: typeof t.filter === "string" ? "line-through" : undefined }} onClick={overwritetab} />
