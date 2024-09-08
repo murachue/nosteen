@@ -639,7 +639,7 @@ const validateFilter = (filterstr: string): { ok: true; filter: FilledFilters; w
                     if (typeof vv !== "string") {
                         return { ok: false, reason: `[${i}].${k}[${ii}] is not a string` };
                     }
-                    if (/^[0-9a-f]{64}$/.exec(vv)) {
+                    if (!/^[0-9a-f]{64}$/.exec(vv)) {
                         warning += (warning ? ", " : "") + `non-64lohex [${i}].${k}[${ii}]`;
                     }
                 }
@@ -677,7 +677,7 @@ const validateFilter = (filterstr: string): { ok: true; filter: FilledFilters; w
                     if (typeof vv !== "string") {
                         return { ok: false, reason: `[${i}].${k}[${ii}] is not a string` };
                     }
-                    if (/^wss?:\/\//.exec(vv)) {
+                    if (!/^wss?:\/\//.exec(vv)) {
                         warning += (warning ? ", " : "") + `non-websocket URL [${i}].${k}[${ii}]`;
                     }
                 }
