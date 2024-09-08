@@ -2161,8 +2161,22 @@ const Tabsview: FC = () => {
                     const post = selpost;
                     const derefev = (post.reposttarget || post.event)?.event?.event;
                     const dereftags = derefev?.tags || [];
-                    const rootid = findRoot(dereftags)?.[1];
-                    const id = rootid || (post?.reposttarget?.id || post.id);
+                    const id = (() => {
+                        const rootid = findRoot(dereftags)?.[1];
+                        if (rootid) return rootid;
+                        if (derefev) {
+                            // if no root tags, find note1/nevent1 and follow that.
+                            // XXX sometimes I need tree for selecting event, not mentioned one. how to switch?
+                            const ss = spans(derefev);
+                            for (const s of ss) {
+                                if ((s.type === "nip19" || s.type === "ref") && s.entity === "e") {
+                                    return s.hex;
+                                }
+                            }
+                        }
+                        // selecting event becomes root
+                        return post?.reposttarget?.id || post.id;
+                    })();
                     if (derefev?.kind && 30000 <= derefev.kind && derefev.kind < 40000) {
                         const d = dereftags.find(t => t[0] === "d")?.[1] || "";
                         navigate(`/tab/thread/${derefev.kind}:${derefev.pubkey}:${d}`);
