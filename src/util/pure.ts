@@ -118,6 +118,8 @@ export const reltime = (bidelta: number) => {
     })();
 };
 
+// export const andThen = <T, U>(value: T, mapper: (x: T) => U): T | U => value ? mapper(value) : value;
+
 export const NeverMatch = /(?!)/;
 
 // XXX: it should have true "event" multiplex

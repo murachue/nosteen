@@ -795,7 +795,8 @@ const Tabsview: FC = () => {
     const relaypopref = useRef<HTMLDivElement>(null);
     const [forcedellatch, setForcedellatch] = useState({ count: 0, at: 0 });
     const [status, setStatus] = useState("status...");
-    const [edittags, setEdittags] = useState<{ tag: string[]; add: "manual" | "auto" | "disabled"; }[] | null>(null);
+    type EditTag = { tag: string[]; add: "manual" | "auto" | "disabled"; };
+    const [edittags, setEdittags] = useState<EditTag[] | null>(null);
     const [kind, setKind] = useState<number | null>(null);
     const [editingtag, setEditingtag] = useState<[number, number] | null>(null);
     const [editingtagdelay, setEditingtagdelay] = useState<[number, number] | null>(null);
@@ -1869,40 +1870,90 @@ const Tabsview: FC = () => {
                         if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
                         if (readonlyuser) break;
                         const derefev = selrpev || selev;
+                        const ev = derefev.event?.event;
+                        if (!ev) break;
 
-                        if (derefev.event?.event?.kind === Kind.EncryptedDirectMessage) {
-                            setFlash({ msg: "Replying DM is not implemented", bang: true });
+                        // TODO update nostr-tools and use symbolic
+                        if ([Kind.EncryptedDirectMessage, 1059].includes(ev.kind || 0)) {
+                            setFlash({ msg: "Replying to DM is not implemented", bang: true });
                             break;
                         }
 
-                        // copy #p tags, first reply-to, merged. (even if originate contains duplicated #p)
-                        const ppks = new Map<string, NonNullable<typeof edittags>[number]>();
-                        if (derefev.event?.event?.pubkey) {
-                            // TODO: relay/petname in tag from receivefrom/{contacts|profile}? really?
-                            ppks.set(derefev.event.event.pubkey, { tag: ["p", derefev.event.event.pubkey], add: "manual" });
+                        // XXX: I think NIP-22 Comment is not appropriate for replying to NIP-28 Public Chat.
+                        if ([Kind.Text, Kind.ChannelCreation, Kind.ChannelMetadata, Kind.ChannelMessage].includes(ev.kind)) {
+                            // old ~2024 NIP-10: root, mention?..., replyto?
+                            // copy #p tags, first reply-to, merged. (even if originate contains duplicated #p)
+                            const ppks = new Map<string, NonNullable<typeof edittags>[number]>();
+                            if (ev.pubkey) {
+                                // TODO: relay/petname in tag from receivefrom/{contacts|profile}? really?
+                                ppks.set(ev.pubkey, { tag: ["p", ev.pubkey], add: "manual" });
+                            }
+                            for (const tag of edittags || []) {  // from currently editing
+                                if (tag.tag[0] !== "p") continue;
+                                ppks.set(tag.tag[1], tag);
+                            }
+                            for (const tag of ev.tags) {  // from reply target
+                                if (tag[0] !== "p") continue;
+                                ppks.set(tag[1], { tag, add: "manual" });
+                            }
+                            const ptags = [...ppks.values()];
+                            // then combine. when for root, only root, without reply. (old 2024 NIP-10 #e)
+                            // XXX: also include original "#e"s? (Damus way?) I think it's not right.
+                            //      * we don't mentioning it in posting note (although it's marker will be "mention")
+                            //      * considering the case of fetching only sub-reply-tree, copying "root" is enough. it's too much to copying "#e"s.
+                            const root = ev.tags.reduce<string[] | null>((p, c) => (c[0] === "e" && (c[3] === "root" || p === null)) ? c : p, null);
+                            // TODO: relay in tag from receivefrom? really?
+                            setEdittags([
+                                (root ? { tag: [root[0], root[1], root[2] || "", "root"], add: "manual" } : { tag: ["e", (selrpev || selev).id, "", "root"], add: "manual" }),
+                                ...(root ? [{ tag: ["e", derefev.id, "", "reply"], add: "manual" as const }] : []),
+                                ...ptags,
+                            ]);
+                            setKind([Kind.ChannelCreation, Kind.ChannelMetadata, Kind.ChannelMessage].includes(ev.kind) ? Kind.ChannelMessage : Kind.Text);
+                        } else {
+                            const firstrelay: Relay | undefined = derefev.event?.receivedfrom?.keys()?.next()?.value;
+                            const eve = ev as Event<number>; // FIXME upgrade nostr-tools. ok to assume ev=eve, we'll remove this "eve" later.
+                            // FIXME when they have enough time to resolve profile, it still not used if this so-big callback is not updated.
+                            const proffirstrelay: Relay | undefined = noswk.getProfile(ev.pubkey, Kind.Metadata, ev => {/* cache is enough */ }, undefined, 5 * 60 * 1000,)?.event?.receivedfrom?.keys()?.next()?.value;
+                            // prepare for current event
+                            const asuf = !isReplacableKind(ev.kind) ? undefined : [`${ev.kind}:${ev.pubkey}:${ev.tags.find(t => t[0] === "d")?.[1] ?? ""}`].concat(firstrelay ? [firstrelay.url] : []);
+                            // I always add #E/e even for replacable events, to state this is for which version of it.
+                            const esuf = [ev.id, firstrelay?.url || "", ev.pubkey];
+                            const ksuf = [`${ev.kind}`];
+                            const psuf = [ev.pubkey].concat(proffirstrelay ? [proffirstrelay.url] : []);
+                            if (eve.kind !== 1111) {
+                                // ev is root; we are creating an new root comment
+                                setEdittags([
+                                    ...(asuf ? [{ tag: ["A", ...asuf], add: "manual" as const }] : []),
+                                    { tag: ["E", ...esuf], add: "manual" },
+                                    { tag: ["K", ...ksuf], add: "manual" },
+                                    { tag: ["P", ...psuf], add: "manual" },
+                                    ...(asuf ? [{ tag: ["a", ...asuf], add: "manual" as const }] : []),
+                                    { tag: ["e", ...esuf], add: "manual" },
+                                    { tag: ["k", ...ksuf], add: "manual" },
+                                    { tag: ["p", ...psuf], add: "manual" },
+                                ]);
+                            } else {
+                                // ev is comment; we must be replying.
+                                // pick root's each-first-tags from parent comment
+                                const roota = ev.tags.find(t => t[0] === "A");
+                                // they may add #E even for replacable events, to state this is for which version of it.
+                                const roote = ev.tags.find(t => t[0] === "E");
+                                const rootk = ev.tags.find(t => t[0] === "K");
+                                const rootp = ev.tags.find(t => t[0] === "P");
+                                setEdittags([
+                                    ...(roota ? [{ tag: roota, add: "manual" as const }] : []),
+                                    ...(roote ? [{ tag: roote, add: "manual" as const }] : []),
+                                    ...(rootk ? [{ tag: rootk, add: "manual" as const }] : []),
+                                    ...(rootp ? [{ tag: rootp, add: "manual" as const }] : []),
+                                    // reply-commenting to comment, and comment is not addressable-event; #a never be present.
+                                    // ...(asuf ? [{ tag: ["a", ...asuf], add: "manual" as const }] : []),
+                                    { tag: ["e", ...esuf], add: "manual" },
+                                    { tag: ["k", ...ksuf], add: "manual" }, // 1111
+                                    { tag: ["p", ...psuf], add: "manual" },
+                                ]);
+                            }
+                            setKind(1111); // TODO update nostr-tools and use symbolic
                         }
-                        for (const tag of edittags || []) {  // from currently editing
-                            if (tag.tag[0] !== "p") continue;
-                            ppks.set(tag.tag[1], tag);
-                        }
-                        for (const tag of derefev.event?.event?.tags || []) {  // from reply target
-                            if (tag[0] !== "p") continue;
-                            ppks.set(tag[1], { tag, add: "manual" });
-                        }
-                        const ptags = [...ppks.values()];
-                        // then combine. when for root, only root, without reply. (NIP-10 #e)
-                        // XXX: also include original "#e"s? (Damus way?) I think it's not right.
-                        //      * we don't mentioning it in posting note (although it's marker will be "mention")
-                        //      * considering the case of fetching only sub-reply-tree, copying "root" is enough. it's too much to copying "#e"s.
-                        const root = (derefev.event?.event?.tags || []).reduce<string[] | null>((p, c) => (c[0] === "e" && (c[3] === "root" || p === null)) ? c : p, null);
-                        // TODO: relay in tag from receivefrom? really?
-                        // TODO: kind40/41/42 to kind42
-                        setEdittags([
-                            (root ? { tag: [root[0], root[1], root[2] || "", "root"], add: "manual" } : { tag: ["e", (selrpev || selev).id, "", "root"], add: "manual" }),
-                            ...(root ? [{ tag: ["e", derefev.id, "", "reply"], add: "manual" as const }] : []),
-                            ...ptags,
-                        ]);
-                        setKind(([Kind.ChannelCreation, Kind.ChannelMetadata, Kind.ChannelMessage] as number[]).includes(derefev.event?.event?.kind || 0) ? Kind.ChannelMessage : Kind.Text);
                         posteditor.current?.focus();
                         e.preventDefault();
                     }
