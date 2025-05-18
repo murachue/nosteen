@@ -2,7 +2,7 @@ import { Event, EventTemplate, Filter, Kind } from "nostr-tools";
 import { Relay } from "./relay";
 
 export type ReceivedEvent = {
-    event: Event;
+    event: Event<number>; // FIXME nostr-tools includes 16
     receivedfrom: Map<Relay, number>;
 };
 

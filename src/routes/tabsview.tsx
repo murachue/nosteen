@@ -22,10 +22,10 @@ const lookupreposttarget = (noswk: NostrWorker, post: Post, update: (post: Delet
     if (post.reposttarget) return post.reposttarget;
 
     // if we are looking non-repost, none.
-    if (post.event?.event?.event?.kind !== Kind.Repost) return null;
+    if (![Kind.Repost, 16/* FIXME nostr-tools */].includes(post.event?.event?.event.kind || 0)) return null;
 
     // repost target must be found...
-    const targetid = post.event.event.event.tags.findLast(t => t[0] === "e")?.[1];
+    const targetid = post.event!.event!.event.tags.findLast(t => t[0] === "e")?.[1];
     if (!targetid) return null;
     // TODO: should take a relay from #e... many client does not include it though.
 
@@ -106,7 +106,7 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
         let bg = undefined;
         let text = colornormal;
 
-        if (post.event?.event && post.event.event.event.kind === (6 as Kind)) {
+        if (post.event?.event && [Kind.Repost, 16 as Kind/* FIXME nostr-tools */].includes(post.event.event.event.kind)) {
             text = colorrepost;
         }
         if (post.myreaction?.event) {
@@ -1867,7 +1867,7 @@ const Tabsview: FC = () => {
                         setPostpopping(s => !s);
                     } else {
                         if (!selev) break;
-                        if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
+                        if ([Kind.Repost, 16/* FIXME nostr-tools */].includes(selpost.event?.event?.event.kind || 0) && !selpost.reposttarget) break;
                         if (readonlyuser) break;
                         const derefev = selrpev || selev;
                         const ev = derefev.event?.event;
@@ -2294,7 +2294,7 @@ const Tabsview: FC = () => {
                 }
                 case "F": {
                     if (!tab || !selpost) break;
-                    if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
+                    if ([Kind.Repost, 16/* FIXME nostr-tools */].includes(selpost.event?.event?.event.kind || 0) && !selpost.reposttarget) break;
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
                     const targetev = derefev.event?.event;
@@ -2357,7 +2357,7 @@ const Tabsview: FC = () => {
                 }
                 case "R": {
                     if (!tab || !selpost) break;
-                    if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
+                    if ([Kind.Repost, 16/* FIXME nostr-tools */].includes(selpost.event?.event?.event.kind || 0) && !selpost.reposttarget) break;
                     // TODO: kind16 dereference
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen
@@ -2394,7 +2394,7 @@ const Tabsview: FC = () => {
                 }
                 case "q": {
                     if (!selev) break;
-                    if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
+                    if ([Kind.Repost, 16/* FIXME nostr-tools */].includes(selpost.event?.event?.event.kind || 0) && !selpost.reposttarget) break;
                     if (readonlyuser) break;
                     const derefev = selrpev || selev;
 
@@ -2419,7 +2419,7 @@ const Tabsview: FC = () => {
                 }
                 case "E": {
                     if (!tab || !selpost) break;
-                    if (selpost.event?.event?.event.kind === Kind.Repost && !selpost.reposttarget) break;
+                    if ([Kind.Repost, 16/* FIXME nostr-tools */].includes(selpost.event?.event?.event.kind || 0) && !selpost.reposttarget) break;
                     // TODO: should popup which event should be broadcasted. like linkpop.
                     const derefev = selpost.reposttarget || selpost.event;
                     if (!derefev) break; // XXX: should not happen

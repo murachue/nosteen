@@ -923,7 +923,7 @@ export class NostrWorker {
             posted.push(post);
             const wasempty = !post.event;
 
-            if (recv.event.event.kind === Kind.Repost) {
+            if (recv.event.event.kind === Kind.Repost || recv.event.event.kind === 16 as Kind/* FIXME nostr-tools */) {
                 post.event = recv;
                 const tid = repostedId(recv.event.event);
                 if (tid) {
@@ -1005,7 +1005,7 @@ export class NostrWorker {
         const ng = [];
         for (const { event, relay } of messages) {
             // TODO: unify these del,post,repost.
-            if (event.kind === 5) {
+            if (event.kind === Kind.EventDeletion) {
                 // delete: verify only if it's new and some are unknown
                 // this maps any DeletableEvent (almost last #e but not limited to)
                 // XXX: this fails when we got some kind5s for the same event and older kind5 arrives...
@@ -1136,7 +1136,7 @@ export class NostrWorker {
 
                 // hack: repost.
                 //       verify and remember as events but not okrecv to not pop up as originated (not reposted)
-                if (event.kind === (6 as Kind)) {
+                if ([Kind.Repost, 16 as Kind/* FIXME nostr-tools */].includes(event.kind)) {
                     const subevent: unknown = rescue(() => JSON.parse(event.content), undefined);
                     if (!subevent) {
                         continue;
