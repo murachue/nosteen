@@ -88,7 +88,7 @@ export const timefmt = (date: Date, fmt: string) => {
                 break;
             }
             case "S": {
-                str += Math.floor(date.getMilliseconds() / 1000 * (10 ** token.length));
+                str += timefmt0(Math.floor(date.getMilliseconds() / 1000 * (10 ** token.length)), token);
                 break;
             }
             default: {
