@@ -2263,7 +2263,7 @@ const Tabsview: FC = () => {
                         name: id,
                         filter: null,
                     }]);
-                    setTabstates(produce(draft => { draft.set(id, newtabstate()); }));
+                    setTabstates(produce(draft => { draft.set(id, { ...newtabstate(), scroll: { top: 0, last: false } }); }));
                     noswk.overwritePosts(id, tap!.posts.filter(p => !p.hasread));
                     navigate(`/tab/${id}`);
                     setNavigating({ current: tabid, to: id });
