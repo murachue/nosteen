@@ -2466,7 +2466,9 @@ const Tabsview: FC = () => {
                         kind: Kind.EventDeletion,
                         content: "",  // TODO: reason?
                         tags: [
+                            ...(!isReplacableKind(targetev.kind) ? [] : [["a", `${targetev.kind}:${targetev.pubkey}:${targetev.tags.find(t => t[0] === "d")?.[1] || ""}`]]),
                             ["e", targetev.id],  // we should not add a relay... that may be a hint of original.
+                            ["k", `${targetev.kind}`],
                         ],
                     }, "❌", targetev.content).then(e => {
                         if (e) return;
