@@ -216,7 +216,7 @@ export default () => {
                                     bad.push("pubkey is not a 32 octets hex");
                                 }
 
-                                let badsig = false;
+                                let badsig = true;
                                 if (oksig) {
                                     if (!(obj.sig as string).match(/^[0-9A-Fa-f]{128}$/)) {
                                         bad.push("sig is not a 64 octets hex");
@@ -226,21 +226,23 @@ export default () => {
                                         const result = rescue<boolean | string>(() => verifySignature(obj), e => `${e}`);
                                         if (result === false) {
                                             bad.push(`bad signature`);
-                                            badsig = true;
                                         } else if (result !== true) {
                                             bad.push(`bad signature: ${result}`);
+                                        } else {
+                                            badsig = false;
                                         }
                                     }
                                 }
 
-                                let idexpect = "";
+                                const idexpect = rescue(() => getEventHash(obj).toLowerCase(), e => e);
+                                let badid = true;
                                 if (okid) {
-                                    const expected = rescue(() => getEventHash(obj).toLowerCase(), e => e);
-                                    if (typeof expected !== "string") {
-                                        bad.push(`bad id: ${expected}`);
-                                    } else if ((obj.id as string).toLowerCase() !== expected) {
-                                        idexpect = expected;
+                                    if (typeof idexpect !== "string") {
+                                        bad.push(`bad id: ${idexpect}`);
+                                    } else if ((obj.id as string).toLowerCase() !== idexpect) {
                                         bad.push(`bad id`);
+                                    } else {
+                                        badid = false;
                                     }
                                 }
 
@@ -255,12 +257,22 @@ export default () => {
                                             <div style={{ display: "flex" }}>
                                                 <div>id:&nbsp;</div>
                                                 <TabText style={shortstyle}>{okid ? obj.id : "(not a string)"}</TabText>
-                                                <div>{!okid || idexpect ? "❌" : "✔"}</div>
+                                                <div>{badid ? "❌" : "✔"}</div>
                                             </div>
-                                            {!idexpect ? null : <ul><li><div style={{ display: "flex" }}>
-                                                <div>expected:&nbsp;</div>
-                                                <TabText style={shortstyle}>{idexpect}</TabText>
-                                            </div></li></ul>}
+                                            <ul>
+                                                <li>
+                                                    <div style={{ display: "flex" }}>
+                                                        {typeof idexpect === "string"
+                                                            ? <>
+                                                                <div>expected:&nbsp;</div>
+                                                                <TabText style={shortstyle}>{idexpect}</TabText>
+                                                            </>
+                                                            : <>
+                                                                {`${idexpect}`}
+                                                            </>}
+                                                    </div>
+                                                </li>
+                                            </ul>
                                         </li>
                                         <li><div style={{ display: "flex" }}>
                                             <div>pubkey:&nbsp;</div>
