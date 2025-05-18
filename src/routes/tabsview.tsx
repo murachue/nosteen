@@ -2316,6 +2316,9 @@ const Tabsview: FC = () => {
                             }
                             etags.delete(targetev.id);
                             ptags.delete(targetev.pubkey);
+                            const eventfrom = derefev.event?.receivedfrom.keys().next().value.url;
+                            // FIXME when they have enough time to resolve profile, it still not used if this so-big callback is not updated.
+                            const proffrom: string | undefined = (noswk.getProfile(targetev.pubkey, Kind.Metadata, ev => {/* cache is enough */ }, undefined, 5 * 60 * 1000,)?.event?.receivedfrom?.keys()?.next()?.value as Relay | undefined)?.url;
                             return {
                                 emo: "⭐",
                                 desc: `${targetev.content}`,
@@ -2324,10 +2327,12 @@ const Tabsview: FC = () => {
                                     kind: Kind.Reaction,
                                     content: "+",
                                     tags: [
+                                        ...(!isReplacableKind(targetev.kind) ? [] : [["a", `${targetev.kind}:${targetev.pubkey}:${targetev.tags.find(t => t[0] === "d")?.[1] || ""}`]]),
                                         ...[...etags.values()],
-                                        ["e", derefev.id],  // TODO: relay?
+                                        ["e", targetev.id].concat(eventfrom ? [eventfrom] : []),  // pubkey?
                                         ...[...ptags.values()],
-                                        ["p", targetev.pubkey],  // TODO: relay and petname?
+                                        ["p", targetev.pubkey].concat(proffrom ? [proffrom] : []),
+                                        ["k", `${targetev.kind}`],
                                     ],
                                 },
                             };
