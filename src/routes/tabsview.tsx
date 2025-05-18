@@ -2444,7 +2444,7 @@ const Tabsview: FC = () => {
             }
         };
         const kuhandler = (e: KeyboardEvent) => {
-            const tagName = (((e.target as any).tagName as string) || "").toLowerCase(); // FIXME
+            const tagName = ((e.target instanceof Element ? e.target : null)?.tagName || "").toLowerCase();
             if (tagName === "input" || tagName === "textarea" || tagName === "button") {
                 return;
             }
