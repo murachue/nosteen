@@ -2810,21 +2810,29 @@ const Tabsview: FC = () => {
                         )}
                     </div>
                     <div>
-                        <Link to="/profile" style={{
+                        <Link to="/profile" title="Profile (~)" style={{
                             background: coloruibg,
                             color: coloruitext,
                             font: fontui,
                             margin: "0 0.3em",
                         }} tabIndex={-1}>
-                            Profile...
+                            👤
                         </Link>
-                        <Link to="/preferences" style={{
+                        <Link to="/about" title="About this program (?)" style={{
                             background: coloruibg,
                             color: coloruitext,
                             font: fontui,
                             margin: "0 0.3em",
                         }} tabIndex={-1}>
-                            Prefs...
+                            ℹ️
+                        </Link>
+                        <Link to="/preferences" title="Preferences (Shift+,)" style={{
+                            background: coloruibg,
+                            color: coloruitext,
+                            font: fontui,
+                            margin: "0 0.3em",
+                        }} tabIndex={-1}>
+                            ⚙️
                         </Link>
                     </div>
                 </div>
