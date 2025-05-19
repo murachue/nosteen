@@ -7,6 +7,7 @@ import { MuxPub } from "./pool";
 export type Tabdef = {
     id: string;
     name: string;
+    locked?: boolean;
     filter: "recent" | "reply" | "dm" | "favs" | Partial<{
         ids: string[];
         authors: string[];

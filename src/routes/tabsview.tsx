@@ -1463,8 +1463,10 @@ const Tabsview: FC = () => {
                         if (tabpopsel === 0) {
                             setTabnameedit(tab!.name);
                         } else if (tabpopsel === -1) {
-                            newtab();
+                            setTabs(produce<Tabdef[]>(draft => { const t = draft.find(t => t.id === tab!.id)!; t.locked = !t.locked; }));
                         } else if (tabpopsel === -2) {
+                            newtab();
+                        } else if (tabpopsel === -3) {
                             overwritetab();
                         } else {
                             restoretab();
@@ -2243,6 +2245,8 @@ const Tabsview: FC = () => {
                     if (!tab) break;
                     if (typeof tab.filter === "string") {
                         setFlash({ msg: "Cannot close system tabs", bang: true });
+                    } else if (tab.locked) {
+                        setFlash({ msg: "Unlock first", bang: true });
                     } else {
                         setTabs(tabs => tabs.filter(t => t.id !== tab.id));
                         setTabstates(produce(draft => { draft.delete(tab.id); }));
@@ -2776,6 +2780,9 @@ const Tabsview: FC = () => {
                                                         onBlur={e => setTabnameedit(null)}
                                                     />
                                             }</div>
+                                            <div><Tabln caption={t.locked ? "🔒Locked. Unlock?" : "🔓Lock?"} i={-1} onClick={e =>
+                                                setTabs(produce<Tabdef[]>(draft => { const t = draft.find(t => t.id === tab.id)!; t.locked = !t.locked; }))
+                                            } /></div>
                                             <TextInput
                                                 value={tabedit}
                                                 size={71}
@@ -2794,8 +2801,8 @@ const Tabsview: FC = () => {
                                                     fontStyle: f.ok && f.warning ? "italic" : "inherit"
                                                 }}>{f.ok ? f.warning : f.reason}</div>;
                                             })()}
-                                            <Tabln caption="open new" i={-1} onClick={newtab} />
-                                            <Tabln caption="overwrite" i={-2} style={{ textDecoration: typeof t.filter === "string" ? "line-through" : undefined }} onClick={overwritetab} />
+                                            <Tabln caption="open new" i={-2} onClick={newtab} />
+                                            <Tabln caption="overwrite" i={-3} style={{ textDecoration: typeof t.filter === "string" ? "line-through" : undefined }} onClick={overwritetab} />
                                         </div>;
                                     })()}
                                 </div>
