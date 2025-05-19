@@ -4,6 +4,7 @@ import { produce } from "immer";
 import { useAtom } from "jotai";
 import { EventTemplate, finishEvent, getEventHash, getPublicKey, nip19, validateEvent, verifySignature } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
+import { Link, Navigate } from "react-router-dom";
 import icon from "../assets/icon.svg";
 import TabText from "../components/tabtext";
 import state from "../state";
@@ -97,6 +98,7 @@ export default () => {
     };
 
     return <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", color: colornormal }}>
+        <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => Navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>About Nosteen...</h1>
         <div style={{ padding: "2em", display: "flex", flexDirection: "row", alignItems: "center" }}>
             <div style={{ display: "flex", flexDirection: "column" }}>
                 <img src={icon} width="256" height="256" />
