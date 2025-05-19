@@ -13,8 +13,8 @@ import { RelayWrap } from "../pool";
 import { Relay } from "../relay";
 import state, { RecentPost, Tabdef, newtabstate } from "../state";
 import { DeletableEvent, FilledFilters, MetadataContent, Post } from "../types";
-import { expectn, isParameterizedReplacableKind, isReplacableKind, metadatajsoncontent, postindex } from "../util/nostr";
-import { NeverMatch, bsearchi, getmk, reltime, rescue, sha256str, timefmt } from "../util/pure";
+import { addressOf, expectn, isParameterizedReplacableKind, isReplacableKind, metadatajsoncontent, postindex } from "../util/nostr";
+import { NeverMatch, andThen, bsearchi, getmk, reltime, rescue, sha256str, strAndThen, timefmt } from "../util/pure";
 import { seleltext, shortstyle } from "../util/react";
 
 const lookupreposttarget = (noswk: NostrWorker, post: Post, update: (post: DeletableEvent) => void) => {
@@ -993,7 +993,7 @@ const Tabsview: FC = () => {
                         name: `thread/${naddr.identifier.slice(0, 8)}`,
                         filter: [
                             { kinds: [naddr.kind], authors: [naddr.pubkey], "#d": [naddr.identifier] },
-                            { "#a": [`${naddr.kind}:${naddr.pubkey}:${naddr.identifier}`], limit: 50 },
+                            { "#a": [nid], limit: 50 },
                         ],
                     };
                     setTabs([...tabs, newt]);
@@ -1915,7 +1915,7 @@ const Tabsview: FC = () => {
                             // FIXME when they have enough time to resolve profile, it still not used if this so-big callback is not updated.
                             const proffirstrelay: Relay | undefined = noswk.getProfile(ev.pubkey, Kind.Metadata, ev => {/* cache is enough */ }, undefined, 5 * 60 * 1000,)?.event?.receivedfrom?.keys()?.next()?.value;
                             // prepare for current event
-                            const asuf = !isReplacableKind(ev.kind) ? undefined : [`${ev.kind}:${ev.pubkey}:${ev.tags.find(t => t[0] === "d")?.[1] ?? ""}`].concat(firstrelay ? [firstrelay.url] : []);
+                            const asuf = strAndThen(addressOf(ev), a => [a!].concat(firstrelay ? [firstrelay.url] : []));
                             // I always add #E/e even for replacable events, to state this is for which version of it.
                             const esuf = [ev.id, firstrelay?.url || "", ev.pubkey];
                             const ksuf = [`${ev.kind}`];
@@ -2230,9 +2230,9 @@ const Tabsview: FC = () => {
                         return post?.reposttarget?.id || post.id;
                     })();
                     if (derefev?.kind && 30000 <= derefev.kind && derefev.kind < 40000) {
-                        const d = dereftags.find(t => t[0] === "d")?.[1] || "";
-                        navigate(`/tab/thread/${derefev.kind}:${derefev.pubkey}:${d}`);
-                        setNavigating({ current: tabid, to: `thread/${derefev.kind}:${derefev.pubkey}:${d}` });
+                        const a = addressOf(derefev);
+                        navigate(`/tab/thread/${a}`);
+                        setNavigating({ current: tabid, to: `thread/${a}` });
                     } else {
                         navigate(`/tab/thread/${id}`);
                         setNavigating({ current: tabid, to: `thread/${id}` });
@@ -2327,7 +2327,7 @@ const Tabsview: FC = () => {
                                     kind: Kind.Reaction,
                                     content: "+",
                                     tags: [
-                                        ...(!isReplacableKind(targetev.kind) ? [] : [["a", `${targetev.kind}:${targetev.pubkey}:${targetev.tags.find(t => t[0] === "d")?.[1] || ""}`]]),
+                                        ...(strAndThen(addressOf(targetev), a => [["a", a]]) || []),
                                         ...[...etags.values()],
                                         ["e", targetev.id].concat(eventfrom ? [eventfrom] : []),  // pubkey?
                                         ...[...ptags.values()],
@@ -2383,8 +2383,7 @@ const Tabsview: FC = () => {
                                 // thinking about reposting includes #e, this behavior is reasonable.
                                 ...(() => {
                                     if (!(30000 <= targetev.kind && targetev.kind < 40000)) return [];
-                                    const d = targetev.tags.find(t => t[0] === "d")?.[1] || "";
-                                    return [["a", `${targetev.kind}:${targetev.pubkey}:${d}`]];
+                                    return [["a", addressOf(targetev)!]];
                                 })(),
                             ]),
                         ],
@@ -2466,7 +2465,7 @@ const Tabsview: FC = () => {
                         kind: Kind.EventDeletion,
                         content: "",  // TODO: reason?
                         tags: [
-                            ...(!isReplacableKind(targetev.kind) ? [] : [["a", `${targetev.kind}:${targetev.pubkey}:${targetev.tags.find(t => t[0] === "d")?.[1] || ""}`]]),
+                            ...(strAndThen(addressOf(targetev), a => [["a", a]]) || []),
                             ["e", targetev.id],  // we should not add a relay... that may be a hint of original.
                             ["k", `${targetev.kind}`],
                         ],

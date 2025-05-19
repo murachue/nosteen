@@ -118,7 +118,8 @@ export const reltime = (bidelta: number) => {
     })();
 };
 
-// export const andThen = <T, U>(value: T, mapper: (x: T) => U): T | U => value ? mapper(value) : value;
+export const andThen = <T, U>(value: T, mapper: (x: T) => U): T | U => value ? mapper(value) : value;
+export const strAndThen = <T, N extends null | undefined | false>(value: string | N, mapper: (x: string) => T): T | N => !value && value !== "" ? value as N : mapper(value);
 
 export const NeverMatch = /(?!)/;
 

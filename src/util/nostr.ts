@@ -127,3 +127,6 @@ export const emitevent = async (noswk: NostrWorker, account: null | { pubkey: st
     const event = await signevent(account, tev);
     return broadcast(noswk, event, onRealize, relays);
 };
+
+export const addressOf = (ev: Event<number>): string | undefined =>
+    !isReplacableKind(ev.kind) ? undefined : `${ev.kind}:${ev.pubkey}:${ev.tags.find(t => t[0] === "d")?.[1] ?? ""}`;
