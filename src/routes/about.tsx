@@ -4,11 +4,12 @@ import { produce } from "immer";
 import { useAtom } from "jotai";
 import { EventTemplate, finishEvent, getEventHash, getPublicKey, nip19, validateEvent, verifySignature } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import icon from "../assets/icon.svg";
 import TabText from "../components/tabtext";
 import state from "../state";
-import { rescue, shortstyle } from "../util";
+import { rescue } from "../util/pure";
+import { shortstyle } from "../util/react";
 
 const keys = [
     { key: "A", desc: "Previous tab" },

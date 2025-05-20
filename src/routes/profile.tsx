@@ -8,8 +8,8 @@ import TextInput from "../components/textinput";
 import { useNostrWorker } from "../nostrworker";
 import state from "../state";
 import { DeletableEvent } from "../types";
-import { emitevent, metadatajsoncontent, rescue } from "../util";
-import { timefmt } from "../util/pure";
+import { emitevent, metadatajsoncontent } from "../util/nostr";
+import { rescue, timefmt } from "../util/pure";
 import { shortstyle } from "../util/react";
 
 const ProfLine: FC<{

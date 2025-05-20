@@ -1,5 +1,5 @@
 import { FC, PropsWithChildren } from "react";
-import { seleltext } from "../util";
+import { seleltext } from "../util/react";
 
 const TabText: FC<PropsWithChildren<React.HTMLAttributes<HTMLDivElement>>> = ({ children, onFocus, onBlur, onCopy, ...props }) =>
     <div

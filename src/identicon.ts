@@ -1,5 +1,5 @@
 import Identicon from "identicon.js";
-import { binarystringToUint8array } from "./util";
+import { binarystringToUint8array } from "./util/pure";
 
 export class IdenticonStore {
     private cache = new Map<string, string>();

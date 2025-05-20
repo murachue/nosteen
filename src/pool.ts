@@ -4,7 +4,7 @@
 
 import { Event, Filter, utils } from 'nostr-tools';
 import { Relay, Sub, SubscriptionOptions, relayInit } from './relay';
-import { getmk } from './util';
+import { getmk } from './util/pure';
 
 // reconnecting and stats wrapper.
 export class RelayWrap {

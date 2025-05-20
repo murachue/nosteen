@@ -4,7 +4,8 @@ import invariant from "tiny-invariant";
 import { MuxPool, RelayWrap } from "./pool";
 import { Relay } from "./relay";
 import { DeletableEvent, EventMessageFromRelay, FilledFilters, Post } from "./types";
-import { SimpleEmitter, getmk, postindex, postupsertindex, rescue } from "./util";
+import { postindex, postupsertindex } from "./util/nostr";
+import { SimpleEmitter, getmk, rescue } from "./util/pure";
 
 export type RelayWithMode = {
     relay: RelayWrap;
