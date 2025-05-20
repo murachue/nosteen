@@ -521,6 +521,15 @@ export default () => {
                                 </ul>;
                             }
                         }
+                        {
+                            const m = aktext.match(/^(\d{9,})$/);
+                            if (m) {
+                                return <ul>
+                                    <li><TabText>{new Date(Number(m[1]) * 1000).toISOString()}</TabText></li>
+                                    <li><TabText>{new Date(Number(m[1]) * 1000).toString()}</TabText></li>
+                                </ul>;
+                            }
+                        }
                         return null;
                     } catch (e) {
                         return `${e}`;
