@@ -2780,9 +2780,9 @@ const Tabsview: FC = () => {
                                                         onBlur={e => setTabnameedit(null)}
                                                     />
                                             }</div>
-                                            <div><Tabln caption={t.locked ? "🔒Locked. Unlock?" : "🔓Lock?"} i={-1} onClick={e =>
+                                            {typeof tab.filter === "string" || <div><Tabln caption={t.locked ? "🔒Locked. Unlock?" : "🔓Lock?"} i={-1} onClick={e =>
                                                 setTabs(produce<Tabdef[]>(draft => { const t = draft.find(t => t.id === tab.id)!; t.locked = !t.locked; }))
-                                            } /></div>
+                                            } /></div>}
                                             <TextInput
                                                 value={tabedit}
                                                 size={71}
