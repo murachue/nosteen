@@ -4,7 +4,7 @@ import { produce } from "immer";
 import { useAtom } from "jotai";
 import { EventTemplate, finishEvent, getEventHash, getPublicKey, nip19, validateEvent, verifySignature } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import icon from "../assets/icon.svg";
 import TabText from "../components/tabtext";
 import state from "../state";
@@ -77,6 +77,8 @@ export default () => {
     const [aktext, setAktext] = useState("");
     const [signerror, setSignerror] = useState("");
 
+    const navigate = useNavigate();
+
     useEffect(() => {
         const el = fonttextfamilyref.current;
         if (!el) return;
@@ -98,7 +100,7 @@ export default () => {
     };
 
     return <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", color: colornormal }}>
-        <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => Navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>About Nosteen...</h1>
+        <h1><div style={{ display: "inline-block" }}><Link to="/" onClick={e => navigate(-1)} style={{ color: "unset" }}>&lt;&lt;</Link>&nbsp;</div>About Nosteen...</h1>
         <div style={{ padding: "2em", display: "flex", flexDirection: "row", alignItems: "center" }}>
             <div style={{ display: "flex", flexDirection: "column" }}>
                 <img src={icon} width="256" height="256" />
@@ -181,7 +183,7 @@ export default () => {
 
                                 let obj = obj1;
                                 if (typeof obj1 === "string") {
-                                    obj = rescue(() => JSON.parse(obj1), e => new Error(`${e}`));
+                                    obj = rescue(() => JSON.parse(obj1), (e: unknown) => new Error(`${e}`));
                                     if (obj instanceof Error) {
                                         return `Bad inner JSON: ${obj}`;
                                     }
