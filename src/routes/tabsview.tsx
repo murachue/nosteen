@@ -1652,12 +1652,11 @@ const Tabsview: FC = () => {
                     }
                     case "M": {
                         if (!tab || !tas || !tap || !selpost) break;
-                        const pk = (selpost.reposttarget || selpost.event!).event!.event.pubkey;
-                        if (mutepubkeys.find(m => m.pk === pk)) {
+                        if (mutepubkeys.find(m => m.pk === profpopping)) {
                             setFlash({ msg: "already muted", bang: true });
                             return;
                         }
-                        setMutepubkeys(mpks => [...mpks, { pk, scope: "local" }]);
+                        setMutepubkeys(mpks => [...mpks, { pk: profpopping, scope: "local" }]);
                         setProfpopping("");
                         return;
                     }
