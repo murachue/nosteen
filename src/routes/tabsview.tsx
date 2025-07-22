@@ -501,9 +501,9 @@ class PostStreamWrapper {
 
 const spans = (tev: Pick<Event, "content" | "tags">): (
     { rawtext: string; type: "url"; href: string; auto: boolean; }
-    | { rawtext: string; type: "ref"; tagindex: number; tag: string[] | undefined; text?: string; entity: "e" | "p" | null; hex: string | null; }
+    | { rawtext: string; type: "ref"; tagindex: number; tag: string[] | undefined; text?: string; entity: "e" | "q" | "a" | "p" | null; hex: string | null; }
     | { rawtext: string; type: "hashtag"; text: string; tagtext: string | undefined; auto: boolean; }
-    | { rawtext: string; type: "nip19"; text: string; prefixed: boolean; entity: "e" | "p" | undefined; hex: string | undefined; auto: boolean; }
+    | { rawtext: string; type: "nip19"; text: string; prefixed: boolean; entity: "e" | "q" | "a" | "p" | undefined; hex: string | undefined; auto: boolean; }
     | { rawtext: string; type: "text"; text: string; }
 )[] => {
     const text = tev.content;
@@ -570,6 +570,23 @@ const spans = (tev: Pick<Event, "content" | "tags">): (
             const tag = tev.tags[ti] satisfies string[] as string[] | undefined;
             if (tag && tag[0] === "p") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.npubEncode(tag[1]), entity: "p", hex: tag[1] } as const;
             if (tag && tag[0] === "e") return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]), entity: "e", hex: tag[1] } as const;
+            // who use old #[0] style reference for #a or #q??
+            if (tag && tag[0] === "a") {
+                const ptr = parseEventAddress(tag[1]); // #q may contain event-address
+                if (ptr) {
+                    return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.naddrEncode(ptr), entity: "a", hex: tag[1] } as const;
+                }
+            }
+            if (tag && tag[0] === "q") {
+                const ptr = parseEventAddress(tag[1]); // #q may contain event-address
+                if (!ptr) {
+                    // event-id
+                    return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.noteEncode(tag[1]), entity: "q", hex: tag[1] } as const;
+                } else {
+                    // event-address
+                    return { rawtext: t, type: "ref", tagindex: ti, tag, text: nip19.naddrEncode(ptr), entity: "q", hex: tag[1] } as const;
+                }
+            };
             // we temporarily treat unknown reference as a text... note1g5vxkt9ge2xl7mecv2jw9us56n683zh8ksjn4pt4s952xuytv5aqsy5xnu
             // return { rawtext: t, type: "ref", tagindex: ti, tag, hex: null } as const;
             return { rawtext: t, type: "text", text: t } as const;
@@ -582,35 +599,40 @@ const spans = (tev: Pick<Event, "content" | "tags">): (
         }
         const mnostr = t.match(/^(nostr:)?((?:note|npub|nsec|nevent|nprofile|nrelay|naddr)1[0-9a-z]+)/);
         if (mnostr) {
-            const tt = ((): ({ entity: "e" | "p"; hex: string; match: ((t: string[]) => boolean); } | undefined) => {
-                const d = (() => { try { return nip19.decode(mnostr[2]); } catch { return undefined; } })();
+            const tt = ((): ({ hex: string; match: ((t: string[]) => boolean); } | undefined) => {
+                const d = rescue(() => nip19.decode(mnostr[2]), undefined);
                 if (!d) return undefined;  // bad checksum?
                 switch (d.type) {
                     case "nprofile": {
-                        return { match: t => t[0] === "p" && t[1] === d.data.pubkey, entity: "p", hex: d.data.pubkey };
+                        return { match: t => t[0] === "p" && t[1] === d.data.pubkey, hex: d.data.pubkey };
                     }
                     case "nevent": {
-                        // we don't support Damus' #q
-                        return { match: t => t[0] === "e" && t[1] === d.data.id, entity: "e", hex: d.data.id };
+                        return { match: t => (t[0] === "e" || t[0] === "q") && t[1] === d.data.id, hex: d.data.id };
                     }
                     case "naddr": {
-                        return undefined; // TODO
+                        return {
+                            match: t => {
+                                if (t[0] !== "a" && t[0] !== "q") return false;
+                                const ptr = parseEventAddress(t[1]);
+                                return !!ptr && ptr.kind === d.data.kind && ptr.pubkey === d.data.pubkey && ptr.identifier === d.data.identifier;
+                            },
+                            hex: mnostr[2],
+                        };
                     }
                     case "nsec": {
-                        return undefined; // TODO
+                        return undefined; // no such tag!!
                     }
                     case "npub": {
-                        return { match: t => t[0] === "p" && t[1] === d.data, entity: "p", hex: d.data };
+                        return { match: t => t[0] === "p" && t[1] === d.data, hex: d.data };
                     }
                     case "note": {
-                        // we don't support Damus' #q
-                        return { match: t => t[0] === "e" && t[1] === d.data, entity: "e", hex: d.data };
+                        return { match: t => (t[0] === "e" || t[0] === "q") && t[1] === d.data, hex: d.data };
                     }
                 }
                 return undefined;
             })();
             const tag = tt && tev.tags.find(tt.match);
-            return { rawtext: t, type: "nip19", text: mnostr[2], prefixed: !!mnostr[1], entity: tt?.entity, hex: tt?.hex, auto: !tag } as const;
+            return { rawtext: t, type: "nip19", text: mnostr[2], prefixed: !!mnostr[1], entity: tag?.[0] as "p" | "e" | "q" | "a" | undefined, hex: tt?.hex, auto: !tag } as const;
         }
         // should not reached here but last resort.
         return { rawtext: t, type: "text", text: t } as const;
@@ -739,6 +761,13 @@ const findRoot = (tags: string[][]): string[] | null =>
         // other tags cannot be a candidate
         return p;
     }, null);
+
+const parseEventAddress = (str: string): nip19.AddressPointer | null => {
+    // const [kind, pubkey, identifier] = str.split(":", 3);
+    const am = str.match(/^(\d{1,5}):([0-9A-Fa-f]{64}):(.+)$/);
+    if (!am) return null;
+    return { kind: Number(am[1]), pubkey: am[2], identifier: am[3] };
+};
 
 const Tabsview: FC = () => {
     const navigate = useNavigate();
@@ -2043,10 +2072,11 @@ const Tabsview: FC = () => {
                 case "e": {
                     if (!selpost) return;
 
-                    const tev = (selrpev || selev!).event!.event;
+                    const selt = selrpev || selev!;
+                    const tev = selt.event!.event;
                     const ss = spans(tev);
                     const specials = ss.filter(s => s.type !== "text");
-                    const ls = new Map();
+                    const ls = new Map<string, { text: string; auto: boolean; }>();
                     specials.forEach(s => {
                         switch (s.type) {
                             case "url": {
@@ -2076,6 +2106,21 @@ const Tabsview: FC = () => {
                             }
                         }
                     });
+                    // note: naddr in content(spans) may be encoded differently, but we want to unify.
+                    //       so we cannot rely on ls.set dedup, do it ourself. O(N^2).
+                    const listed = (ptr: nip19.AddressPointer) => {
+                        for (const k of ls.keys()) {
+                            if (!k.startsWith("naddr1")) continue;
+                            const lptr = nip19.decode(k);
+                            if (lptr.type !== "naddr") continue;
+                            if (lptr.data.kind !== ptr.kind) continue;
+                            if (lptr.data.pubkey !== ptr.pubkey) continue;
+                            if (lptr.data.identifier !== ptr.identifier) continue;
+                            // we don't compare relays.
+                            return true;
+                        }
+                        return false;
+                    };
                     tev.tags.forEach(t => {
                         switch (t[0]) {
                             case "P": // zap originator(9735)
@@ -2084,16 +2129,32 @@ const Tabsview: FC = () => {
                                 ls.set(text, { text, auto: false });
                                 break;
                             }
-                            case "q": //FALLTHROUGH
+                            case "q": {
+                                // note: #q may contain event-address, which contains pubkey in hex, which is 64chars.
+                                //       so, event-address never be shorter than 64chars, it can be used to distinguish.
+                                if (t[1].length == 64) {
+                                    // just as #e
+                                    const text = nip19.noteEncode(t[1]);
+                                    ls.set(text, { text, auto: false });
+                                } else {
+                                    const ptr = parseEventAddress(t[1]);
+                                    if (!ptr) break;
+                                    if (listed(ptr)) break;
+                                    const text = nip19.naddrEncode({ ...ptr, relays: andThen(selt.event?.receivedfrom.keys().next().value?.url, e => [e]) });
+                                    ls.set(text, { text, auto: false });
+                                }
+                                break;
+                            }
                             case "e": {
                                 const text = nip19.noteEncode(t[1]);
                                 ls.set(text, { text, auto: false });
                                 break;
                             }
                             case "a": {
-                                const am = t[1].match(/^(\d{1,5}):([0-9A-Fa-f]{64}):(.+)$/);
-                                if (!am) break;
-                                const text = nip19.naddrEncode({ kind: Number(am[1]), pubkey: am[2], identifier: am[3] });
+                                const ptr = parseEventAddress(t[1]);
+                                if (!ptr) break;
+                                if (listed(ptr)) break;
+                                const text = nip19.naddrEncode({ ...ptr, relays: andThen(selt.event?.receivedfrom.keys().next().value?.url, e => [e]) });
                                 ls.set(text, { text, auto: false });
                                 break;
                             }
