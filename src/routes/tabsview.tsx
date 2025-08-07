@@ -144,9 +144,11 @@ const TheRow = /* memo */(forwardRef<HTMLDivElement, { post: Post; mypubkey: str
                 <div style={{ ...shortstyle, textAlign: "right" }}>
                     {derefev && derefev.event?.event?.tags?.find(t => t[0] === "e")
                         ? "⇒"
-                        : derefev && derefev.event?.event?.tags?.find(t => t[0] === "p")
-                            ? "→"
-                            : ""}
+                        : derefev && derefev.event?.event?.tags?.find(t => t[0] === "q")
+                            ? "🙷"
+                            : derefev && derefev.event?.event?.tags?.find(t => t[0] === "p")
+                                ? "→"
+                                : ""}
                     {(disreason === "deleted") ? "×" : ""}
                 </div>
             </TD>
