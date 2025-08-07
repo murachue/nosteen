@@ -2470,25 +2470,23 @@ const Tabsview: FC = () => {
                 }
                 case "q": {
                     if (!selev) break;
-                    if ([Kind.Repost, 16/* FIXME nostr-tools */].includes(selpost.event?.event?.event.kind || 0) && !selpost.reposttarget) break;
                     if (readonlyuser) break;
                     const derefev = selrpev || selev;
+                    if (!derefev.event) break;
 
-                    if (derefev.event?.event?.kind === Kind.EncryptedDirectMessage) {
+                    if ([Kind.EncryptedDirectMessage, 1059/* FIXME nostr-tools */].includes(derefev.event!.event.kind)) {
                         setFlash({ msg: "Don't quote a DM", bang: true });
                         break;
                     }
 
-                    // just #e that is mentioning. no copying or adding #p from quoting.
+                    // just #q for it. no copying or adding #p from quoting.
                     // but keep edittags.
-                    // TODO: relay in tag from receivefrom? really?
                     setEdittags(t => [
-                        { tag: ["e", (selrpev || selev).id, "", "mention"], add: "auto" },
+                        { tag: ["q", derefev.id, derefev.event!.receivedfrom.keys().next().value?.url || "", derefev.event!.event.pubkey], add: "auto" },
                         ...(t || []),
                     ]);
                     setKind(k => k ?? Kind.Text);
-                    // TODO: nevent quoting option
-                    setPostdraft(s => `${s || ""} nostr:${nip19.noteEncode((selrpev || selev).id)}`);
+                    // setPostdraft(s => `${s || ""} nostr:${nip19.noteEncode((selrpev || selev).id)}`);
                     posteditor.current?.focus();
                     e.preventDefault();
                     break;
