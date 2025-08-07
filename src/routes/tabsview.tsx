@@ -1,6 +1,6 @@
 import { produce } from "immer";
 import { useAtom } from "jotai";
-import { Event, EventTemplate, Kind, finishEvent, nip13, nip19, utils } from "nostr-tools";
+import { Event, EventTemplate, Kind, finishEvent, getPublicKey, nip13, nip19, utils } from "nostr-tools";
 import { CSSProperties, FC, ForwardedRef, Fragment, ReactHTMLElement, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Helmet } from "react-helmet";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -1568,21 +1568,32 @@ const Tabsview: FC = () => {
                         const text = linkpop[linksel].text;
                         if (text.match(/^(npub|nprofile)1/)) {
                             const dec = rescue(() => nip19.decode(text), undefined);
-                            if (!dec) break;
-                            setProfpopping(dec.type === "npub" ? dec.data : dec.type === "nprofile" ? dec.data.pubkey : "");
-                            break;
+                            if (dec) {
+                                setProfpopping(dec.type === "npub" ? dec.data : dec.type === "nprofile" ? dec.data.pubkey : "");
+                                break;
+                            }
                         }
                         if (text.match(/^(note|nevent)1/)) {
-                            if (!expectn(text, "note") && !expectn(text, "nevent")) { break; }
-                            navigate(`/tab/e/${text}`);
-                            setNavigating({ current: tabid, to: `e/${text}` });
-                            break;
+                            if (expectn(text, "note") || expectn(text, "nevent")) {
+                                navigate(`/tab/e/${text}`);
+                                setNavigating({ current: tabid, to: `e/${text}` });
+                                break;
+                            }
                         }
                         if (text.match(/^naddr1/)) {
-                            if (!expectn(text, "naddr")) { break; }
-                            navigate(`/tab/a/${text}`);
-                            setNavigating({ current: tabid, to: `a/${text}` });
-                            break;
+                            if (expectn(text, "naddr")) {
+                                navigate(`/tab/a/${text}`);
+                                setNavigating({ current: tabid, to: `a/${text}` });
+                                break;
+                            }
+                        }
+                        if (text.match(/^nsec1/)) {
+                            // convert to public key and popup that user
+                            const dec = rescue(() => nip19.decode(text), undefined);
+                            if (dec?.type === "nsec") {
+                                setProfpopping(getPublicKey(dec.data));
+                                break;
+                            }
                         }
                         const rmhash = text.match(/^#(.+)/);
                         if (rmhash) {
