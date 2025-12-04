@@ -496,6 +496,23 @@ export default () => {
                             }
                         }
                         {
+                            const m = aktext.match(/^(\d+):([0-9A-Fa-f]{64}):(.*)$/);
+                            if (m) {
+                                return <ul>
+                                    <li><TabText>{nip19.naddrEncode({ kind: Number(m[1]), pubkey: m[2], identifier: m[3] })}</TabText></li>
+                                </ul>;
+                            }
+                        }
+                        {
+                            const m = aktext.match(/^(\d{9,})$/);
+                            if (m) {
+                                return <ul>
+                                    <li><TabText>{new Date(Number(m[1]) * 1000).toISOString()}</TabText></li>
+                                    <li><TabText>{new Date(Number(m[1]) * 1000).toString()}</TabText></li>
+                                </ul>;
+                            }
+                        }
+                        {
                             // upcase for LNURL
                             const m = aktext.match(/^(.+)1([ac-hj-np-z02-9]+|[AC-HJ-NP-Z02-9]+)$/);
                             if (m) {
@@ -511,23 +528,6 @@ export default () => {
                                 } else {
                                     return <div>{`${bytes}`}</div>;
                                 }
-                            }
-                        }
-                        {
-                            const m = aktext.match(/^(\d+):([0-9A-Fa-f]{64}):(.*)$/);
-                            if (m) {
-                                return <ul>
-                                    <li><TabText>{nip19.naddrEncode({ kind: Number(m[1]), pubkey: m[2], identifier: m[3] })}</TabText></li>
-                                </ul>;
-                            }
-                        }
-                        {
-                            const m = aktext.match(/^(\d{9,})$/);
-                            if (m) {
-                                return <ul>
-                                    <li><TabText>{new Date(Number(m[1]) * 1000).toISOString()}</TabText></li>
-                                    <li><TabText>{new Date(Number(m[1]) * 1000).toString()}</TabText></li>
-                                </ul>;
                             }
                         }
                         return null;
